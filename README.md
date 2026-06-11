@@ -427,3 +427,4 @@ Claude는 HOLD/STOP 상황에서도 자동 수정을 하지 않습니다. **판�
 - [`docs/user-guide.md`](docs/user-guide.md) — 사용자 설명서 (스킬별 사용법 + SM 실무 시나리오)
 - [`docs/workflows.md`](docs/workflows.md) — 스킬별 상세 시나리오
 - [`docs/stack-matrix.md`](docs/stack-matrix.md) — 지원 스택 상세 매트릭스
+- [`docs/harness-description.md`](docs/harness-description.md) — 규모별 비교 분석 (정확도 & 토큰 소비)
