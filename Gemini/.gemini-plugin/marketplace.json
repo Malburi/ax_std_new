@@ -1,0 +1,17 @@
+﻿{
+  "name": "harness-ito",
+  "description": "ITO/SI 조직을 위한 확장 메타 하네스 — 코드베이스 심층 분석부터 수정·개발·마이그레이션·SQL 리뷰·레거시 해석까지 지원하는 에이전트 팀과 워크플로우 스킬 모음",
+  "owner": {
+    "name": "Malburi",
+    "url": "https://github.com/Malburi"
+  },
+  "plugins": [
+    {
+      "name": "harness-ito",
+      "source": "./",
+      "description": "ITO/SI 조직을 위한 확장 메타 하네스 — 코드베이스 심층 분석 + 수정/개발/마이그레이션/SQL 리뷰/레거시 해석까지 지원하는 16개 에이전트 + 10개 워크플로우 스킬 (Spec Gate + Eval Loop + Clean)",
+      "homepage": "https://github.com/Malburi/harness-ito",
+      "keywords": ["harness", "agents", "skills", "ito", "si", "legacy", "migration", "code-analysis"]
+    }
+  ]
+}

@@ -1,0 +1,155 @@
+﻿---
+name: safe-modify
+description: 코드 변경을 사전 영향 분석 → 적용 → 사후 안전성 평가 순으로 안전하게 수행. "안전하게 수정", "회귀 위험 없이 변경", "safe modify", "이 변경 안전한가?", "변경 전 체크", "이 패치 적용해도 돼?", "운영 패치 검토", "긴급 핫픽스", "이 수정 GO/NO-GO?", "변경 리뷰" 요청 시 트리거.
+---
+
+# Safe Modify (오케스트레이터)
+
+변경을 적용하기 *전·중·후* 모두에 안전 게이트를 둔다.  
+ITO/SI에서 "수정 → 곧장 commit → 운영 사고"의 사이클을 끊는 것이 목적.
+
+---
+
+## Phase 0: 컨텍스트 추출
+
+사용자 자연어에서 운영 모드 키워드 감지:
+
+| 키워드 | mode |
+|--------|------|
+| "운영 패치", "프로덕션", "운영 배포" | production |
+| "긴급 핫픽스", "장애 대응" | hotfix |
+| "레거시 손보기", "옛날 코드" | legacy |
+| "고객 데모", "데모 직전" | customer_facing |
+| (없음) | normal |
+
+mode는 change-safety에 전달되어 가중치 조정에 사용된다.
+
+---
+
+## Phase 1: 사전 영향 분석
+
+변경 대상이 명확하면 → `analyze-impact` 호출 (위의 analyze-impact 스킬 그대로):
+- 변경 대상 정규화
+- 인덱스 준비
+- impact-analyzer 실행 → `_workspace/impact_<slug>.md`
+
+영향도 결과를 사용자에게 보여주고 *진행 여부 확인*:
+
+```
+영향도: [N]/10 ([등급])
+영향받는 테스트: K개
+
+진행 옵션:
+1. 변경 적용 후 안전성 평가까지 진행
+2. 사전 회귀 테스트 작성 후 진행 (test-generator 호출)
+3. 중단
+
+선택?
+```
+
+CRITICAL 등급이면 옵션 2를 권장 + 추가 확인.
+
+---
+
+## Phase 2: 변경 적용
+
+사용자가 진행 선택 시:
+- 사용자가 직접 변경을 작성하거나
+- 사용자가 변경 내용을 자연어로 설명 → 어시스턴트가 Edit/Write로 적용
+
+적용 후 변경 파일 목록 수집 (git diff 또는 작업 추적).
+
+---
+
+## Phase 3: 사후 안전성 평가
+
+`change-safety` 에이전트 호출:
+
+```
+Agent(
+  subagent_type="general-purpose",
+  description="변경 안전성 평가",
+  prompt="<change-safety 에이전트 지침. 변경 파일: [목록]. mode: [감지된 모드]. impact 리포트: _workspace/impact_<slug>.md. 출력: _workspace/safety_<slug>.md>",
+  model="gemini-pro"
+)
+```
+
+---
+
+## Phase 4: 결정 + 후속 조치
+
+`_workspace/safety_<slug>.md` 읽고 사용자에게 보고:
+
+```
+변경 안전성 평가 완료
+
+차원별 점수:
+| 회귀 | 컨벤션 | 사이드이펙트 | 롤백 | 보안 | 테스트 |
+|------|--------|-----------|------|------|--------|
+| X    | X      | X         | X    | X    | X      |
+
+종합 위험도: X/10
+즉시 STOP 트리거: [있음/없음]
+
+결정: [GO / HOLD / STOP]
+
+[GO]
+권장 다음 액션:
+- 영향 테스트 실행: [명령어]
+- commit 메시지: [권고]
+- 추가 권고:
+  - doc-syncer 호출 ("문서 동기화") — 문서 영향 점검
+  - (production mode) 단계적 배포
+
+[HOLD]
+보완 필요 항목:
+1. [차원]: [구체 액션]
+2. ...
+보완 후 다시 호출하세요: "이 변경 다시 평가해줘"
+
+[STOP]
+사유: [...]
+대안:
+- [...]
+권장: 변경 철회 또는 재설계
+
+전체 리포트: _workspace/safety_<slug>.md
+```
+
+---
+
+## 자동 후속 (옵션)
+
+GO 결정 시:
+- 사용자 명시 요청 있으면 → test-generator 자동 호출 (영향 코드 회귀 테스트 추가)
+- 사용자 명시 요청 있으면 → doc-syncer 자동 호출 (문서 동기화)
+
+자동 호출은 기본 OFF. 사용자가 "테스트도 만들어줘", "문서도 업데이트해줘" 같이 요청한 경우만.
+
+---
+
+## 시나리오 예시
+
+### 시나리오 1: 작은 버그 수정
+1. "OrderService.cancel의 null 체크 추가해서 안전하게 수정해줘"
+2. Phase 0: mode=normal
+3. Phase 1: analyze-impact 호출 → LOW (3/10)
+4. Phase 2: 변경 적용 (Edit)
+5. Phase 3: change-safety → 종합 2/10, GO
+6. Phase 4: GO 보고, 영향 테스트 실행 권고
+
+### 시나리오 2: 운영 핫픽스
+1. "긴급 핫픽스 — UserAuth.validate 검증 로직 수정"
+2. Phase 0: mode=hotfix
+3. Phase 1: analyze-impact → MEDIUM (5/10), 영향 테스트 12개, 보안 컨텍스트 포함
+4. Phase 2: 사용자에게 확인 ("회귀 테스트 먼저 작성 권고") → 사용자 "진행"
+5. Phase 3: 변경 적용
+6. Phase 4: change-safety → 보안 점수 6/10 (인증 코드), HOLD
+7. 보완 안내 + 사용자가 보완 후 재평가 요청
+
+### 시나리오 3: 마이그레이션 단계 변경
+1. "Struts Action 하나 → Spring Controller로 변환했어. 안전 평가해줘"
+2. Phase 0: mode=normal (마이그레이션 컨텍스트는 별도 plan-migration이 관리)
+3. Phase 2: 이미 변경되어 있으므로 git diff로 수집
+4. Phase 3: change-safety → 컨벤션 일치도 낮음 (새 스타일 도입), 사이드이펙트 변경 (인증 처리 위치 이동)
+5. Phase 4: HOLD, "마이그레이션 매핑 테이블에 따라 표준 변환 패턴 확인 권고"
