@@ -83,14 +83,14 @@ wiki/
 |--------|------|------|
 | [architecture](architecture.md) | MD | 아키텍처·레이어 구조·파일 위치 |
 | [workflows](workflows.md) | MD | 하네스 스킬 사용법·트리거 문장 |
-| [call-graph](call-graph.html) | HTML | 인터랙티브 함수 호출 그래프 |
 | [api-endpoints](api-endpoints.md) | MD | REST API 엔드포인트 목록 |
 | [database](database.md) | MD | DB 스키마·주요 SQL |
 | [patterns](patterns.md) | MD | 코드 컨벤션·패턴 요약 |
 | [external-systems](external-systems.md) | MD | 외부 시스템 연동 |
 | [issues](issues.md) | MD | 발견된 이슈·보완 권장 |
+| <a href="call-graph.html" target="_blank">📊 호출 그래프 (새 창)</a> | HTML | 인터랙티브 함수 호출 그래프 |
 
-> **call-graph.html**: 브라우저에서 직접 열어서 확인. 노드 클릭 시 상세 정보, 더블클릭 시 연결 강조.
+> **호출 그래프**: 노드 클릭 시 상세 정보 패널, 더블클릭 시 연결 강조, 필터 버튼으로 레이어별 탐색.
 
 ## 빠른 시작
 [ito-guide.md 핵심 내용 3~5줄 요약]
@@ -98,6 +98,10 @@ wiki/
 ---
 *이 wiki는 `generate-wiki` 스킬로 재생성할 수 있습니다.*
 ```
+
+**Home.md 생성 규칙 — 조건부 행:**
+- 조건부 페이지(`api-endpoints`, `database`, `patterns`, `external-systems`, `issues`)는 해당 데이터가 없으면 테이블 행을 생성하지 않는다.
+- `call-graph.html` 행(마지막 행)은 **항상** 생성한다. call_graph.json이 없어 데이터가 없는 경우에도 페이지 자체는 생성되므로 링크는 유지하고, 링크 옆에 `(데이터 없음)` 텍스트를 추가한다.
 
 ---
 
