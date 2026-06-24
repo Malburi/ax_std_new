@@ -17,7 +17,7 @@
 **팀 구성:**
 - 분석/생성 파이프라인: `analyzer` → `writer` → (`pattern-extractor`) → `validator` → `qa`
 - 품질 루프: `spec-clarifier` (Phase -1, 사전 명세화) + `harness-evaluator` (Phase 4, 사후 eval)
-- 작업용 에이전트: `impact-analyzer`, `change-safety`, `migration-planner`, `test-generator`, `sql-reviewer`, `legacy-decoder`, `doc-syncer`, `logic-tracer`, `feature-finder`
+- 작업용 에이전트: `impact-analyzer`, `change-safety`, `migration-planner`, `test-generator`, `sql-reviewer`, `legacy-decoder`, `doc-syncer`, `logic-tracer`, `feature-finder`, `wiki-builder`
 
 ## 파일 구조
 
@@ -37,6 +37,7 @@
 | `skills/harness-clean/SKILL.md` | harness 전체 제거 워크플로우 (확인 후 안전 삭제) |
 | `skills/trace-logic/SKILL.md` | 기능·API·화면 처리 흐름 추적 워크플로우 |
 | `skills/find-feature/SKILL.md` | 기능명·키워드로 관련 코드 위치 탐색 워크플로우 |
+| `skills/generate-wiki/SKILL.md` | harness 산출물 → wiki 페이지 세트 생성 (call_graph.json → vis-network 인터랙티브 HTML) |
 | `agents/spec-clarifier.md` | Phase -1: 소크라테스 인터뷰 + 모호성 점수화 + 명세 리포트 생성 |
 | `agents/harness-evaluator.md` | Phase 4: 4차원 품질 평가 (커버리지·정확도·실행가능성·컨텍스트) + fix_targets 반환 |
 | `agents/analyzer.md` | Phase 2-1: 심층 분석 (스택 + 의존성 그래프 + 데이터 흐름 + 트랜잭션 + 외부 통신 + 인덱스 생성) |
@@ -53,6 +54,7 @@
 | `agents/doc-syncer.md` | 코드 ↔ 문서 동기화 점검 |
 | `agents/logic-tracer.md` | 기능·API·화면 처리 흐름을 진입점 → Controller → Service → DB까지 추적 |
 | `agents/feature-finder.md` | 기능명·키워드로 관련 파일·클래스·메서드·SQL 위치 탐색 |
+| `agents/wiki-builder.md` | harness 산출물 읽어 wiki 페이지 생성 + call_graph.json → vis-network 인터랙티브 HTML 변환 |
 
 > 본 저장소 내의 `agents/`·`skills/` 경로는 *플러그인 소스*이며, 설치된 대상 프로젝트에서 출력되는 결과물은 여전히 대상 프로젝트의 `.claude/skills/...`·`.claude/agents/...`에 기록된다. 에이전트/스킬 본문 내부의 `.claude/...` 경로는 *대상 프로젝트* 경로를 의미한다.
 
@@ -72,6 +74,7 @@
 | 문서 동기화 | `doc-syncer` 직접 호출 |
 | 기능·API 처리 흐름 추적 | `trace-logic` |
 | 기능·키워드로 코드 위치 탐색 | `find-feature` |
+| harness 산출물 → wiki 생성 | `generate-wiki` |
 
 ## 에이전트 수정
 
@@ -99,3 +102,4 @@
 | 2026-06-03 | harness-init 3-Tier 적응 실행 — 복잡도 점수(파일수+DB/ORM+레거시+멀티모듈+외부시스템) 기반 Lite/Standard/Full 자동 분기. Lite: analyzer lite(sonnet)+writer(sonnet)+validator, QA·pattern 스킵. Standard: analyzer init(sonnet)+선택적 Phase B+writer(sonnet)+pattern+validator, QA 스킵. Full: 기존 파이프라인. 사용자 override 키워드 지원. | skills/harness-init / agents/analyzer | 프로젝트 규모 무관 전체 파이프라인 실행으로 인한 토큰·시간 낭비 해소 |
 | 2026-06-04 | harness-clean 스킬 추가 — CLAUDE.md·.claude/skills/·agents/·patterns/·_workspace/ 안전 제거 + 플러그인 언인스톨 안내 | skills/harness-clean / CLAUDE.md | 마음에 안 들면 롤백할 수 있어야 표준으로 쓸 수 있음 |
 | 2026-06-04 | Ouroboros 명세 게이트 + Karpathy eval 루프 접목 — spec-clarifier(sonnet, Phase -1: 소크라테스 인터뷰·모호성점수·GO신호) + harness-evaluator(sonnet, Phase 4: 4차원 품질평가·PASS/PARTIAL/RETRY·fix_targets 기반 타겟 재생성·1회 루프) + spec-gate 스킬 + harness-init Phase -1/-4 추가 + analyzer에 spec_context 전달 | agents/spec-clarifier, agents/harness-evaluator, skills/spec-gate, skills/harness-init, CLAUDE.md | 명세 모호성 제거(Ouroboros)·자기 개선 루프(Karpathy)로 harness 생성 품질 향상 |
+| 2026-06-24 | wiki 생성 기능 추가 — `wiki-builder`(sonnet, harness 산출물→wiki 페이지·call_graph.json→vis-network 인터랙티브 HTML 변환·callgraph.html 템플릿 계승) + `generate-wiki` 오케스트레이터 스킬(기존 wiki 백업·페이지 범위 선택·call-graph.html 전용 페이지) + harness-init Phase 3.5(완료 후 wiki 생성 제안) | agents/wiki-builder, skills/generate-wiki, skills/harness-init, CLAUDE.md | harness 완료 후 탐색 가능한 wiki 문서 자동 생성 요구 대응 |

@@ -440,6 +440,32 @@ HIGH 우선순위 항목이 있으면 사용자에게 명시적 안내. 자동 �
 
 ---
 
+## Phase 3.5: Wiki 생성 제안
+
+Phase 3 보고 직후, 다음 질문을 사용자에게 제시한다:
+
+```
+wiki를 생성하시겠습니까?
+harness 산출물(_workspace + .claude)을 기반으로 아래 페이지를 포함한 wiki를 생성합니다:
+  - Home, 아키텍처, 워크플로우 스킬 사용법
+  - 호출 그래프 (call_graph.json → vis-network 인터랙티브 HTML, callgraph.html 스타일 적용)
+  - API 엔드포인트, DB 스키마, 패턴, 외부 연동, 이슈 목록 (탐지된 경우)
+
+생성하시겠습니까? (Y/N)
+```
+
+**사용자 응답 처리:**
+
+| 응답 | 동작 |
+|------|------|
+| Y / 예 / yes / 생성 / 만들어줘 | `generate-wiki` 스킬 실행 → wiki 생성 후 Phase 4로 진행 |
+| N / 아니오 / no / 나중에 / 스킵 | wiki 생성 건너뜀 → Phase 4로 진행 |
+| (무응답·기타) | "나중에 필요하면 `wiki 만들어줘`라고 하세요" 안내 후 Phase 4로 진행 |
+
+`generate-wiki` 실행 시 → `generate-wiki` 스킬의 Phase 0~3을 그대로 수행한다. Phase 0의 "사전 확인"은 harness-init이 방금 완료했으므로 존재 확인은 스킵 가능.
+
+---
+
 ## Phase 4: Eval Loop — Karpathy AutoResearch 영감
 
 Phase 2-6에서 harness-evaluator가 실행되었다면 `_workspace/06_eval_report.md`에서 총점 확인.
