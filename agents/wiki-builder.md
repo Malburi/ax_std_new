@@ -403,6 +403,12 @@ function getNodeStyle(node) {
   };
 }
 
+// ── 스타일 캐시 — update 시 color 명시 복원용 ────────────────────────
+// vis-network에 group 프로퍼티를 넘기면 group 기본 팔레트 색상이
+// 개별 color 설정을 덮어씌우므로, group은 nodeRawMap으로만 관리한다.
+const nodeStyleCache = new Map(rawNodes.map(n => [n.id, getNodeStyle(n)]));
+const nodeRawMap    = new Map(rawNodes.map(n => [n.id, n]));
+
 function shortLabel(id) {
   const parts = id.split(/[.\/#]/);
   return parts[parts.length - 1];
@@ -410,7 +416,7 @@ function shortLabel(id) {
 
 // ── 노드/엣지 생성 ───────────────────────────────────────────────────
 const nodes = rawNodes.map(n => {
-  const style = getNodeStyle(n);
+  const style = nodeStyleCache.get(n.id);
   return {
     id: n.id,
     label: shortLabel(n.id),
@@ -422,7 +428,13 @@ const nodes = rawNodes.map(n => {
     </div>`,
     _raw: n,
     shape: n.type==='dependency'?'diamond':(HUB_IDS.has(n.id)?'star':'dot'),
-    ...style
+    // group 제거 — vis-network group 기본 색상이 개별 color를 덮어씌우는 버그 방지
+    color:       style.color,
+    borderWidth: style.borderWidth,
+    font:        style.font,
+    size:        style.size,
+    ...(style.borderDashes ? {borderDashes: style.borderDashes} : {}),
+    ...(style.shadow       ? {shadow:       style.shadow}       : {})
   };
 });
 
@@ -510,21 +522,33 @@ network.on('doubleClick', params => {
   if (params.nodes.length > 0) {
     const nodeId = params.nodes[0];
     const connectedEdges = network.getConnectedEdges(nodeId);
-    const connectedNodes = network.getConnectedNodes(nodeId);
-    data.nodes.update(rawNodes.map(n => ({id:n.id,opacity:0.15})));
-    data.edges.update(rawEdges.map((_,i) => ({id:i,color:{color:'rgba(100,116,139,0.08)'}})));
-    data.nodes.update([{id:nodeId,opacity:1}]);
-    connectedNodes.forEach(nid => data.nodes.update([{id:nid,opacity:1}]));
-    connectedEdges.forEach(eid => data.edges.update([{id:eid,color:{color:'#3b82f6'}}]));
+    const connectedNodes = new Set(network.getConnectedNodes(nodeId));
+    // 전체 희미하게 — color는 유지(undefined 전달 금지), opacity만 조정
+    data.nodes.update(rawNodes.map(n => ({id:n.id, opacity:0.15, color:nodeStyleCache.get(n.id).color})));
+    data.edges.update(rawEdges.map((_,i) => ({id:i, color:{color:'rgba(100,116,139,0.08)'}})));
+    // 선택 노드 + 연결 노드 강조
+    data.nodes.update([{id:nodeId, opacity:1, color:nodeStyleCache.get(nodeId).color}]);
+    connectedNodes.forEach(nid => data.nodes.update([{id:nid, opacity:1, color:nodeStyleCache.get(nid).color}]));
+    connectedEdges.forEach(eid => data.edges.update([{id:eid, color:{color:'#3b82f6'}}]));
   }
 });
 
+function edgeColor(e) {
+  return {
+    color:     e.type==='depends'?'rgba(245,158,11,0.4)':'rgba(148,163,184,0.25)',
+    highlight: e.type==='depends'?'#f59e0b':'#64748b'
+  };
+}
+
 function restoreAll() {
-  data.nodes.update(rawNodes.map(n => ({id:n.id,opacity:1})));
-  data.edges.update(rawEdges.map((e,i) => ({id:i,color:{
-    color:e.type==='depends'?'rgba(245,158,11,0.4)':'rgba(148,163,184,0.25)',
-    highlight:e.type==='depends'?'#f59e0b':'#64748b'
-  }})));
+  // color: undefined 를 넘기면 vis-network가 group 기본색으로 폴백하므로
+  // nodeStyleCache에서 원래 색상을 명시적으로 복원한다.
+  data.nodes.update(rawNodes.map(n => ({
+    id:      n.id,
+    opacity: 1,
+    color:   nodeStyleCache.get(n.id).color
+  })));
+  data.edges.update(rawEdges.map((e,i) => ({id:i, color:edgeColor(e)})));
 }
 
 // ── 필터 버튼 ────────────────────────────────────────────────────────
@@ -533,10 +557,19 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     const groups = filterGroups[btn.dataset.filter];
-    const updated = rawNodes.map(n => ({id:n.id,hidden:!(!groups||groups.includes(n.group))}));
+    // color 명시 — group 기본 팔레트 색상 덮어씌움 방지
+    const updated = rawNodes.map(n => ({
+      id:     n.id,
+      hidden: !(!groups || groups.includes(nodeRawMap.get(n.id).group)),
+      color:  nodeStyleCache.get(n.id).color
+    }));
     data.nodes.update(updated);
     const visible = new Set(updated.filter(n=>!n.hidden).map(n=>n.id));
-    data.edges.update(rawEdges.map((e,i) => ({id:i,hidden:!visible.has(e.from)||!visible.has(e.to)})));
+    data.edges.update(rawEdges.map((e,i) => ({
+      id:     i,
+      hidden: !visible.has(e.from) || !visible.has(e.to),
+      color:  edgeColor(e)
+    })));
   });
 });
 </script>
