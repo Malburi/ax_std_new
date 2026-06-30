@@ -18,6 +18,61 @@ description: 프로젝트를 심층 분석해 맞춤형 하네스(CLAUDE.md, 5+ 
 
 ---
 
+## Phase -2: 프로젝트 구조 확인
+
+> **스킵 조건**: 아래 중 하나라도 해당하면 Phase -1로 직행
+> - `_workspace/pair_config.md` 이미 존재 (이전 연동 설정 완료)
+> - 부분 재실행 ("스킬만"·"에이전트만"·"validator만" 등)
+> - 재초기화 + "다시"만 있음 (추가 목표 변경 없음)
+
+사용자에게 다음 질문을 제시한다:
+
+```
+이 프로젝트의 구조를 알려주세요:
+
+  1. 한 폴더 안에 모두 있음
+     백엔드·프론트엔드가 같은 루트 하위에 함께 위치
+     (예: /my-project/backend/, /my-project/frontend/)
+
+  2. 별도 폴더/저장소로 분리됨
+     백엔드·프론트엔드가 각각 독립된 폴더나 저장소에 위치
+     (예: /workspace/my-backend/, /workspace/my-frontend/)
+
+  3. 단일 스택 (백엔드만 또는 프론트엔드만)
+
+어느 쪽인가요? (1/2/3)
+```
+
+**응답별 분기:**
+
+| 응답 | 설정 | 다음 단계 |
+|------|------|---------|
+| 1 (모노레포) | `repo_structure = "mono"` | Phase -1로 진행 |
+| 2 (멀티레포) | `repo_structure = "multi"` | 파트너 정보 수집 → Phase -1로 진행 |
+| 3 (단일 스택) | `repo_structure = "single"` | Phase -1로 진행 |
+| 기타·미응답 | `repo_structure = "unknown"` | Phase -1로 진행 |
+
+### 멀티레포 파트너 정보 수집 (응답 2인 경우)
+
+연속해서 파트너 정보를 입력받는다:
+
+```
+파트너 프로젝트 정보를 입력해주세요:
+
+1. 현재 프로젝트 역할: backend / frontend / fullstack
+2. 파트너 프로젝트 절대 경로:
+   (예: C:\work\my-frontend 또는 /home/user/my-frontend)
+3. API base URL (선택 — 로컬 개발 기준):
+   (예: http://localhost:8080 — 모르면 빈칸)
+```
+
+입력받은 정보를 `partner_info = { role, path, api_url }` 변수에 저장.  
+경로 유효성 확인 및 파트너 하네스 존재 여부는 pair-init Phase 1에서 수행.
+
+> 수집한 `partner_info`는 Phase 3.5에서 pair-init 자동 실행 시 컨텍스트로 전달된다.
+
+---
+
 ## Phase -1: 명세 명확화 (Spec Gate) — Ouroboros 영감
 
 ### 실행 여부 결정
@@ -95,6 +150,7 @@ Agent(
 | `.claude/agents/domain-expert.md` | 도메인 에이전트 있음 |
 | `_workspace/` 존재 | 이전 산출물 있음 |
 | `_workspace/index/*.json` 존재 | 인덱스 있음 (incremental 가능) |
+| `_workspace/pair_config.md` 존재 | 파트너 프로젝트 연동 상태 → partner_root 변수 설정 |
 
 ### Step 2.5: 복잡도 점수 계산 + Tier 결정
 
@@ -440,12 +496,57 @@ HIGH 우선순위 항목이 있으면 사용자에게 명시적 안내. 자동 �
 
 ---
 
-## Phase 3.5: Wiki 생성 제안
+## Phase 3.5: 파트너 연동 (pair-init)
+
+**Phase -2 결과 및 기존 설정 기반 분기:**
+
+| 조건 | 동작 |
+|------|------|
+| `repo_structure = "mono"` 또는 `"single"` | 이 Phase 전체 스킵 → Phase 3.6으로 |
+| `_workspace/pair_config.md` 이미 있음 | 이 Phase 전체 스킵 → Phase 3.6으로 |
+| `repo_structure = "multi"` + `partner_info` 수집됨 | pair-init 자동 실행 (사용자 확인 생략) → Phase 3.6으로 |
+| Phase -2 스킵 + `pair_config.md` 없음 | 연동 여부 질문 후 진행 |
+
+### pair-init 자동 실행 (멀티레포 + 파트너 정보 있는 경우)
+
+사용자에게 다음을 안내한 후 pair-init 스킬을 실행한다:
+
+```
+[Phase 3.5] pair-init 시작 — 파트너 프로젝트 연동 중
+파트너 경로: [partner_info.path]
+```
+
+pair-init 스킬을 다음 컨텍스트로 실행:
+- 현재 프로젝트 역할: `partner_info.role`
+- 파트너 절대 경로: `partner_info.path`
+- API base URL: `partner_info.api_url` (미입력 시 pair-init Phase 1에서 재확인)
+- pair-init Phase 1의 사용자 질문 중 이미 수집된 항목은 생략하고 Phase 2부터 실행
+
+### 연동 여부 질문 방식 (Phase -2 스킵 + pair_config.md 없는 경우)
+
+```
+백엔드/프론트엔드가 별도 저장소로 분리되어 있나요?
+pair-init으로 연동하면 아래가 가능합니다:
+  - 전체 스택 기능 동시 생성 (cross-repo-scaffold)
+  - API 변경 시 파트너 영향 자동 감지 (analyze-impact 확장)
+  - API 드리프트 감지 (프론트↔백엔드 호출 불일치 탐지)
+
+연동하시겠습니까? (Y/N)
+```
+
+| 응답 | 동작 |
+|------|------|
+| Y / 예 / yes / 연동 | `pair-init` 스킬 실행 → 연동 완료 후 Phase 3.6으로 |
+| N / 아니오 / no / 나중에 | "나중에 필요하면 `페어 설정해줘`라고 하세요" 안내 후 Phase 3.6으로 |
+
+---
+
+## Phase 3.6: Wiki 생성 제안
 
 Phase 3 보고 직후, 다음 질문을 사용자에게 제시한다:
 
 ```
-wiki를 생성하시겠습니까?
+wiki를 생성하시겠습니까? (Phase 3.6)
 harness 산출물(_workspace + .claude)을 기반으로 아래 페이지를 포함한 wiki를 생성합니다:
   - Home, 아키텍처, 워크플로우 스킬 사용법
   - 호출 그래프 (call_graph.json → vis-network 인터랙티브 HTML, callgraph.html 스타일 적용)
@@ -461,6 +562,8 @@ harness 산출물(_workspace + .claude)을 기반으로 아래 페이지를 포�
 | Y / 예 / yes / 생성 / 만들어줘 | `generate-wiki` 스킬 실행 → wiki 생성 후 Phase 4로 진행 |
 | N / 아니오 / no / 나중에 / 스킵 | wiki 생성 건너뜀 → Phase 4로 진행 |
 | (무응답·기타) | "나중에 필요하면 `wiki 만들어줘`라고 하세요" 안내 후 Phase 4로 진행 |
+
+> Phase 3.5와 Phase 3.6 질문은 **순서대로** 제시. 두 질문을 동시에 보여주지 않는다.
 
 `generate-wiki` 실행 시 → `generate-wiki` 스킬의 Phase 0~3을 그대로 수행한다. Phase 0의 "사전 확인"은 harness-init이 방금 완료했으므로 존재 확인은 스킵 가능.
 

@@ -82,11 +82,15 @@ Agent(
 `_workspace/07_wiki_build.md`를 읽어 요약 보고:
 
 ```
-wiki 생성 완료
+wiki 생성 완료 (docsify 기반)
 
 출력 위치: wiki/
+열기 방법: 브라우저로 wiki/index.html 직접 열기 (또는 로컬 서버)
 
 생성된 파일:
+- wiki/index.html          ★ docsify 진입점 (사이드바·검색·테마 포함)
+- wiki/_sidebar.md         ★ 좌측 트리 네비게이션
+- wiki/_navbar.md          ★ 상단 네비게이션 바
 - wiki/Home.md
 - wiki/architecture.md
 - wiki/workflows.md
@@ -109,12 +113,13 @@ call-graph.html:
 [파싱 경고·스킵 항목 있으면 표시]
 
 다음 단계:
-  call-graph.html 보기: 브라우저로 wiki/call-graph.html 직접 열기
-  GitHub Pages:        wiki/ 폴더를 gh-pages 브랜치에 push (HTML 그대로 렌더링)
-  GitHub Wiki (MD):    Home.md·architecture.md·workflows.md 등 .md 파일만 wiki repo에 push
-                       (call-graph.html은 별도 gh-pages로 호스팅 권장)
-  로컬 서버:            cd wiki && python -m http.server 8080 → localhost:8080/call-graph.html
-  wiki 업데이트:        "wiki 업데이트해줘" (기존 wiki_prev/ 백업 후 재생성)
+  wiki 전체 보기:  브라우저로 wiki/index.html 열기
+                   (좌측 트리 사이드바 + 상단 검색 + 페이지 내비게이션 포함)
+  call-graph 보기: wiki/index.html에서 사이드바 "호출 그래프 ↗" 클릭 (새 탭)
+                   또는 wiki/call-graph.html 직접 열기
+  GitHub Pages:   wiki/ 폴더를 gh-pages 브랜치에 push (docsify가 자동 렌더링)
+  로컬 서버:       cd wiki && python -m http.server 8080 → http://localhost:8080
+  wiki 업데이트:   "wiki 업데이트해줘" (기존 wiki_prev/ 백업 후 재생성)
 ```
 
 ---
@@ -138,7 +143,7 @@ call-graph.html은 생성됐지만 call_graph.json이 없어 그래프 데이터
 ### 시나리오 1: harness-init 완료 후 wiki 생성
 사용자: "wiki 생성하시겠습니까?" → "예"
 
-1. Phase 0: _workspace/01_analyzer_report.md ✅, templates/callgraph.html 템플릿 ✅, call_graph.json ✅
+1. Phase 0: _workspace/01_analyzer_report.md ✅, call_graph.json ✅
 2. Phase 1: 전체 페이지 자동 확인 (DB·외부연동 탐지 기반)
 3. Phase 2: wiki-builder 실행
 4. Phase 3: wiki/ 9개 파일 생성 보고 (call-graph.html 포함)
@@ -172,4 +177,4 @@ call-graph.html 상단 subtitle에 이 한계를 항상 명시한다.
 
 ### HTML 템플릿은 wiki-builder.md에 내장
 call-graph.html 생성에 필요한 전체 HTML 템플릿은 `wiki-builder.md` 안에 완전히 내장되어 있다.  
-외부 템플릿 파일을 참조하지 않으므로 파일 누락·삭제 위험이 없다.
+외부 템플릿 파일 불필요. 디자인: 다크 테마, 우측 고정 사이드바(통계·범례·노드 상세), 타입 기반 필터 토글, 헤더 실시간 검색.

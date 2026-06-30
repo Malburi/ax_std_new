@@ -34,6 +34,19 @@ model: opus
 
 ## Phase A: 구조·스택 탐지 (기존 7-step 강화)
 
+### Step 0.5: 파트너 프로젝트 감지 (Type B 지원)
+
+`_workspace/pair_config.md` 존재 확인:
+- **있으면** 파일 로드 → 다음 변수 설정:
+  - `pair_linked = true`
+  - `partner_type` (frontend/backend)
+  - `partner_root` (파트너 절대경로)
+  - `partner_api_contract` (파트너 api_contract.json 경로)
+  - `api_base_url`
+- **없으면** `pair_linked = false` (페어 미연동, 이후 Step에서 조건 분기 없음)
+
+pair_linked = true이면 분석 리포트 헤더에 "파트너 연동: [partner_type] @ [partner_root]" 기록.
+
 ### Step 1: 루트 구조 파악
 
 루트 파일 목록으로 스택 1차 분류:
@@ -287,6 +300,50 @@ model: opus
 
 산출물: 분석 리포트의 "인증/인가 경로" 섹션
 
+### Step 15.5: REST API 계약 추출 (백엔드 탐지 시, Standard/Full)
+
+**실행 조건** (둘 중 하나):
+- Step 2에서 REST 컨트롤러 탐지 (`@RestController`, `router.get`, `@app.route` 등)
+- 또는 pair_config.md에서 `project_type = backend`
+
+**목적:** pair-init·cross-repo-scaffold·impact-analyzer(Step 8.5)가 프론트엔드 영향 확인 시 활용.  
+api-bridge 에이전트 없이 analyzer가 직접 추출한다 (harness-init 파이프라인 내 별도 에이전트 호출 최소화).
+
+**추출 내용 (Step 2에서 이미 수집한 컨트롤러 목록 기반):**
+- 각 엔드포인트: HTTP 메서드, 정규화 경로, 핸들러 파일, 요청/응답 타입 (추론 가능한 범위)
+- 인증 필요 여부 (SecurityConfig 또는 미들웨어에서 공개 경로 패턴 확인)
+- 총 엔드포인트 수, 공개/인증 구분
+
+**산출물:** `_workspace/index/api_contract.json`
+
+```json
+{
+  "generated_at": "[ISO-8601]",
+  "project_type": "backend",
+  "stack": "[스택]",
+  "base_path": "/api",
+  "endpoints": [
+    {
+      "method": "POST",
+      "path": "/api/orders/{id}/cancel",
+      "controller_file": "src/.../OrderCancelController.java",
+      "handler": "cancel",
+      "request_body_type": "CancelRequest",
+      "response_type": "CancelResponse",
+      "auth_required": true,
+      "roles": []
+    }
+  ],
+  "models": {},
+  "total_endpoints": 0,
+  "public_endpoints": 0,
+  "auth_endpoints": 0
+}
+```
+
+Lite 모드에서는 스킵. Standard/Full에서만 생성.  
+엔드포인트가 많아 완전 추출이 어려우면 핵심 도메인 모듈 우선, 나머지는 경로·메서드만 표기.
+
 ### Step 15: 데드 코드·미사용 식별
 
 **목적:** "마이그레이션 시 옮기지 않아도 되는 코드" 식별.
@@ -317,6 +374,7 @@ model: opus
 | `_workspace/index/external_io.json` | 외부 통신 (Step 11) | 1MB |
 | `_workspace/index/env_branches.json` | 환경 분기 (Step 13) | 500KB |
 | `_workspace/index/dead_code.json` | 데드 코드 후보 (Step 15) | 1MB |
+| `_workspace/index/api_contract.json` | REST API 계약 (Step 15.5, 백엔드 탐지 시) | 2MB |
 | `_workspace/index/sql_usage.json` | SQL ID ↔ 호출 위치 (Java/Python 등) | 5MB |
 | `_workspace/index/schema.json` | DB 스키마 스냅샷 (Step 16) | 5MB |
 
@@ -441,6 +499,7 @@ Write 도구로 다음 형식의 리포트를 작성한다. 반환 메시지는 
 | `harness-init` Lite | lite/sonnet | A | — |
 | `harness-init` Standard | init/sonnet | A, B(조건부) | D (DB 접속 가능 시) |
 | `harness-init` Full | init/opus | A, B, C | D (DB 접속 가능 시) |
+| `pair-init` / `api-bridge extract` | init/sonnet | A + B Step 15.5 | — |
 | `analyze-impact` | incremental/sonnet | A 캐시 활용 + B Step 8/9/10 | — |
 | `safe-modify` | incremental/sonnet | A 캐시 활용 + B Step 8/10/11 | — |
 | `scaffold-feature` | incremental/sonnet | A 캐시 활용 + B Step 8 | — |

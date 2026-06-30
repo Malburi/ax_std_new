@@ -17,7 +17,8 @@
 **팀 구성:**
 - 분석/생성 파이프라인: `analyzer` → `writer` → (`pattern-extractor`) → `validator` → `qa`
 - 품질 루프: `spec-clarifier` (Phase -1, 사전 명세화) + `harness-evaluator` (Phase 4, 사후 eval)
-- 작업용 에이전트: `impact-analyzer`, `change-safety`, `migration-planner`, `test-generator`, `sql-reviewer`, `legacy-decoder`, `doc-syncer`, `logic-tracer`, `feature-finder`, `wiki-builder`
+- 작업용 에이전트: `impact-analyzer`, `change-safety`, `migration-planner`, `test-generator`, `sql-reviewer`, `legacy-decoder`, `doc-syncer`, `logic-tracer`, `feature-finder`, `wiki-builder`, `api-bridge`
+- 크로스 리포 에이전트: `api-bridge` (백엔드↔프론트엔드 API 계약 추출·검증·스텁 생성)
 
 ## 파일 구조
 
@@ -38,6 +39,8 @@
 | `skills/trace-logic/SKILL.md` | 기능·API·화면 처리 흐름 추적 워크플로우 |
 | `skills/find-feature/SKILL.md` | 기능명·키워드로 관련 코드 위치 탐색 워크플로우 |
 | `skills/generate-wiki/SKILL.md` | harness 산출물 → wiki 페이지 세트 생성 (call_graph.json → vis-network 인터랙티브 HTML) |
+| `skills/pair-init/SKILL.md` | 별도 저장소 백엔드·프론트엔드 연동 (pair_config.md 생성 + API 계약 추출 + 드리프트 검증) |
+| `skills/cross-repo-scaffold/SKILL.md` | 전체 스택 기능 동시 스캐폴딩 (백엔드 레이어 + 프론트엔드 서비스·컴포넌트·라우트) |
 | `agents/spec-clarifier.md` | Phase -1: 소크라테스 인터뷰 + 모호성 점수화 + 명세 리포트 생성 |
 | `agents/harness-evaluator.md` | Phase 4: 4차원 품질 평가 (커버리지·정확도·실행가능성·컨텍스트) + fix_targets 반환 |
 | `agents/analyzer.md` | Phase 2-1: 심층 분석 (스택 + 의존성 그래프 + 데이터 흐름 + 트랜잭션 + 외부 통신 + 인덱스 생성) |
@@ -55,6 +58,7 @@
 | `agents/logic-tracer.md` | 기능·API·화면 처리 흐름을 진입점 → Controller → Service → DB까지 추적 |
 | `agents/feature-finder.md` | 기능명·키워드로 관련 파일·클래스·메서드·SQL 위치 탐색 |
 | `agents/wiki-builder.md` | harness 산출물 읽어 wiki 페이지 생성 + call_graph.json → vis-network 인터랙티브 HTML 변환 |
+| `agents/api-bridge.md` | REST API 계약 추출(extract)·드리프트 검증(validate)·프론트 스텁 생성(generate-stub)·파트너 영향 확인(check-impact) |
 
 > 본 저장소 내의 `agents/`·`skills/` 경로는 *플러그인 소스*이며, 설치된 대상 프로젝트에서 출력되는 결과물은 여전히 대상 프로젝트의 `.claude/skills/...`·`.claude/agents/...`에 기록된다. 에이전트/스킬 본문 내부의 `.claude/...` 경로는 *대상 프로젝트* 경로를 의미한다.
 
@@ -75,6 +79,10 @@
 | 기능·API 처리 흐름 추적 | `trace-logic` |
 | 기능·키워드로 코드 위치 탐색 | `find-feature` |
 | harness 산출물 → wiki 생성 | `generate-wiki` |
+| 백엔드·프론트엔드 별도 저장소 연동 | `pair-init` |
+| 전체 스택 기능 동시 생성 | `cross-repo-scaffold` |
+| API 드리프트 감지 | `pair-init` 재실행 |
+| 프론트엔드 서비스 스텁만 생성 | `api-bridge` 직접 호출 |
 
 ## 에이전트 수정
 
@@ -103,3 +111,6 @@
 | 2026-06-04 | harness-clean 스킬 추가 — CLAUDE.md·.claude/skills/·agents/·patterns/·_workspace/ 안전 제거 + 플러그인 언인스톨 안내 | skills/harness-clean / CLAUDE.md | 마음에 안 들면 롤백할 수 있어야 표준으로 쓸 수 있음 |
 | 2026-06-04 | Ouroboros 명세 게이트 + Karpathy eval 루프 접목 — spec-clarifier(sonnet, Phase -1: 소크라테스 인터뷰·모호성점수·GO신호) + harness-evaluator(sonnet, Phase 4: 4차원 품질평가·PASS/PARTIAL/RETRY·fix_targets 기반 타겟 재생성·1회 루프) + spec-gate 스킬 + harness-init Phase -1/-4 추가 + analyzer에 spec_context 전달 | agents/spec-clarifier, agents/harness-evaluator, skills/spec-gate, skills/harness-init, CLAUDE.md | 명세 모호성 제거(Ouroboros)·자기 개선 루프(Karpathy)로 harness 생성 품질 향상 |
 | 2026-06-24 | wiki 생성 기능 추가 — `wiki-builder`(sonnet, harness 산출물→wiki 페이지·call_graph.json→vis-network 인터랙티브 HTML 변환·callgraph.html 템플릿 계승) + `generate-wiki` 오케스트레이터 스킬(기존 wiki 백업·페이지 범위 선택·call-graph.html 전용 페이지) + harness-init Phase 3.5(완료 후 wiki 생성 제안) | agents/wiki-builder, skills/generate-wiki, skills/harness-init, CLAUDE.md | harness 완료 후 탐색 가능한 wiki 문서 자동 생성 요구 대응 |
+| 2026-06-30 | call-graph.html 디자인 전면 개편 — 우측 고정 사이드바(통계·범례·노드 상세), 타입 기반 필터 토글(opacity active/inactive), 헤더 실시간 검색, 7가지 시각 타입(view·endpoint·function·dao·external·db_table·util)·노드 모양(ellipse·box·hexagon·diamond·database·dot), COLORS+nodeTypeMap+META+mkNode() 구조로 교체. 기존 group 기반 필터·info-panel slide 방식 제거 | agents/wiki-builder, skills/generate-wiki | mfs-test 실사례 기반 디자인 표준화 |
+| 2026-06-29 | Type B(별도 저장소) 크로스 리포 지원 추가 — `api-bridge`(sonnet, API 계약 extract/validate/generate-stub/check-impact 4-mode) + `pair-init` 스킬(두 레포 연동·pair_config.md 생성·API 드리프트 검증) + `cross-repo-scaffold` 스킬(전체 스택 기능 동시 스캐폴딩) + analyzer Step 0.5(pair_config 감지) + Step 15.5(API 계약 추출) + writer 파트너 섹션 + cross-repo-scaffold.md 조건부 생성 + impact-analyzer Step 8.5(파트너 영향) + harness-init Phase 3.5(pair-init 제안, 기존 wiki 제안은 Phase 3.6으로 이동) + scaffold-feature pair_config 인식 | agents/api-bridge, skills/pair-init, skills/cross-repo-scaffold, agents/analyzer, agents/writer, agents/impact-analyzer, skills/harness-init, skills/scaffold-feature, CLAUDE.md | 백엔드·프론트엔드 별도 저장소 구조에서 API 계약 기반 연계 개발·바이브 코딩 지원 |
+| 2026-06-30 | harness-init Phase -2 추가 — harness-init 시작 시 프로젝트 구조(모노레포/멀티레포/단일 스택) 사용자 확인 질문. 멀티레포 선택 시 파트너 경로·역할·API URL 선수집 → Phase 3.5에서 pair-init 자동 실행(확인 생략). Phase 3.5를 분기 처리(모노레포/단일 스택은 스킵, 멀티레포+파트너 정보 있으면 자동 실행, Phase -2 스킵 시 기존 질문 방식 유지) | skills/harness-init, CLAUDE.md | harness-init 시작 시 구조 파악으로 pair-init 연동을 자연스러운 흐름으로 통합 |

@@ -47,6 +47,7 @@ analyzer 산출물을 받아 프로젝트 전용 harness 파일들을 **실제�
 8. `[프로젝트 루트]/.claude/skills/scaffold-feature.md` — 신규 기능 (패턴 기반)
 9. `[프로젝트 루트]/.claude/skills/plan-migration.md` — 마이그레이션 (스택 전환 감지 시만)
 10. `[프로젝트 루트]/.claude/skills/review-sql.md` — SQL 리뷰 (DB 사용 시만)
+11. `[프로젝트 루트]/.claude/skills/cross-repo-scaffold.md` — 전체 스택 스캐폴딩 (pair_config.md 있는 경우만)
 
 ### C. 작업용 에이전트 (NEW — 프로젝트 전용 사본/포인터)
 
@@ -96,9 +97,25 @@ writer는 패턴 파일 *스켈레톤*만 만들고, 실제 컨벤션 추출은 
 | **컨벤션 따라 신규 기능 생성** | scaffold-feature |
 | **마이그레이션 계획** | plan-migration |
 | **SQL 영향도/리뷰** | review-sql |
+| **전체 스택 기능 생성 (pair 연동 시)** | cross-repo-scaffold |
 
 ## 작업 시 주의사항
 [분석 리포트의 "보완 권장 (자동 탐지 불가)" 중 중요 항목]
+
+## 파트너 프로젝트 ([frontend/backend]) — pair_config.md 있는 경우만 추가
+
+- 파트너 경로: [절대경로]
+- 스택: [스택]
+- API 계약: `_workspace/index/api_contract.json`
+- 연동일: [YYYY-MM-DD]
+
+### 크로스 리포 워크플로우
+| 상황 | 명령 |
+|------|------|
+| 전체 스택 기능 동시 생성 | "전체 스택 기능 만들어줘" → cross-repo-scaffold |
+| API 변경 전 파트너 영향 확인 | "영향도 분석해줘" → analyze-impact |
+| API 드리프트 재확인 | "API 드리프트 확인해줘" → pair-init 재실행 |
+| 프론트 서비스 스텁만 생성 | "프론트 스텁 만들어줘" → api-bridge |
 
 ## 변경 이력
 | 날짜 | 변경 내용 | 대상 | 사유 |
@@ -339,6 +356,7 @@ hooks를 생성할 이유가 명확하지 않으면 **생성하지 않는다.** 
 - .claude/skills/scaffold-feature.md
 - .claude/skills/plan-migration.md          (생성 조건 충족 시)
 - .claude/skills/review-sql.md              (DB 사용 확인 시)
+- .claude/skills/cross-repo-scaffold.md     (pair_config.md 있는 경우)
 
 [Pattern Skeletons — pattern-extractor가 채울 예정]
 - .claude/patterns/[목록]
@@ -349,6 +367,7 @@ hooks를 생성할 이유가 명확하지 않으면 **생성하지 않는다.** 
 선택적 스킬 생성 결정:
 - plan-migration.md: [생성/미생성 + 사유]
 - review-sql.md: [생성/미생성 + 사유]
+- cross-repo-scaffold.md: [생성/미생성 — pair_config.md 존재 여부]
 
 적용 결정 사유:
 - [선택한 패턴과 이유]

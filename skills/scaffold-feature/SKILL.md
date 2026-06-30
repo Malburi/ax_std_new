@@ -13,6 +13,13 @@ description: 추출된 프로젝트 컨벤션에 따라 신규 기능을 스캐�
 
 ## Phase 0: 사전 조건 확인
 
+### pair_config 확인 (Type B 지원)
+
+`_workspace/pair_config.md` 존재 확인:
+- **있고** `partner_root` 경로가 유효하면 → `pair_linked = true`
+  - Phase 1에서 "프론트엔드도 함께 생성할까요?" 질문 추가
+- **없으면** → `pair_linked = false` (단일 레포 스캐폴딩 진행)
+
 ### 패턴 로드
 
 `.claude/patterns/*.md` 확인:
@@ -39,10 +46,13 @@ description: 추출된 프로젝트 컨벤션에 따라 신규 기능을 스캐�
 | 기존 유사 모듈 | "OrderRefund 비슷하게" (있으면 참조) |
 | API 엔드포인트 | "POST /api/orders/{id}/cancel" |
 | DB 테이블 영향 | "TBL_ORDER.STATUS 업데이트" |
+| (pair_linked=true) 프론트엔드도 함께? | Y → cross-repo-scaffold로 위임 / N → 백엔드만 진행 |
 
 추가 정보:
 - 기존 유사 모듈을 명시하면 → 그 모듈 코드를 더 적극 참조
 - DB 영향이 있으면 → review-sql 사전 호출 권고
+- pair_linked=true에서 "Y (프론트도 함께)" → 즉시 `cross-repo-scaffold`로 위임하고 scaffold-feature 종료
+  (cross-repo-scaffold가 백엔드+프론트엔드 양쪽 모두 처리)
 
 ---
 

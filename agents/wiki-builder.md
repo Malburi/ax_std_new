@@ -160,7 +160,7 @@ wiki/
 
 ### call-graph.html ★ (핵심 페이지 — vis-network 인터랙티브)
 
-`callgraph.html`의 디자인·구조·라이브러리를 그대로 계승해서 생성한다.
+아래 Step 1~5 절차에 따라 생성한다. 디자인: 다크 테마(`#1a1a2e`), 우측 고정 사이드바(통계·범례·노드 상세), 타입 기반 필터 토글, 헤더 실시간 검색.
 
 #### Step 1: call_graph.json 파싱
 
@@ -186,393 +186,389 @@ edge type: "call_type" 또는 기본 "call"
 
 파싱 실패 시 → call-graph.html을 "데이터 없음" 상태로 생성 (빈 그래프 + 오류 메시지 표시).
 
-#### Step 2: 노드 타입 정규화
+#### Step 2: 노드 타입 정규화 (7가지 시각 타입 + 스택 특화 별칭)
 
-call_graph.json의 type 값을 callgraph.html 스타일로 매핑:
+call_graph.json의 type 값을 아래 시각 타입으로 매핑:
 
-| call_graph.json type | HTML type | 비고 |
-|---------------------|-----------|------|
-| controller, endpoint, route, api | `endpoint` | 파란 노드 |
-| service, handler, manager, usecase | `function` | 초록/회색 노드 |
-| dao, repository, mapper, store | `function` + group=dao | 주황 계열 |
-| db, session, datasource, connection | `dependency` | 다이아몬드 노드 |
-| util, helper, common | `function` + group=util | 회색 노드 |
-| external, client, feign, soap | `function` + group=external | 별도 색상 |
-| (없음/기타) | `function` | 기본 |
+**일반 타입 (7가지):**
 
-#### Step 3: 허브·데드 코드 자동 감지
+| call_graph.json type 값 | 시각 타입 | 색상 | 모양 |
+|------------------------|---------|------|------|
+| view, component, page, screen, jsp, thymeleaf, vue, react | `view` | 빨강 #E74C3C | ellipse |
+| controller, endpoint, route, api, rest | `endpoint` | 파랑 #4A90D9 | box |
+| service, handler, manager, usecase, business | `function` | 보라 #9B59B6 | hexagon |
+| dao, repository, mapper, store, jpa | `dao` | 하늘 #2E86C1 | hexagon |
+| external, client, feign, soap, sap, mq, kafka, redis | `external` | 주황 #F5A623 | diamond |
+| db, table, mssql, oracle, mysql, postgres, sqlite | `db_table` | 초록 #7ED321 | database |
+| util, helper, common, config, constant | `util` | 청록 #48C9B0 | dot |
+| (없음/기타) | `function` | 보라 #9B59B6 | hexagon |
 
-**허브 노드 (HUB_IDS)**: in-degree 상위 노드 자동 탐지
+**스택 특화 별칭 타입 (call_graph.json에 이미 이 이름으로 존재하면 그대로 보존):**
+
+| call_graph.json type 값 | 시각 타입 | 색상 | 모양 | 필터 레이블 |
+|------------------------|---------|------|------|-----------|
+| `vue_view` | `vue_view` | 빨강 #E74C3C | ellipse | 🖥 Vue 뷰 |
+| `sap_interface` | `sap_interface` | 주황 #F5A623 | diamond | 🔶 SAP SOAP |
+| `mssql_table` | `mssql_table` | 초록 #7ED321 | database | 🗄 MSSQL 테이블 |
+
+> 스택 특화 별칭 타입은 일반 타입과 동일한 색상·모양을 사용하되, 필터 레이블이 더 구체적이다.  
+> 예: Vue + SAP PI SOAP + MSSQL 프로젝트 → `view`→`vue_view`, `external`→`sap_interface`, `db_table`→`mssql_table` 매핑 권장.
+
+#### Step 3: 허브 노드 자동 감지
+
+**허브 노드**: in-degree 상위 노드를 자동 탐지해 크기·강조 표시:
 ```
 in_degree = rawEdges에서 각 노드를 to로 갖는 엣지 수
-임계값 = max(5, total_nodes × 0.15)   // 전체 노드의 15% 이상 in-degree
-HUB_IDS = in_degree >= 임계값인 노드 id Set
+임계값 = max(5, total_nodes × 0.15)
+허브 노드 → mkNode() 시 size: 26~30, borderWidth: 3
 ```
 
-dead_code.json이 있으면 해당 id도 HUB_IDS 후보에서 제외 + DEAD_IDS에 추가.
+dead_code.json이 있으면 해당 노드 opacity 저하 처리.
 
-**데드 코드 후보 (DEAD_IDS)**: 다음 중 하나라도 해당하면 후보
-```
-1. in-degree = 0 AND type != "endpoint" AND type != "dependency"
-2. dead_code.json에 명시된 id
-3. node에 dead: true 플래그
-```
+#### Step 4: 필터 버튼 생성 (타입 기반 토글)
 
-#### Step 4: 그룹 자동 추론 (필터 버튼용)
+탐지된 시각 타입에 따라 필터 버튼 자동 생성:
 
-그룹 결정 우선순위:
-```
-1. call_graph.json에 group 필드가 있으면 그대로 사용
-2. 없으면 id에서 패키지/모듈명 추출:
-   - "api.auth.xxx"    → group: "auth"
-   - "api.order.xxx"   → group: "order"
-   - "core.xxx"        → group: "core"
-   - "com.example.order.controller.Xxx" → group: "order"
-   - 첫 번째 또는 두 번째 세그먼트 기준
-3. 타입 기반 fallback:
-   - type=endpoint → group: 두 번째 세그먼트
-   - type=dependency → group: "infra"
-   - type=external → group: "external"
-```
+| 시각 타입 | 버튼 레이블 | 버튼 색상(border/color) |
+|---------|-----------|----------------------|
+| `view`          | 🖥 뷰                | #E74C3C |
+| `vue_view`      | 🖥 Vue 뷰            | #E74C3C |
+| `endpoint`      | ⚡ API 엔드포인트    | #4A90D9 |
+| `function`      | 🔧 서비스/함수       | #9B59B6 |
+| `dao`           | 🗃 DAO/저장소        | #2E86C1 |
+| `external`      | 🔶 외부 시스템       | #F5A623 |
+| `sap_interface` | 🔶 SAP SOAP          | #F5A623 |
+| `db_table`      | 🗄 DB 테이블         | #7ED321 |
+| `mssql_table`   | 🗄 MSSQL 테이블      | #7ED321 |
+| `util`          | ⚙ 유틸              | #48C9B0 |
 
-필터 버튼은 그룹 종류에 따라 자동 생성 (최대 6개: "전체" + 상위 5개 그룹).
+- 실제 노드가 존재하는 타입만 버튼 생성 ("전체" 버튼은 항상 포함)
+- active/inactive를 opacity(1.0 / 0.35)로 구분
 
 #### Step 5: HTML 생성
 
-아래 템플릿에 Step 1~4의 데이터를 주입해 `wiki/call-graph.html`을 생성한다.  
-callgraph.html의 스타일(다크 테마, 색상, 레이아웃, 인터랙션)을 그대로 유지.
+아래 템플릿에 Step 1~4의 데이터를 주입해 `wiki/call-graph.html`을 생성한다.
 
 ```html
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <title>[프로젝트명] 함수 호출 그래프</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>[프로젝트명] Call Graph</title>
   <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/dist/vis-network.min.js"></script>
-  <link href="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/dist/dist/vis-network.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/dist/dist/vis-network.min.css" rel="stylesheet" />
   <style>
-    /* callgraph.html의 CSS를 그대로 유지 */
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family:'Segoe UI',system-ui,sans-serif; background:#0f172a; color:#e2e8f0; height:100vh; display:flex; flex-direction:column; overflow:hidden; }
-    header { background:rgba(15,23,42,0.95); border-bottom:1px solid rgba(255,255,255,0.1); padding:12px 20px; display:flex; align-items:center; gap:16px; flex-shrink:0; z-index:10; }
-    header h1 { font-size:18px; font-weight:700; color:#fff; }
-    header .subtitle { font-size:13px; color:#64748b; }
-    header a { margin-left:auto; color:#3b82f6; text-decoration:none; font-size:13px; }
-    .legend { display:flex; gap:16px; padding:10px 20px; background:rgba(15,23,42,0.8); border-bottom:1px solid rgba(255,255,255,0.06); flex-wrap:wrap; flex-shrink:0; }
-    .legend-item { display:flex; align-items:center; gap:6px; font-size:12px; color:#94a3b8; }
-    .legend-dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
-    .controls { display:flex; gap:8px; padding:8px 20px; background:rgba(15,23,42,0.6); border-bottom:1px solid rgba(255,255,255,0.06); flex-shrink:0; flex-wrap:wrap; align-items:center; }
-    .controls label { font-size:12px; color:#64748b; }
-    .filter-btn { padding:4px 12px; border-radius:6px; border:1px solid rgba(255,255,255,0.15); background:rgba(255,255,255,0.05); color:#94a3b8; font-size:12px; cursor:pointer; transition:all 0.15s; }
-    .filter-btn:hover, .filter-btn.active { background:#3b82f6; border-color:#3b82f6; color:#fff; }
-    .main-area { display:flex; flex:1; overflow:hidden; }
-    #network-container { flex:1; position:relative; }
-    #network { width:100%; height:100%; }
-    #info-panel { width:300px; background:rgba(30,41,59,0.95); border-left:1px solid rgba(255,255,255,0.08); padding:20px; overflow-y:auto; flex-shrink:0; display:none; }
-    #info-panel.visible { display:block; }
-    #info-panel h3 { font-size:14px; font-weight:600; color:#fff; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.1); }
-    .info-row { margin-bottom:10px; }
-    .info-label { font-size:11px; color:#64748b; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:3px; }
-    .info-value { font-size:13px; color:#e2e8f0; word-break:break-all; }
-    .info-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:600; }
-    .badge-endpoint { background:rgba(59,130,246,0.2); color:#93c5fd; }
-    .badge-function { background:rgba(16,185,129,0.2); color:#6ee7b7; }
-    .badge-dependency { background:rgba(245,158,11,0.2); color:#fcd34d; }
-    .badge-hub { background:rgba(239,68,68,0.2); color:#fca5a5; }
-    .connections-list { list-style:none; margin-top:8px; }
-    .connections-list li { font-size:12px; color:#94a3b8; padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.04); }
-    .connections-list li:last-child { border-bottom:none; }
-    .arrow-in { color:#6ee7b7; }
-    .arrow-out { color:#93c5fd; }
-    #close-panel { float:right; background:none; border:none; color:#64748b; cursor:pointer; font-size:16px; padding:0; line-height:1; }
-    #close-panel:hover { color:#fff; }
-    .stats-bar { padding:6px 20px; background:rgba(15,23,42,0.8); border-bottom:1px solid rgba(255,255,255,0.06); font-size:12px; color:#64748b; flex-shrink:0; display:flex; gap:16px; }
-    .stats-bar span { color:#3b82f6; font-weight:600; }
+    body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    .header { background: rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.1); padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+    .header h1 { font-size: 18px; font-weight: 700; color: #fff; }
+    .header .subtitle { font-size: 11px; color: #888; margin-top: 2px; }
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    #searchInput { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 6px 12px; color: #fff; font-size: 13px; width: 200px; outline: none; }
+    #searchInput::placeholder { color: #666; }
+    #searchInput:focus { border-color: #4A90D9; }
+    .filter-bar { background: rgba(0,0,0,0.3); border-bottom: 1px solid rgba(255,255,255,0.07); padding: 8px 20px; display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: wrap; }
+    .filter-bar span { font-size: 11px; color: #888; margin-right: 4px; }
+    .filter-btn { padding: 4px 12px; border-radius: 20px; border: 1px solid; font-size: 11px; cursor: pointer; transition: all .2s; font-weight: 600; background: transparent; }
+    .filter-btn.active { opacity: 1; }
+    .filter-btn:not(.active) { opacity: 0.35; }
+    .filter-btn[data-type="all"]      { border-color: #aaa;     color: #aaa; }
+    .filter-btn[data-type="view"],
+    .filter-btn[data-type="vue_view"]      { border-color: #E74C3C;  color: #E74C3C; }
+    .filter-btn[data-type="endpoint"]      { border-color: #4A90D9;  color: #4A90D9; }
+    .filter-btn[data-type="function"]      { border-color: #9B59B6;  color: #9B59B6; }
+    .filter-btn[data-type="dao"]           { border-color: #2E86C1;  color: #2E86C1; }
+    .filter-btn[data-type="external"],
+    .filter-btn[data-type="sap_interface"] { border-color: #F5A623;  color: #F5A623; }
+    .filter-btn[data-type="db_table"],
+    .filter-btn[data-type="mssql_table"]   { border-color: #7ED321;  color: #7ED321; }
+    .filter-btn[data-type="util"]          { border-color: #48C9B0;  color: #48C9B0; }
+    .main { display: flex; flex: 1; overflow: hidden; }
+    #graph { flex: 1; background: #0f0f1e; }
+    #detail { width: 280px; background: rgba(255,255,255,0.04); border-left: 1px solid rgba(255,255,255,0.08); padding: 16px; overflow-y: auto; flex-shrink: 0; }
+    #detail h3 { font-size: 13px; color: #aaa; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .5px; }
+    #detail .empty { color: #555; font-size: 13px; line-height: 1.6; }
+    .detail-card { background: rgba(255,255,255,0.06); border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+    .detail-card .label { font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 4px; }
+    .detail-card .value { font-size: 13px; color: #e0e0e0; word-break: break-all; }
+    .detail-card .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; margin-top: 6px; }
+    .conn-list { list-style: none; }
+    .conn-list li { font-size: 12px; color: #ccc; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .conn-list li:last-child { border-bottom: none; }
+    .conn-arrow { color: #4A90D9; margin-right: 4px; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+    .stat-box { background: rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; text-align: center; }
+    .stat-box .num { font-size: 22px; font-weight: 700; color: #4A90D9; }
+    .stat-box .lbl { font-size: 10px; color: #888; margin-top: 2px; }
+    .legend { margin-top: 16px; }
+    .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; color: #ccc; }
+    .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
   </style>
 </head>
 <body>
 
-<header>
-  <h1>[프로젝트명] 함수 호출 그래프</h1>
-  <div class="subtitle">[스택 한 줄 설명 — analyzer_report 기반]</div>
-  <a href="Home.md">← Wiki 홈</a>
-</header>
-
-<div class="legend">
-  <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div><span>API 엔드포인트</span></div>
-  <div class="legend-item"><div class="legend-dot" style="background:#10b981"></div><span>서비스 함수</span></div>
-  <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div><span>의존성 (DB·설정)</span></div>
-  <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div><span>허브 함수 (in-degree ≥[임계값])</span></div>
-  <div class="legend-item"><div class="legend-dot" style="background:#8b5cf6;opacity:0.5;border:2px dashed #8b5cf6"></div><span>데드 코드 후보</span></div>
-</div>
-
-<div class="controls">
-  <label>필터:</label>
-  <button class="filter-btn active" data-filter="all">전체</button>
-  <!-- [그룹별 필터 버튼 자동 생성 — 상위 5개 그룹] -->
-  <!-- 예: <button class="filter-btn" data-filter="auth">인증</button> -->
-</div>
-
-<div class="stats-bar">
-  노드: <span>[N]</span> &nbsp;|&nbsp; 엣지: <span>[M]</span> &nbsp;|&nbsp;
-  허브 함수: <span>[HUB_COUNT]개</span> &nbsp;|&nbsp;
-  데드 코드 후보: <span>[DEAD_COUNT]개</span>
-</div>
-
-<div class="main-area">
-  <div id="network-container"><div id="network"></div></div>
-  <div id="info-panel">
-    <h3><button id="close-panel">✕</button>노드 정보</h3>
-    <div id="node-details"></div>
-  </div>
-</div>
-
-<script>
-// ── 데이터 (call_graph.json → 변환) ─────────────────────────────────
-const HUB_IDS = new Set([
-  /* [hub node id 목록] */
-]);
-
-const DEAD_IDS = new Set([
-  /* [dead code node id 목록] */
-]);
-
-const rawNodes = [
-  /* [call_graph.json nodes를 변환한 배열]
-     각 항목 형식:
-     {id:"...", type:"endpoint"|"function"|"dependency", file:"...", method:"...", note:"...", group:"...", dead:true|false}
-  */
-];
-
-const rawEdges = [
-  /* [call_graph.json edges를 변환한 배열]
-     각 항목 형식:
-     {from:"...", to:"...", type:"call"|"depends"}
-  */
-];
-
-// ── 필터 그룹 (그룹 자동 추론 결과) ─────────────────────────────────
-const filterGroups = {
-  all: null,
-  /* [그룹명]: ['그룹에 속한 group값 목록'],
-     예: auth: ['auth', 'core-auth'],
-         order: ['order', 'order-service'],
-  */
-};
-
-// ── 색상 및 노드 스타일 (callgraph.html 동일 로직) ──────────────────
-function getNodeStyle(node) {
-  const isHub = HUB_IDS.has(node.id);
-  const isDead = node.dead || DEAD_IDS.has(node.id);
-
-  if (isDead) {
-    return {
-      color:{background:'#1e293b',border:'#8b5cf6',highlight:{background:'#2d1f5e',border:'#a78bfa'}},
-      borderWidth:2, borderDashes:[4,4], font:{color:'#8b5cf6'}, size:18
-    };
-  }
-  if (isHub) {
-    return {
-      color:{background:'#7f1d1d',border:'#ef4444',highlight:{background:'#991b1b',border:'#f87171'}},
-      borderWidth:3, font:{color:'#fca5a5',bold:true}, size:32,
-      shadow:{enabled:true,color:'rgba(239,68,68,0.4)',size:12}
-    };
-  }
-  if (node.type === 'endpoint') {
-    return {
-      color:{background:'#1e3a5f',border:'#3b82f6',highlight:{background:'#1e40af',border:'#60a5fa'}},
-      borderWidth:2, font:{color:'#93c5fd'}, size:20
-    };
-  }
-  if (node.type === 'dependency') {
-    return {
-      color:{background:'#451a03',border:'#f59e0b',highlight:{background:'#78350f',border:'#fcd34d'}},
-      borderWidth:2, font:{color:'#fcd34d'}, size:18
-    };
-  }
-  if (node.group === 'external' || node.group === 'sap' || node.group === 'mq') {
-    return {
-      color:{background:'#1a2e2a',border:'#10b981',highlight:{background:'#064e3b',border:'#34d399'}},
-      borderWidth:2, font:{color:'#6ee7b7'}, size:18
-    };
-  }
-  return {
-    color:{background:'#1e293b',border:'#334155',highlight:{background:'#334155',border:'#64748b'}},
-    borderWidth:1, font:{color:'#94a3b8'}, size:16
-  };
-}
-
-// ── 스타일 캐시 — update 시 color 명시 복원용 ────────────────────────
-// vis-network에 group 프로퍼티를 넘기면 group 기본 팔레트 색상이
-// 개별 color 설정을 덮어씌우므로, group은 nodeRawMap으로만 관리한다.
-const nodeStyleCache = new Map(rawNodes.map(n => [n.id, getNodeStyle(n)]));
-const nodeRawMap    = new Map(rawNodes.map(n => [n.id, n]));
-
-function shortLabel(id) {
-  const parts = id.split(/[.\/#]/);
-  return parts[parts.length - 1];
-}
-
-// ── 노드/엣지 생성 ───────────────────────────────────────────────────
-const nodes = rawNodes.map(n => {
-  const style = nodeStyleCache.get(n.id);
-  return {
-    id: n.id,
-    label: shortLabel(n.id),
-    title: `<div style="max-width:280px;font-family:monospace;font-size:12px;">
-      <b style="color:#fff">${n.id}</b><br>
-      <span style="color:#64748b">${n.file||''}</span><br>
-      ${n.method?`<span style="color:#3b82f6">${n.method}</span><br>`:''}
-      ${n.note?`<span style="color:#fbbf24">⚠ ${n.note}</span>`:''}
-    </div>`,
-    _raw: n,
-    shape: n.type==='dependency'?'diamond':(HUB_IDS.has(n.id)?'star':'dot'),
-    // group 제거 — vis-network group 기본 색상이 개별 color를 덮어씌우는 버그 방지
-    color:       style.color,
-    borderWidth: style.borderWidth,
-    font:        style.font,
-    size:        style.size,
-    ...(style.borderDashes ? {borderDashes: style.borderDashes} : {}),
-    ...(style.shadow       ? {shadow:       style.shadow}       : {})
-  };
-});
-
-const edges = rawEdges.map((e,i) => ({
-  id: i, from: e.from, to: e.to, _type: e.type,
-  color:{
-    color: e.type==='depends'?'rgba(245,158,11,0.4)':'rgba(148,163,184,0.25)',
-    highlight: e.type==='depends'?'#f59e0b':'#64748b'
-  },
-  dashes: e.type==='depends',
-  arrows:{to:{enabled:true,scaleFactor:0.6}},
-  width:1.5,
-  smooth:{type:'curvedCW',roundness:0.1}
-}));
-
-// ── vis-network 초기화 ───────────────────────────────────────────────
-const container = document.getElementById('network');
-const data = { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) };
-
-const options = {
-  physics:{
-    enabled:true, solver:'forceAtlas2Based',
-    forceAtlas2Based:{gravitationalConstant:-80,centralGravity:0.01,springLength:120,springConstant:0.06,damping:0.4,avoidOverlap:0.8},
-    stabilization:{iterations:200,updateInterval:10}
-  },
-  interaction:{hover:true,tooltipDelay:150,navigationButtons:true,keyboard:true,zoomView:true},
-  layout:{improvedLayout:true},
-  nodes:{borderWidth:2,font:{size:11,face:'Segoe UI,system-ui,sans-serif'}},
-  edges:{smooth:{type:'dynamic'}}
-};
-
-const network = new vis.Network(container, data, options);
-network.on('stabilizationIterationsDone',()=>network.setOptions({physics:{enabled:false}}));
-
-// ── 노드 클릭 — 상세 패널 ────────────────────────────────────────────
-network.on('click', params => {
-  if (params.nodes.length > 0) {
-    const nodeId = params.nodes[0];
-    const node = rawNodes.find(n => n.id === nodeId);
-    if (node) showNodeInfo(node, nodeId);
-  } else if (params.edges.length === 0) {
-    restoreAll();
-    hidePanel();
-  }
-});
-
-function showNodeInfo(node, nodeId) {
-  const panel = document.getElementById('info-panel');
-  const details = document.getElementById('node-details');
-  const isHub = HUB_IDS.has(nodeId);
-  const isDead = node.dead || DEAD_IDS.has(nodeId);
-  const inEdges = rawEdges.filter(e => e.to === nodeId);
-  const outEdges = rawEdges.filter(e => e.from === nodeId);
-  let typeLabel = node.type, badgeClass = 'badge-function';
-  if (node.type==='endpoint') badgeClass='badge-endpoint';
-  if (node.type==='dependency') badgeClass='badge-dependency';
-  if (isHub) { typeLabel='허브 함수'; badgeClass='badge-hub'; }
-  details.innerHTML = `
-    <div class="info-row"><div class="info-label">ID</div><div class="info-value" style="font-family:monospace;font-size:11px">${nodeId}</div></div>
-    <div class="info-row"><div class="info-label">타입</div><div class="info-value">
-      <span class="info-badge ${badgeClass}">${typeLabel}</span>
-      ${isDead?'<span class="info-badge" style="background:rgba(139,92,246,0.2);color:#c4b5fd;margin-left:4px">데드 코드 후보</span>':''}
-    </div></div>
-    <div class="info-row"><div class="info-label">파일</div><div class="info-value" style="font-family:monospace;font-size:11px;color:#60a5fa">${node.file||'-'}</div></div>
-    ${node.method?`<div class="info-row"><div class="info-label">메서드</div><div class="info-value" style="color:#34d399">${node.method}</div></div>`:''}
-    ${node.note?`<div class="info-row"><div class="info-label">비고</div><div class="info-value" style="color:#fbbf24">${node.note}</div></div>`:''}
-    <div class="info-row"><div class="info-label">호출하는 곳 (in-degree: ${inEdges.length})</div>
-      <ul class="connections-list">
-        ${inEdges.length===0?'<li style="color:#ef4444">없음 (진입점 또는 데드 코드)</li>':inEdges.map(e=>`<li><span class="arrow-in">→</span> ${e.from}</li>`).join('')}
-      </ul>
+  <div class="header">
+    <div>
+      <h1>🗺️ [프로젝트명] Call Graph</h1>
+      <div class="subtitle">정적 분석 기반 · 런타임 동적 호출 미포함 · [스택 설명]</div>
     </div>
-    <div class="info-row"><div class="info-label">호출하는 함수 (out-degree: ${outEdges.length})</div>
-      <ul class="connections-list">
-        ${outEdges.length===0?'<li style="color:#64748b">없음 (리프 노드)</li>':outEdges.map(e=>`<li><span class="arrow-out">→</span> ${e.to}</li>`).join('')}
-      </ul>
-    </div>`;
-  panel.classList.add('visible');
-}
+    <div class="header-right">
+      <input id="searchInput" type="text" placeholder="노드 검색..." />
+    </div>
+  </div>
 
-function hidePanel() { document.getElementById('info-panel').classList.remove('visible'); }
-document.getElementById('close-panel').addEventListener('click', hidePanel);
+  <div class="filter-bar">
+    <span>필터:</span>
+    <button class="filter-btn active" data-type="all">전체</button>
+    <!-- [탐지된 타입별 필터 버튼 자동 생성 — 존재하는 타입만]
+         일반 타입 예시:
+         <button class="filter-btn active" data-type="view">🖥 뷰</button>
+         <button class="filter-btn active" data-type="endpoint">⚡ API 엔드포인트</button>
+         <button class="filter-btn active" data-type="function">🔧 서비스/함수</button>
+         <button class="filter-btn active" data-type="dao">🗃 DAO/저장소</button>
+         <button class="filter-btn active" data-type="external">🔶 외부 시스템</button>
+         <button class="filter-btn active" data-type="db_table">🗄 DB 테이블</button>
+         <button class="filter-btn active" data-type="util">⚙ 유틸</button>
 
-// ── 더블클릭 — 연결 강조 ─────────────────────────────────────────────
-network.on('doubleClick', params => {
-  if (params.nodes.length > 0) {
-    const nodeId = params.nodes[0];
-    const connectedEdges = network.getConnectedEdges(nodeId);
-    const connectedNodes = new Set(network.getConnectedNodes(nodeId));
-    // 전체 희미하게 — color는 유지(undefined 전달 금지), opacity만 조정
-    data.nodes.update(rawNodes.map(n => ({id:n.id, opacity:0.15, color:nodeStyleCache.get(n.id).color})));
-    data.edges.update(rawEdges.map((_,i) => ({id:i, color:{color:'rgba(100,116,139,0.08)'}})));
-    // 선택 노드 + 연결 노드 강조
-    data.nodes.update([{id:nodeId, opacity:1, color:nodeStyleCache.get(nodeId).color}]);
-    connectedNodes.forEach(nid => data.nodes.update([{id:nid, opacity:1, color:nodeStyleCache.get(nid).color}]));
-    connectedEdges.forEach(eid => data.edges.update([{id:eid, color:{color:'#3b82f6'}}]));
-  }
-});
+         스택 특화 타입 예시 (call_graph.json에 이 이름이 있을 때):
+         <button class="filter-btn active" data-type="vue_view">🖥 Vue 뷰</button>
+         <button class="filter-btn active" data-type="sap_interface">🔶 SAP SOAP</button>
+         <button class="filter-btn active" data-type="mssql_table">🗄 MSSQL 테이블</button>
+    -->
+  </div>
 
-function edgeColor(e) {
-  return {
-    color:     e.type==='depends'?'rgba(245,158,11,0.4)':'rgba(148,163,184,0.25)',
-    highlight: e.type==='depends'?'#f59e0b':'#64748b'
-  };
-}
+  <div class="main">
+    <div id="graph"></div>
+    <div id="detail">
+      <h3>통계</h3>
+      <div class="stats">
+        <div class="stat-box"><div class="num" id="stat-nodes">0</div><div class="lbl">노드</div></div>
+        <div class="stat-box"><div class="num" id="stat-edges">0</div><div class="lbl">엣지</div></div>
+        <!-- [탐지된 주요 타입 2개 추가 통계 박스 — 없으면 생략]
+             예:
+             <div class="stat-box"><div class="num" id="stat-endpoint">22</div><div class="lbl">엔드포인트</div></div>
+             <div class="stat-box"><div class="num" id="stat-external">7</div><div class="lbl">외부 IF</div></div>
+        -->
+      </div>
+      <div class="legend">
+        <!-- [탐지된 타입별 범례 자동 생성]
+             예:
+             <div class="legend-item"><div class="legend-dot" style="background:#E74C3C"></div>뷰 (N개)</div>
+             <div class="legend-item"><div class="legend-dot" style="background:#4A90D9"></div>API 엔드포인트 (N개)</div>
+             <div class="legend-item"><div class="legend-dot" style="background:#9B59B6"></div>서비스/함수 (N개)</div>
+             <div class="legend-item"><div class="legend-dot" style="background:#F5A623"></div>외부 시스템 (N개)</div>
+             <div class="legend-item"><div class="legend-dot" style="background:#7ED321"></div>DB 테이블 (N개)</div>
+        -->
+      </div>
+      <hr style="border-color:rgba(255,255,255,0.08);margin:16px 0;" />
+      <h3>노드 상세</h3>
+      <div id="detailContent" class="empty">노드를 클릭하면<br />상세 정보가 표시됩니다.</div>
+    </div>
+  </div>
 
-function restoreAll() {
-  // color: undefined 를 넘기면 vis-network가 group 기본색으로 폴백하므로
-  // nodeStyleCache에서 원래 색상을 명시적으로 복원한다.
-  data.nodes.update(rawNodes.map(n => ({
-    id:      n.id,
-    opacity: 1,
-    color:   nodeStyleCache.get(n.id).color
-  })));
-  data.edges.update(rawEdges.map((e,i) => ({id:i, color:edgeColor(e)})));
-}
+  <script>
+    // ── 타입별 색상 (탐지된 타입만 포함) ──
+    const COLORS = {
+      // [탐지된 타입에 맞게 아래 팔레트에서 선택해 주입]
+      // 일반 타입:
+      // view:          { bg: '#7B1A1A', border: '#E74C3C', font: '#fff' },
+      // endpoint:      { bg: '#1a5fa8', border: '#4A90D9', font: '#fff' },
+      // function:      { bg: '#6C3483', border: '#9B59B6', font: '#fff' },
+      // dao:           { bg: '#154360', border: '#2E86C1', font: '#fff' },
+      // external:      { bg: '#8a5900', border: '#F5A623', font: '#fff' },
+      // db_table:      { bg: '#2d6a00', border: '#7ED321', font: '#fff' },
+      // util:          { bg: '#0e3030', border: '#48C9B0', font: '#fff' },
+      // 스택 특화 별칭 타입 (일반 타입과 동일 팔레트):
+      // vue_view:      { bg: '#7B1A1A', border: '#E74C3C', font: '#fff' },  // view와 동일
+      // sap_interface: { bg: '#8a5900', border: '#F5A623', font: '#fff' },  // external과 동일
+      // mssql_table:   { bg: '#2d6a00', border: '#7ED321', font: '#fff' },  // db_table과 동일
+    };
 
-// ── 필터 버튼 ────────────────────────────────────────────────────────
-document.querySelectorAll('.filter-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    const groups = filterGroups[btn.dataset.filter];
-    // color 명시 — group 기본 팔레트 색상 덮어씌움 방지
-    const updated = rawNodes.map(n => ({
-      id:     n.id,
-      hidden: !(!groups || groups.includes(nodeRawMap.get(n.id).group)),
-      color:  nodeStyleCache.get(n.id).color
-    }));
-    data.nodes.update(updated);
-    const visible = new Set(updated.filter(n=>!n.hidden).map(n=>n.id));
-    data.edges.update(rawEdges.map((e,i) => ({
-      id:     i,
-      hidden: !visible.has(e.from) || !visible.has(e.to),
-      color:  edgeColor(e)
-    })));
-  });
-});
-</script>
+    const nodeTypeMap = {};
+
+    function nodeColor(type) {
+      const c = COLORS[type] || { bg: '#1e293b', border: '#334155' };
+      return { background: c.bg, border: c.border, highlight: { background: c.border, border: '#fff' } };
+    }
+
+    function nodeShape(type) {
+      const shapes = {
+        view: 'ellipse', vue_view: 'ellipse',
+        endpoint: 'box',
+        function: 'hexagon', dao: 'hexagon',
+        external: 'diamond', sap_interface: 'diamond',
+        db_table: 'database', mssql_table: 'database',
+        util: 'dot'
+      };
+      return shapes[type] || 'dot';
+    }
+
+    function mkNode(id, label, type, extra = {}) {
+      const c = COLORS[type] || { bg: '#1e293b', border: '#334155', font: '#e0e0e0' };
+      nodeTypeMap[id] = type;
+      return {
+        id, label,
+        color: nodeColor(type),
+        font: { color: c.font || '#e0e0e0', size: 12 },
+        shape: nodeShape(type),
+        borderWidth: 2,
+        shadow: true,
+        ...extra
+      };
+    }
+
+    // ── 노드 데이터 (call_graph.json → mkNode() 변환) ──
+    const nodesData = [
+      /* [call_graph.json nodes 변환 결과 주입]
+         mkNode('node_id', '표시 레이블', 'type')
+         허브 노드(in-degree 높음): mkNode('id', 'label', 'type', { size: 28, borderWidth: 3 })
+         예:
+         mkNode('v_login', 'LoginView', 'view'),
+         mkNode('e_auth_login', 'POST /auth/login', 'endpoint'),
+         mkNode('s_auth', 'AuthService', 'function', { size: 24, borderWidth: 3 }),
+         mkNode('db_users', 'USER 테이블', 'db_table'),
+      */
+    ];
+
+    // ── 엣지 데이터 ──
+    function edge(from, to, label = '', dashed = false) {
+      return {
+        from, to, label, arrows: 'to', dashes: dashed,
+        color: { color: 'rgba(150,150,200,0.4)', highlight: '#4A90D9' },
+        font: { size: 9, color: '#999', align: 'middle' },
+        smooth: { type: 'curvedCW', roundness: 0.1 }
+      };
+    }
+
+    const edgesData = [
+      /* [call_graph.json edges 변환 결과 주입]
+         edge('from_id', 'to_id', '레이블', false)
+         depends/참조 관계는 dashed=true
+         예:
+         edge('v_login', 'e_auth_login', 'axios POST'),
+         edge('e_auth_login', 's_auth', ''),
+         edge('s_auth', 'db_users', 'SELECT', true),
+      */
+    ];
+
+    // ── 노드 상세 메타데이터 ──
+    const META = {
+      /* [각 노드 id에 대한 상세 정보 주입]
+         'node_id': {
+           type: '타입 레이블(표시용)',   // 예: '🖥 뷰', '⚡ API 엔드포인트'
+           file: '파일 경로',             // 예: 'src/views/LoginView.vue'
+           api:  'HTTP 메서드 + 경로',    // 예: 'POST /api/v1/auth/login'
+           note: '설명 텍스트',           // 예: '사용자 로그인 처리'
+         },
+         예:
+         'v_login':      { type: '🖥 뷰', file: 'src/views/LoginView.vue', note: '로그인 화면' },
+         'e_auth_login': { type: '⚡ API', file: 'app/api/auth.py', api: 'POST /auth/login', note: 'JWT 발급' },
+      */
+    };
+
+    // ── 네트워크 초기화 ──
+    const container = document.getElementById('graph');
+    const nodes = new vis.DataSet(nodesData);
+    const edges_ds = new vis.DataSet(edgesData);
+    const network = new vis.Network(container, { nodes, edges: edges_ds }, {
+      physics: {
+        enabled: true, solver: 'forceAtlas2Based',
+        forceAtlas2Based: { gravitationalConstant: -60, centralGravity: 0.005, springLength: 120, springConstant: 0.04, damping: 0.4 },
+        stabilization: { iterations: 250 }
+      },
+      interaction: { hover: true, tooltipDelay: 200, navigationButtons: false, keyboard: false },
+      edges: { width: 1.2, smooth: { type: 'dynamic' } },
+      nodes: { borderWidth: 2, shadow: true },
+      layout: { improvedLayout: true }
+    });
+
+    document.getElementById('stat-nodes').textContent = nodesData.length;
+    document.getElementById('stat-edges').textContent = edgesData.length;
+
+    // ── 클릭 — 노드 상세 패널 ──
+    function getLabel(id) {
+      const n = nodesData.find(x => x.id === id);
+      return n ? n.label.replace(/\n/g, ' ') : id;
+    }
+
+    network.on('click', params => {
+      const dc = document.getElementById('detailContent');
+      if (!params.nodes.length) {
+        dc.innerHTML = '<span class="empty">노드를 클릭하면<br/>상세 정보가 표시됩니다.</span>';
+        return;
+      }
+      const id = params.nodes[0];
+      const m = META[id] || {};
+      const lbl = getLabel(id);
+      const type = nodeTypeMap[id];
+      const c = COLORS[type];
+      const typeColor = c ? c.border : '#aaa';
+      const connEdges = edgesData.filter(e => e.from === id || e.to === id);
+      const outgoing = connEdges.filter(e => e.from === id).map(e => `<li><span class="conn-arrow">→</span>${getLabel(e.to)}</li>`).join('');
+      const incoming = connEdges.filter(e => e.to === id).map(e => `<li><span class="conn-arrow">←</span>${getLabel(e.from)}</li>`).join('');
+      dc.innerHTML = `
+        <div class="detail-card">
+          <div class="label">노드</div>
+          <div class="value">${lbl}</div>
+          ${m.type ? `<span class="badge" style="background:${typeColor}22;color:${typeColor};border:1px solid ${typeColor}">${m.type}</span>` : ''}
+        </div>
+        ${m.file ? `<div class="detail-card"><div class="label">파일</div><div class="value" style="font-family:monospace;font-size:11px">${m.file}</div></div>` : ''}
+        ${m.api  ? `<div class="detail-card"><div class="label">API</div><div class="value" style="font-size:11px">${m.api}</div></div>` : ''}
+        ${m.note ? `<div class="detail-card"><div class="label">설명</div><div class="value" style="font-size:11px;white-space:pre-wrap">${m.note}</div></div>` : ''}
+        ${outgoing ? `<div class="detail-card"><div class="label">호출 대상 (→ ${connEdges.filter(e => e.from === id).length}개)</div><ul class="conn-list">${outgoing}</ul></div>` : ''}
+        ${incoming ? `<div class="detail-card"><div class="label">호출처 (← ${connEdges.filter(e => e.to === id).length}개)</div><ul class="conn-list">${incoming}</ul></div>` : ''}
+      `;
+    });
+
+    // ── 더블클릭 — 연결 노드 강조 ──
+    network.on('doubleClick', params => {
+      if (!params.nodes.length) { network.unselectAll(); return; }
+      const id = params.nodes[0];
+      const connected = edgesData.filter(e => e.from === id || e.to === id).flatMap(e => [e.from, e.to]);
+      network.selectNodes([...new Set(connected)]);
+    });
+
+    // ── 필터 (타입 기반 토글) ──
+    const allTypes = [...new Set(nodesData.map(n => nodeTypeMap[n.id]))];
+    const activeTypes = new Set(allTypes);
+
+    document.querySelectorAll('.filter-btn[data-type]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const type = btn.dataset.type;
+        if (type === 'all') {
+          const allOn = activeTypes.size === allTypes.length;
+          activeTypes.clear();
+          if (!allOn) allTypes.forEach(t => activeTypes.add(t));
+          document.querySelectorAll('.filter-btn:not([data-type="all"])').forEach(b => b.classList.toggle('active', activeTypes.has(b.dataset.type)));
+        } else {
+          if (activeTypes.has(type)) activeTypes.delete(type); else activeTypes.add(type);
+          btn.classList.toggle('active', activeTypes.has(type));
+        }
+        nodesData.forEach(n => {
+          const t = nodeTypeMap[n.id];
+          nodes.update({ id: n.id, hidden: !activeTypes.has(t), color: nodeColor(t) });
+        });
+      });
+    });
+
+    // ── 검색 ──
+    document.getElementById('searchInput').addEventListener('input', e => {
+      const q = e.target.value.trim().toLowerCase();
+      nodesData.forEach(n => {
+        const type = nodeTypeMap[n.id];
+        if (!q) { nodes.update({ id: n.id, color: nodeColor(type) }); return; }
+        const match = n.label.toLowerCase().includes(q);
+        const c = COLORS[type] || { bg: '#1e293b', border: '#334155' };
+        nodes.update({
+          id: n.id,
+          color: match
+            ? { background: c.border, border: '#fff', highlight: { background: '#fff', border: c.border } }
+            : { background: '#333', border: '#555' }
+        });
+      });
+    });
+  </script>
 </body>
 </html>
 ```
@@ -637,13 +633,15 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 
 파싱이 실패하거나 call_graph.json이 없는 경우 `wiki/call-graph.html`을 다음 형태로 생성:
 
-```html
-<!-- 데이터 없음 상태 — 동일한 HTML 구조 유지, 빈 배열 + 안내 메시지 -->
-const rawNodes = [];
-const rawEdges = [];
+```js
+// 데이터 없음 상태 — 동일한 HTML 구조 유지, 빈 배열
+const COLORS = {};
+const nodesData = [];
+const edgesData = [];
+const META = {};
 ```
 
-stats-bar에 "데이터 없음 — harness-init을 Standard/Full Tier로 재실행해 call_graph.json을 생성하세요" 메시지 표시.
+우측 사이드바 노드 상세 영역에 "데이터 없음 — harness-init을 Standard/Full Tier로 재실행해 call_graph.json을 생성하세요" 안내 메시지 표시.
 
 ---
 
@@ -677,7 +675,6 @@ call-graph.html 상세:
 - 필터 그룹: [그룹명 목록]
 
 사용된 소스:
-- callgraph.html 템플릿: ✅
 - _workspace/01_analyzer_report.md: ✅
 - _workspace/index/call_graph.json: ✅ / ❌
 - _workspace/index/dead_code.json: ✅ / ⏭
