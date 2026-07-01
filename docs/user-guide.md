@@ -1,4 +1,4 @@
-# harness-ito 사용자 설명서
+# ax-std-harness 사용자 설명서
 
 > SM/SI 현장 실무자를 위한 단계별 가이드
 
@@ -24,7 +24,7 @@
 "하네스 초기화해줘"
 ```
 
-하나만 기억하면 됩니다. 나머지는 harness-ito가 알아서 합니다.
+하나만 기억하면 됩니다. 나머지는 ax-std-harness가 알아서 합니다.
 
 ### 지금 당장 뭔가 해야 한다면?
 
@@ -45,8 +45,8 @@
 Claude Code 어느 프로젝트에서나 실행:
 
 ```
-/plugin marketplace add Malburi/harness-ito
-/plugin install harness-ito@harness-ito
+/plugin marketplace add neoruler001/ax-std-harness
+/plugin install ax-std-harness@ax-std-harness
 ```
 
 설치 확인:
@@ -55,7 +55,7 @@ Claude Code 어느 프로젝트에서나 실행:
 /plugin list
 ```
 
-`harness-ito@harness-ito — enabled` 가 보이면 완료.
+`ax-std-harness@ax-std-harness — enabled` 가 보이면 완료.
 
 ### 2-2. Claude Code 재시작
 
@@ -468,7 +468,7 @@ SQL:
 플러그인 자체 제거:
 
 ```
-/plugin uninstall harness-ito
+/plugin uninstall ax-std-harness
 ```
 
 ---
@@ -540,7 +540,7 @@ flowchart LR
 
 **변경 전후 비교:**
 
-| | 기존 방식 | harness-ito |
+| | 기존 방식 | ax-std-harness |
 |-|---------|------------|
 | 영향 범위 파악 | 코드 전체 수동 grep | analyze-impact 자동 분석 |
 | 변경 안전성 | 경험에 의존 | GO/HOLD/STOP 판정 |
@@ -684,4 +684,4 @@ harness-init이 생성하는 프로젝트 전용 가이드. Claude가 매 대화
 
 ---
 
-*harness-ito v0.2.1 · [GitHub](https://github.com/Malburi/harness-ito)*
+*ax-std-harness v0.2.1 · [GitHub](https://github.com/neoruler001/ax-std-harness)*

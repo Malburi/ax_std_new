@@ -5,7 +5,7 @@ description: 현재 프로젝트에 설치된 harness 파일 전체를 제거한
 
 # Harness Clean — 하네스 전체 제거
 
-현재 프로젝트에 harness-ito가 생성한 파일들을 안전하게 제거한다.
+현재 프로젝트에 ax-std-harness가 생성한 파일들을 안전하게 제거한다.
 
 **원칙: 삭제 전 반드시 목록을 보여주고 사용자 확인을 받는다. 자동 삭제 없음.**
 
@@ -25,7 +25,7 @@ harness 흔적이 없으면: "이 디렉토리에 harness가 설치되어 있지
 다음 경로를 Glob으로 확인해 존재하는 항목만 목록화:
 
 ```
-삭제 대상 (harness-ito 생성 파일):
+삭제 대상 (ax-std-harness 생성 파일):
 
 [프로젝트 harness 파일]
 - CLAUDE.md                          ← harness가 생성한 경우만
@@ -117,8 +117,8 @@ harness 제거 완료
   - CLAUDE.md (삭제 제외 선택 시)
 
 플러그인 제거 (선택):
-  harness-ito 플러그인 자체를 제거하려면 Claude Code에서 아래 명령을 실행하세요:
-  /plugin uninstall harness-ito
+  ax-std-harness 플러그인 자체를 제거하려면 Claude Code에서 아래 명령을 실행하세요:
+  /plugin uninstall ax-std-harness
 ```
 
 ---

@@ -8,7 +8,7 @@
 
 대상 프로젝트의 코드베이스를 분석해 맞춤형 CLAUDE.md / 워크플로우 스킬 / 도메인 에이전트 / 패턴 / 인덱스를 한 번에 생성하고, 이후 *수정·개발·마이그레이션 작업*까지 끊김 없이 지원한다.
 
-[Malburi/harness-new](https://github.com/Malburi/harness-new)의 4-에이전트 파이프라인을 기반으로 [revfactory/harness](https://github.com/revfactory/harness)의 메타 방법론을 확장 적용했다.
+[neoruler001/harness-new](https://github.com/neoruler001/harness-new)의 4-에이전트 파이프라인을 기반으로 [revfactory/harness](https://github.com/revfactory/harness)의 메타 방법론을 확장 적용했다.
 
 ## 실행 모드
 
@@ -103,7 +103,7 @@
 | 날짜 | 변경 내용 | 대상 | 사유 |
 |------|----------|------|------|
 | 2026-06-02 | harness-new 기반 확장 — P0(impact-analyzer, change-safety) + P1(pattern-extractor, migration-planner) + P2(test-generator, sql-reviewer, legacy-decoder, doc-syncer) + 워크플로우 스킬 5종(analyze-impact, safe-modify, scaffold-feature, plan-migration, review-sql) + analyzer 심층 분석(의존성 그래프, 데이터 흐름, 트랜잭션, 외부 통신, 환경 분기, 데드 코드) + 인덱스 레이어(_workspace/index/*.json) | 전체 | ITO/SI 조직의 수정/개발/마이그레이션 작업까지 끊김 없이 지원하기 위함 |
-| 2026-06-02 | Claude Code 플러그인 표준 레이아웃으로 재구성 — `.claude/agents/`·`.claude/skills/` 중복본 제거, 루트 `agents/`·`skills/<name>/SKILL.md` 단일 source-of-truth로 정리, `.claude-plugin/marketplace.json`·`plugin.json` 추가 | 저장소 구조 | `/plugin marketplace add Malburi/harness-ito`로 설치 가능하도록 |
+| 2026-06-02 | Claude Code 플러그인 표준 레이아웃으로 재구성 — `.claude/agents/`·`.claude/skills/` 중복본 제거, 루트 `agents/`·`skills/<name>/SKILL.md` 단일 source-of-truth로 정리, `.claude-plugin/marketplace.json`·`plugin.json` 추가 | 저장소 구조 | `/plugin marketplace add neoruler001/ax-std-harness`로 설치 가능하도록 |
 | 2026-06-02 | Vue.js 스택 지원 추가 — Vue 2/3, Nuxt 2/3, Pinia/Vuex, Vue Router, Vite, Vue CLI 탐지 + QA Boundary + 마이그레이션 매핑 (Vue 2→3, Vuex→Pinia, Nuxt 2→3, Vue CLI→Vite) | analyzer / qa / docs/stack-matrix / README | 프런트엔드 스택 커버리지 확장 |
 | 2026-06-03 | 로직 탐색 에이전트 2종 추가 — `logic-tracer`(진입점→DB 처리 흐름 추적) + `feature-finder`(기능명·키워드 코드 위치 탐색) + 트리거 스킬 2종(`trace-logic`, `find-feature`) | agents / skills / CLAUDE.md | 특정 로직·기능 위치 탐색 요구 대응 |
 | 2026-06-03 | 에이전트 모델 최적화 — opus→sonnet 8종(change-safety, pattern-extractor, validator, qa, test-generator, sql-reviewer, doc-syncer, logic-tracer). opus 유지 5종(analyzer, writer, legacy-decoder, impact-analyzer, migration-planner) | agents/ | 패턴 기반 처리 작업에 opus 불필요, 비용 절감 |

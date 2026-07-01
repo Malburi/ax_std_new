@@ -1,4 +1,4 @@
-# harness-ito
+# ax-std-harness
 
 > **ITO/SI 조직을 위한 Claude Code 확장 하네스**
 >
@@ -18,7 +18,7 @@
 (Ouroboros)          (Superpowers)         (Karpathy)
 ```
 
-| 출처 | 핵심 아이디어 | harness-ito 적용 |
+| 출처 | 핵심 아이디어 | ax-std-harness 적용 |
 |------|-------------|----------------|
 | [Q00/ouroboros](https://github.com/Q00/ouroboros) | 코드 생성 전 모호성을 수치화해 80% 명확해질 때까지 질문 | **Phase -1 Spec Gate** — 목적·범위 확인 후 분석 시작 |
 | [Andrej Karpathy](https://karpathy.bearblog.dev) | 출력을 스스로 평가 → 실패 원인 분석 → 재생성 (AutoResearch) | **Phase 4 Eval Loop** — 4차원 품질 채점 → 80점 미만 시 타겟 재생성 |
@@ -29,7 +29,7 @@
 ## 🤔 이게 왜 필요한가요?
 
 Claude Code를 아무 설정 없이 사용하면 매번 _"이 프로젝트가 뭔지"_ 처음부터 설명해야 합니다.
-harness-ito는 프로젝트를 **한 번 분석해 Claude가 기억할 수 있는 형태로 저장**합니다.
+ax-std-harness는 프로젝트를 **한 번 분석해 Claude가 기억할 수 있는 형태로 저장**합니다.
 
 그 결과, 이후 작업에서 Claude는 다음을 알고 시작합니다:
 
@@ -50,13 +50,13 @@ harness-ito는 프로젝트를 **한 번 분석해 Claude가 기억할 수 있�
 Claude Code 어느 프로젝트에서나 실행:
 
 ```
-/plugin marketplace add Malburi/harness-ito
+/plugin marketplace add neoruler001/ax-std-harness
 ```
 
 ### 2단계 — 플러그인 설치
 
 ```
-/plugin install harness-ito@harness-ito
+/plugin install ax-std-harness@ax-std-harness
 ```
 
 설치 확인:
@@ -65,7 +65,7 @@ Claude Code 어느 프로젝트에서나 실행:
 /plugin list
 ```
 
-`harness-ito@harness-ito — enabled` 가 보이면 됩니다. ✅
+`ax-std-harness@ax-std-harness — enabled` 가 보이면 됩니다. ✅
 
 ### 3단계 — Claude Code 재시작
 
@@ -332,7 +332,7 @@ ITO/SI 현장에서 자주 만나는 레거시를 포함해 자동으로 탐지�
 플러그인 자체를 제거하려면 확인 후 안내해 드립니다:
 
 ```
-/plugin uninstall harness-ito
+/plugin uninstall ax-std-harness
 ```
 
 **Q. 하네스를 한 번 만들면 코드가 바뀌었을 때는?**
@@ -421,7 +421,7 @@ Claude는 HOLD/STOP 상황에서도 자동 수정을 하지 않습니다. **판�
 
 ## 🔗 참고
 
-- [Malburi/harness-new](https://github.com/Malburi/harness-new) — 기반 4-에이전트 파이프라인
+- [neoruler001/harness-new](https://github.com/neoruler001/harness-new) — 기반 4-에이전트 파이프라인
 - [revfactory/harness](https://github.com/revfactory/harness) — 메타 하네스 설계 원칙
 - [Claude Code 공식 문서](https://docs.anthropic.com/en/docs/claude-code/overview)
 - [`docs/user-guide.md`](docs/user-guide.md) — 사용자 설명서 (스킬별 사용법 + SM 실무 시나리오)

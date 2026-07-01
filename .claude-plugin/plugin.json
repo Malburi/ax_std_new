@@ -1,18 +1,18 @@
 {
-  "name": "harness-ito",
+  "name": "ax-std-harness",
   "version": "0.4.0",
   "description": "ITO/SI 조직을 위한 확장 메타 하네스 — 17 agents + 13 workflow skills (Spec Gate + Eval Loop + Clean + Wiki Generator + Pair Init + Cross Repo Scaffold)",
   "author": {
-    "name": "Malburi",
-    "url": "https://github.com/Malburi"
+    "name": "neoruler001",
+    "url": "https://github.com/neoruler001"
   },
-  "homepage": "https://github.com/Malburi/harness-ito",
-  "repository": "https://github.com/Malburi/harness-ito",
+  "homepage": "https://github.com/neoruler001/ax-std-harness",
+  "repository": "https://github.com/neoruler001/ax-std-harness",
   "license": "MIT",
   "keywords": ["harness", "agents", "skills", "ito", "si", "legacy", "migration", "code-analysis", "sql-review"],
   "source": {
     "type": "github",
-    "repo": "Malburi/harness-ito",
+    "repo": "neoruler001/ax-std-harness",
     "ref": "main"
   }
 }
