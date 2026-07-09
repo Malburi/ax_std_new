@@ -69,6 +69,7 @@ Agent(
   wiki 출력 경로: [절대경로]/wiki/.
   생성할 페이지: [Phase 1에서 확정된 목록].
   call_graph.json 경로: _workspace/index/call_graph.json.
+  pair_config 연동: _workspace/pair_config.md가 존재하면 파트너 프로젝트의 산출물(01_analyzer_report.md, index/*.json 등)도 함께 읽어 프론트엔드-백엔드가 병합된 통합 위키 및 통합 호출 그래프를 생성할 것.
   HTML 템플릿: wiki-builder.md 내장 (외부 파일 불필요).
   출력: wiki/ 하위 페이지 파일들 + _workspace/07_wiki_build.md>",
   model="sonnet"

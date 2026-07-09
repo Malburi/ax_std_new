@@ -40,6 +40,9 @@ harness 산출물 전체를 읽어 사람이 탐색 가능한 wiki 페이지 세
 11. _workspace/index/external_io.json     — 외부 시스템 연동 (있으면)
 12. _workspace/index/transactions.json    — 트랜잭션 경계 (있으면)
 13. _workspace/index/dead_code.json       — 데드 코드 목록 (있으면)
+13.5 _workspace/pair_config.md                  — 파트너 프로젝트 연동 정보 (있으면)
+13.6 [partner_workspace]/01_analyzer_report.md  — 파트너 프로젝트 아키텍처 정보 (pair_config 기반, 있으면)
+13.7 [partner_workspace]/index/*.json           — 파트너 프로젝트의 전체 인덱스 데이터 (있으면)
 14. .claude/skills/*.md                  — 스킬 설명·트리거
 15. .claude/patterns/*.md                — 패턴 파일
 16. .claude/ito-guide.md                 — 사용 가이드 (있으면)
@@ -73,6 +76,9 @@ wiki/
 
 ## 페이지별 생성 규칙
 
+> **[크로스 리포 통합 규칙]**
+> `pair_config.md`가 존재하여 파트너 산출물을 함께 읽은 경우, **모든 마크다운 페이지(`architecture.md`, `api-endpoints.md`, `database.md`, `patterns.md`, `issues.md` 등) 작성 시 프론트엔드와 백엔드의 내용을 모두 합쳐 풀스택 통합 위키가 되도록 구성한다.** (예: 아키텍처에 두 프로젝트 모두 서술, 엔드포인트에 백엔드 API 명세 포함 등)
+
 ### Home.md
 
 ```markdown
@@ -82,6 +88,7 @@ wiki/
 
 ## 프로젝트 개요
 [CLAUDE.md의 한 줄 설명 + 기술 스택 요약]
+*(pair_config.md가 있을 경우 파트너 프로젝트의 역할과 스택 정보 병기)*
 
 ## 페이지 목록
 | 페이지 | 형식 | 내용 |
@@ -116,22 +123,22 @@ wiki/
 # 아키텍처
 
 ## 기술 스택
-[analyzer_report의 스택 섹션]
+[analyzer_report의 스택 섹션. 통합 위키일 경우 프론트엔드와 백엔드 기술 스택을 나누어 작성]
 
 ## 레이어 구조
-[텍스트로 레이어 구조 설명 — Controller → Service → DAO → DB 흐름]
+[텍스트로 레이어 구조 설명. 통합 위키일 경우 프론트엔드와 백엔드 각각의 구조를 분리 서술]
 
 ## 주요 파일 위치
-[CLAUDE.md의 주요 파일 위치 테이블 그대로]
+[CLAUDE.md의 주요 파일 위치 테이블. 통합 위키일 경우 파트너 위치도 병기]
 
 ## 요청 흐름
-[analyzer_report의 요청 흐름 섹션]
+[analyzer_report의 요청 흐름 섹션. 통합 위키일 경우 UI -> API -> DB 전체 흐름 서술]
 
 ## 모듈 구성
 [멀티모듈이면 모듈별 역할 테이블]
 
 ## 빌드 / 실행
-[CLAUDE.md의 빌드 명령]
+[CLAUDE.md의 빌드 명령. 통합 위키일 경우 프론트엔드/백엔드 각각 명시]
 ```
 
 ---
@@ -167,7 +174,7 @@ wiki/
 
 아래 Step 1~5 절차에 따라 생성한다. 디자인: 다크 테마(`#1a1a2e`), 우측 고정 사이드바(통계·범례·노드 상세), 타입 기반 필터 토글, 헤더 실시간 검색.
 
-#### Step 1: call_graph.json 파싱
+#### Step 1: call_graph.json 파싱 및 크로스 리포(Cross-Repo) 병합
 
 call_graph.json 구조를 자동 감지해 rawNodes/rawEdges로 변환:
 
@@ -177,17 +184,12 @@ nodes[i] → { id, type, file, method?, note?, group? }
 edges[i] → { from: source, to: target, type: "call"|"depends" }
 ```
 
-**형식 B** — adjacency list `{ "A": ["B","C"], ... }`:
-```
-각 키 → node id (type 미정 → "function")
-각 값 → edge { from: 키, to: 값[i], type: "call" }
-```
+**형식 B/C** — 기타 형식 동일하게 파싱.
 
-**형식 C** — `[{ "caller": "A", "callee": "B" }]`:
-```
-caller/callee → node id 추출
-edge type: "call_type" 또는 기본 "call"
-```
+**크로스 리포 병합 (`pair_config.md` 존재 시)**:
+`_workspace/pair_config.md`가 존재하고 파트너의 `call_graph.json`을 성공적으로 읽었다면 두 그래프를 병합한다:
+1. **노드/엣지 병합**: 양쪽의 데이터를 합친다. (ID 충돌 방지를 위해 파트너 노드/엣지 ID에 `partner_` 접두사를 붙이거나 고유성을 유지한다).
+2. **동적 엣지 연결 (Cross-repo Edge)**: 프론트엔드의 `external` 타입 노드(API 호출처)와 백엔드의 `endpoint` 타입 노드(API 수신처)의 URL/Path 정보를 비교하여 일치하거나 연관성이 높으면, 프론트에서 백엔드로 향하는 엣지(`from: front_node, to: back_node, type: "call"`)를 생성해 끊어진 그래프를 하나로 연결한다.
 
 파싱 실패 시 → call-graph.html을 "데이터 없음" 상태로 생성 (빈 그래프 + 오류 메시지 표시).
 
