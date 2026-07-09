@@ -55,12 +55,17 @@ wiki/
 ├── architecture.md      ← 아키텍처 (스택·레이어·파일 위치·요청 흐름)
 ├── workflows.md         ← 하네스 워크플로우 스킬 사용법
 ├── call-graph.html      ← ★ 인터랙티브 호출 그래프 (vis-network, call_graph.json 기반)
+├── lib/                 ← ★ vis-network 로컬 라이브러리 (agents/lib에서 복사)
+│   ├── vis-network.min.js
+│   └── vis-network.min.css
 ├── api-endpoints.md     ← API 엔드포인트 목록 (symbols.json 기반, REST/MVC 식별 시)
 ├── database.md          ← DB 스키마 + SQL 인덱스 (schema.json·sql_usage.json 기반, DB 있을 때만)
 ├── patterns.md          ← 코드 패턴 요약 (patterns_extracted.md 기반)
 ├── external-systems.md  ← 외부 연동 목록 (external_io.json 기반, 항목 있을 때만)
 └── issues.md            ← 발견된 이슈 (validator·QA·dead_code 기반, 항목 있을 때만)
 ```
+
+**중요: `call-graph.html` 생성 시, `agents/lib/`에 다운로드된 `vis-network.min.js`와 `vis-network.min.css`를 `wiki/lib/` 경로로 복사해 외부 인터넷 없이 렌더링되도록 한다.**
 
 조건부 페이지: `api-endpoints.md`, `database.md`, `external-systems.md`, `issues.md`는 해당 데이터가 없으면 생성하지 않는다.
 
@@ -256,8 +261,8 @@ dead_code.json이 있으면 해당 노드 opacity 저하 처리.
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>[프로젝트명] Call Graph</title>
-  <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/dist/vis-network.min.js"></script>
-  <link href="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/dist/dist/vis-network.min.css" rel="stylesheet" />
+  <script src="lib/vis-network.min.js"></script>
+  <link href="lib/vis-network.min.css" rel="stylesheet" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
