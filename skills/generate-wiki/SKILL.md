@@ -116,10 +116,11 @@ call-graph.html:
 다음 단계:
   wiki 전체 보기:  브라우저로 wiki/index.html 열기
                    (좌측 트리 사이드바 + 상단 검색 + 페이지 내비게이션 포함)
-  call-graph 보기: wiki/index.html에서 사이드바 "호출 그래프 ↗" 클릭 (새 탭)
+  call-graph 보기: wiki/index.html에서 사이드바 "호출 그래프 ↗" 클릭 (새 탭, data-noframing="true" 우회 적용)
                    또는 wiki/call-graph.html 직접 열기
   GitHub Pages:   wiki/ 폴더를 gh-pages 브랜치에 push (docsify가 자동 렌더링)
   로컬 서버:       cd wiki && python -m http.server 8080 → http://localhost:8080
+                   (참고: Docsify 해시 라우팅 구조 하에서 가로채기 방지를 위해 target="_blank" 및 data-noframing="true"가 적용됨)
   wiki 업데이트:   "wiki 업데이트해줘" (기존 wiki_prev/ 백업 후 재생성)
 ```
 

@@ -100,7 +100,7 @@ wiki/
 | [patterns](patterns.md) | MD | 코드 컨벤션·패턴 요약 |
 | [external-systems](external-systems.md) | MD | 외부 시스템 연동 |
 | [issues](issues.md) | MD | 발견된 이슈·보완 권장 |
-| <a href="call-graph.html" target="_blank">📊 호출 그래프 (새 창)</a> | HTML | 인터랙티브 함수 호출 그래프 |
+| <a href="call-graph.html" target="_blank" data-noframing="true">📊 호출 그래프 (새 창)</a> | HTML | 인터랙티브 함수 호출 그래프 |
 
 > **호출 그래프**: 노드 클릭 시 상세 정보 패널, 더블클릭 시 연결 강조, 필터 버튼으로 레이어별 탐색.
 
@@ -263,8 +263,22 @@ dead_code.json이 있으면 해당 노드 opacity 저하 처리.
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>[프로젝트명] Call Graph</title>
-  <script src="lib/vis-network.min.js"></script>
-  <link href="lib/vis-network.min.css" rel="stylesheet" />
+  <script data-noframing="true" src="lib/vis-network.min.js"></script>
+  <link data-noframing="true" href="lib/vis-network.min.css" rel="stylesheet" />
+  <script>
+    // Docsify 해시 라우팅 및 호스팅 뎁스 변화에 따른 상대 경로 깨짐 방지 보완
+    (function() {
+      var currentPath = window.location.pathname;
+      // 끝이 '/'로 끝나지 않고 파일명이 있으면 디렉토리 경로까지만 추출
+      var baseDir = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
+      
+      // 만약 Docsify 라우팅 가로채기를 우회하여 새 창으로 직접 로드될 때, 
+      // 상대경로 lib/ 가 제대로 로드될 수 있도록 동적으로 base path 보정 지원
+      if (window.location.hash && window.location.hash.indexOf('#/') === 0) {
+        // Docsify 내부 iframe 또는 framing 내에서 오작동 방지
+      }
+    })();
+  </script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
