@@ -306,10 +306,25 @@ Tier별 model:
 Agent(
   subagent_type="general-purpose",
   description="하네스 파일 생성",
-  prompt="<writer 에이전트 지침에 따라 하네스 파일 작성. 프로젝트 루트: [절대경로]. tier: [Lite/Standard/Full]. 입력: _workspace/01_analyzer_report.md. 출력: 하네스 파일들 + _workspace/02_writer_files.md>",
+  prompt="<writer 에이전트 지침에 따라 하네스 파일 작성. 프로젝트 루트: [절대경로]. tier: [Lite/Standard/Full]. 입력: _workspace/01_analyzer_report.md. 출력: 하네스 파일들(trace/scaffolder/find-logic + patterns 스켈레톤) + _workspace/claude_md_fields.json + _workspace/02_writer_files.md>",
   model="[sonnet/opus]"
 )
 ```
+
+> writer는 trace.md·scaffolder.md·find-logic.md·patterns 스켈레톤만 markdown으로 직접 작성한다. CLAUDE.md는 `_workspace/claude_md_fields.json`에 필드(프로젝트명·한줄설명·스택요약·요청흐름·파일위치표 행·빌드명령·주의사항)만 채워서 낸다. domain-expert.md(analyzer_report 그대로 주입)와 analyze-impact.md·safe-modify.md·scaffold-feature.md·plan-migration.md·review-sql.md(정적 텍스트)는 writer가 쓰지 않고 다음 단계(2-2.3)에서 배포한다. writer는 `_workspace/02_writer_files.md`의 "선택적 스킬 생성 결정" 섹션에 plan-migration/review-sql 생성 여부만 기록.
+
+### 2-2.3. skills_builder.py 실행 (CLAUDE.md + 정적 워크플로우 스킬 + domain-expert.md 배포)
+
+writer 완료 후 다음을 전부 처리한다 (LLM 호출 없음, 전부 결정론적 파일 조립/복사):
+- `_workspace/claude_md_fields.json` + `agents/lib/claude_md.template.md`(고정 골격) → `CLAUDE.md` 조립. `pair_config.md` 있으면 "파트너 프로젝트" 섹션도 그 필드값으로 자동 채움
+- `_workspace/02_writer_files.md`의 생성 여부 판단을 읽어 정적 스킬 템플릿(`agents/lib/skills/*.template.md`)을 대상 프로젝트 `.claude/skills/`에 복사 (analyze-impact/safe-modify/scaffold-feature는 항상, plan-migration/review-sql은 조건 충족 시만)
+- `_workspace/01_analyzer_report.md`를 그대로 복사해 `.claude/agents/domain-expert.md` 생성
+
+```powershell
+python agents/lib/skills_builder.py --root "[절대경로]" --summary "_workspace/02_writer_files.md"
+```
+
+실패 시(python 미설치, claude_md_fields.json 누락 등) 1회만 재시도하고, 그래도 실패하면 "CLAUDE.md/정적 스킬/domain-expert.md 배포 실패 — writer 재실행 또는 수동 작성 필요" WARN 후 계속 진행 (개별 항목은 부분적으로 성공할 수 있음 — 스크립트가 항목별로 독립 처리).
 
 ### 2-2.5. ito-guide.md 생성 (writer 완료 직후, 모든 Tier)
 
@@ -522,6 +537,22 @@ pair-init 스킬을 다음 컨텍스트로 실행:
 - API base URL: `partner_info.api_url` (미입력 시 pair-init Phase 1에서 재확인)
 - pair-init Phase 1의 사용자 질문 중 이미 수집된 항목은 생략하고 Phase 2부터 실행
 
+### 파트너 하네스 없는 경우 — 자동 생성 (harness-init 주도 흐름 한정)
+
+pair-init Phase 1에서 파트너 `CLAUDE.md`가 없어 3지선다가 뜨는 경우, **harness-init이 이미 멀티레포 의도를 확인한 상태**이므로 사용자에게 다시 묻지 않고 선택지 1(자동 생성)을 기본 적용한다.
+
+pair-init이 실행하는 "파트너 하네스 자동 생성" Agent 호출(파트너 루트에서 harness-init 재실행)은 아래처럼 **이번 턴의 Phase 4(harness-evaluator) 호출과 같은 메시지에서 병렬로 발행**한다 — 두 작업은 서로 독립적이므로 (파트너 초기화는 파트너 프로젝트를 대상으로, evaluator는 현재 프로젝트 결과물을 대상으로) 동시 실행 가능:
+
+```
+[같은 메시지 — 병렬 Agent 호출 2건]
+1) 파트너 하네스 자동 생성 subagent (pair-init 내부 호출, 대상: 파트너 루트)
+2) harness-evaluator (Phase 4, 대상: 현재 프로젝트 _workspace/)
+```
+
+두 호출이 모두 반환되면 다음으로 진행. 파트너 초기화가 evaluator보다 오래 걸리면, 현재 프로젝트의 Phase 4 결과 보고를 먼저 사용자에게 보여주고 "파트너 하네스 생성 중..." 안내 후 완료를 기다린다 (join).
+
+> 파트너 초기화 subagent가 실패해도 현재 프로젝트 파이프라인은 막지 않는다 — WARN 기록 후 Phase 3.6에서 통합 wiki 대신 단독 wiki 제안으로 폴백.
+
 ### 연동 여부 질문 방식 (Phase -2 스킵 + pair_config.md 없는 경우)
 
 ```
@@ -543,7 +574,30 @@ pair-init으로 연동하면 아래가 가능합니다:
 
 ## Phase 3.6: Wiki 생성 제안
 
-Phase 3 보고 직후, 다음 질문을 사용자에게 제시한다:
+Phase 3 보고 직후, `_workspace/pair_config.md` 존재 + 파트너 `CLAUDE.md` 존재(파트너 초기화 완료) 여부를 확인한다.
+
+### 파트너 하네스가 있는 경우 (pair_config.md 존재 + 파트너 완료) — 통합 wiki 질문
+
+```
+wiki를 생성하시겠습니까? (Phase 3.6)
+파트너 프로젝트([partner_root])도 하네스가 준비되어, 통합(cross-repo) wiki 생성이 가능합니다:
+  - Home, 아키텍처, 워크플로우 스킬 사용법
+  - 통합 호출 그래프 — 백엔드+프론트엔드 call_graph.json 병합, API 계약 기준 크로스 엣지 자동 추론
+  - API 엔드포인트, DB 스키마, 패턴, 외부 연동, 이슈 목록 (탐지된 경우)
+
+  1. 통합 wiki 생성 (권장) — 현재 프로젝트에 파트너 정보까지 포함된 wiki 생성
+  2. 이 프로젝트 단독 wiki만 생성
+  3. 생성 안 함
+
+선택? (1/2/3)
+```
+
+| 선택 | 동작 |
+|------|------|
+| 1 또는 2 | `generate-wiki` 스킬 실행 → 완료 후 Phase 4로 진행 (pair_config.md가 있으면 wiki-builder·wiki_generator.py가 파트너 call_graph.json을 자동 병합하므로, "2. 단독"을 선택해도 통합 그래프가 나타나는 게 정상 동작임을 안내) |
+| 3 | 스킵 → Phase 4로 진행 |
+
+### 파트너 하네스 없는 경우 (단일 스택 / 모노레포 / 파트너 초기화 실패) — 기존 질문
 
 ```
 wiki를 생성하시겠습니까? (Phase 3.6)
@@ -566,6 +620,8 @@ harness 산출물(_workspace + .claude)을 기반으로 아래 페이지를 포�
 > Phase 3.5와 Phase 3.6 질문은 **순서대로** 제시. 두 질문을 동시에 보여주지 않는다.
 
 `generate-wiki` 실행 시 → `generate-wiki` 스킬의 Phase 0~3을 그대로 수행한다. Phase 0의 "사전 확인"은 harness-init이 방금 완료했으므로 존재 확인은 스킵 가능.
+
+> **어느 쪽에서 실행해도 통합됨**: `wiki_generator.py`의 `merge_partner_call_graph()`는 pair_config.md의 `partner_workspace`를 읽어 병합하므로, frontend에서 generate-wiki를 실행해도 backend에서 실행해도 동일하게 통합 그래프가 나온다. 프론트엔드 쪽에서 통합 wiki를 보고 싶으면 프론트엔드 프로젝트에서 generate-wiki를 실행하면 된다.
 
 ---
 
@@ -633,6 +689,7 @@ Eval 품질 점수: 63/100 → 84/100 (+21, PARTIAL→PASS)
 | analyzer가 산출물 미생성 | 1회 재실행. 재실패 시 "분석 실패 — 수동 분석 필요" 보고 후 중단 |
 | analyzer가 인덱스 일부만 생성 | writer/validator/qa는 진행, 누락 인덱스에 의존하는 워크플로우 스킬은 "인덱스 누락" WARN |
 | writer 일부 파일만 생성 | 누락 목록 보고. validator는 생성된 파일에만 검증. 누락 워크플로우 스킬 명시 |
+| writer가 claude_md_fields.json 미생성 | skills_builder.py가 CLAUDE.md 조립 스킵. "CLAUDE.md 미생성 — writer 재실행 필요" WARN. 다른 항목(스킬·domain-expert.md)은 계속 배포 |
 | pattern-extractor 실패 | patterns/ 는 스켈레톤 상태 유지. "pattern-extractor 재실행 권고" 안내 |
 | validator 보안 위험 발견 | 자동 수정 금지. 위치 명시, 사용자 직접 처리 |
 | qa DEAD/ORPHAN 발견 | 자동 수정 금지. 우선순위 표시, 사용자 직접 처리 |

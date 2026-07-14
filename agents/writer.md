@@ -1,6 +1,6 @@
 ---
 name: writer
-description: 분석 리포트를 바탕으로 프로젝트 전용 harness 파일(CLAUDE.md, skills, agents, patterns)을 실제로 생성한다. harness-init 파이프라인의 Phase 2-2. 입력은 `_workspace/01_analyzer_report.md` + 인덱스 파일들. 출력은 실제 하네스 파일들 + `_workspace/02_writer_files.md`. pattern-extractor와 협업해 컨벤션 파일은 분리 생성한다.
+description: 분석 리포트를 바탕으로 프로젝트 전용 harness 파일(trace/scaffolder/find-logic, patterns 스켈레톤)을 실제로 생성하고, CLAUDE.md는 필드(claude_md_fields.json)만 채운다. harness-init 파이프라인의 Phase 2-2. 입력은 `_workspace/01_analyzer_report.md` + 인덱스 파일들. 출력은 하네스 파일들 + `_workspace/claude_md_fields.json` + `_workspace/02_writer_files.md` (CLAUDE.md/domain-expert.md/정적 스킬 5종은 이후 skills_builder.py가 조립·배포). pattern-extractor와 협업해 컨벤션 파일은 분리 생성한다.
 model: opus
 ---
 
@@ -32,28 +32,31 @@ analyzer 산출물을 받아 프로젝트 전용 harness 파일들을 **실제�
 
 ## 생성 파일 목록
 
-### A. 핵심 (기존)
+### A. 핵심 (writer가 직접 작성)
 
-1. `[프로젝트 루트]/CLAUDE.md`
-2. `[프로젝트 루트]/.claude/skills/trace.md`
-3. `[프로젝트 루트]/.claude/skills/scaffolder.md` — *기본 체크리스트*
-4. `[프로젝트 루트]/.claude/skills/find-logic.md`
-5. `[프로젝트 루트]/.claude/agents/domain-expert.md`
+1. `[프로젝트 루트]/.claude/skills/trace.md`
+2. `[프로젝트 루트]/.claude/skills/scaffolder.md` — *기본 체크리스트*
+3. `[프로젝트 루트]/.claude/skills/find-logic.md`
 
-### B. 작업용 스킬 (NEW)
+`[프로젝트 루트]/CLAUDE.md`와 `.claude/agents/domain-expert.md`는 writer가 markdown으로 직접 작성하지 않는다 — CLAUDE.md는 "1. CLAUDE.md 생성 규칙" 섹션(필드만 JSON으로 출력), domain-expert.md는 "C. 작업용 에이전트" 섹션 참조.
 
-6. `[프로젝트 루트]/.claude/skills/analyze-impact.md` — 영향도 분석 트리거
-7. `[프로젝트 루트]/.claude/skills/safe-modify.md` — 안전 변경 워크플로우
-8. `[프로젝트 루트]/.claude/skills/scaffold-feature.md` — 신규 기능 (패턴 기반)
-9. `[프로젝트 루트]/.claude/skills/plan-migration.md` — 마이그레이션 (스택 전환 감지 시만)
-10. `[프로젝트 루트]/.claude/skills/review-sql.md` — SQL 리뷰 (DB 사용 시만)
-11. `[프로젝트 루트]/.claude/skills/cross-repo-scaffold.md` — 전체 스택 스캐폴딩 (pair_config.md 있는 경우만)
+### B. 작업용 스킬 (정적 배포 — writer는 작성하지 않음)
 
-### C. 작업용 에이전트 (NEW — 프로젝트 전용 사본/포인터)
+`analyze-impact.md` / `safe-modify.md` / `scaffold-feature.md` / `plan-migration.md` / `review-sql.md`는 프로젝트별 변수가 없는 고정 텍스트다. writer가 매번 새로 작성하지 않고, `agents/lib/skills_builder.py`가 `agents/lib/skills/*.template.md`를 그대로 대상 프로젝트 `.claude/skills/`에 복사한다 (harness-init Phase 2-2.3).
 
-writer는 **새 에이전트 정의를 만들지 않는다.** harness-fin이 제공하는 공통 에이전트(`impact-analyzer`, `change-safety`, `pattern-extractor`, `migration-planner`, `test-generator`, `sql-reviewer`, `legacy-decoder`, `doc-syncer`)는 사용자가 harness-fin을 그대로 복사하는 것으로 사용한다. writer는 **프로젝트 도메인 지식 에이전트만** 만든다:
+writer의 역할은 **조건부 생성 2종의 생성 여부만 판단**하는 것:
+- `plan-migration.md` — 분석 리포트에서 마이그레이션 후보 스택(Struts 1.x, iBatis, EJB 2, Spring 3, .NET FW 2~3 등) 식별 시만 "생성"
+- `review-sql.md` — 분석 리포트에서 DB/ORM 사용 확인 시만 "생성"
 
-11. `[프로젝트 루트]/.claude/agents/domain-expert.md` — 위 5번과 동일 (도메인 지식 주입)
+판단 결과는 `_workspace/02_writer_files.md`의 "선택적 스킬 생성 결정" 섹션에 정확히 `- plan-migration.md: 생성 — [사유]` / `- plan-migration.md: 미생성 — [사유]` 형식으로 기록한다 (skills_builder.py가 이 줄을 파싱해 배포 여부를 결정하므로 형식 준수 필수).
+
+`cross-repo-scaffold.md`, `cross-repo-modify.md`는 `pair_config.md` 존재 시 writer가 계속 직접 작성한다 (정적 템플릿 없음, group A 취급).
+
+### C. 작업용 에이전트
+
+writer는 **에이전트 정의를 만들지 않는다.** harness-fin이 제공하는 공통 에이전트(`impact-analyzer`, `change-safety`, `pattern-extractor`, `migration-planner`, `test-generator`, `sql-reviewer`, `legacy-decoder`, `doc-syncer`)는 사용자가 harness-fin을 그대로 복사하는 것으로 사용한다.
+
+`.claude/agents/domain-expert.md` = `_workspace/01_analyzer_report.md`를 그대로 주입한 파일이라 writer가 같은 내용을 다시 타이핑할 이유가 없다. `agents/lib/skills_builder.py`가 harness-init Phase 2-2.3에서 analyzer_report를 그대로 복사해 생성한다 (LLM 미개입).
 
 ### D. 패턴 파일 (NEW — pattern-extractor와 협업)
 
@@ -63,69 +66,29 @@ writer는 패턴 파일 *스켈레톤*만 만들고, 실제 컨벤션 추출은 
 
 ---
 
-## 1. CLAUDE.md 생성 규칙
+## 1. CLAUDE.md 생성 규칙 (하이브리드 — writer는 필드만 채운다)
 
-**경량 포인터형** + 작업 워크플로우 트리거 테이블 확장.
+CLAUDE.md 자체는 writer가 markdown으로 직접 쓰지 않는다. 골격(고정 워크플로우 표·변경이력 헤더·파트너 섹션 서식)은 `agents/lib/claude_md.template.md`에 이미 있고, `agents/lib/skills_builder.py`가 harness-init Phase 2-2.3에서 조립한다 (파트너 섹션은 `pair_config.md` 필드를 그대로 옮기는 것뿐이라 스크립트가 전담 — writer가 손댈 필요 없음).
 
-```markdown
-# CLAUDE.md
+writer가 할 일은 **`_workspace/claude_md_fields.json`에 다음 필드만 채워서 출력**하는 것:
 
-[프로젝트명] — [한 줄 설명]
-
-## 기술 스택
-[2~3줄 요약]
-
-## 요청 흐름
-[분석 리포트 그대로]
-
-## 주요 파일 위치
-| 레이어 | 경로 |
-|--------|------|
-[테이블]
-
-## 빌드 / 실행
-[명령]
-
-## 자동 워크플로우
-| 상황 | 스킬 |
-|------|------|
-| 요청 흐름 추적, URL 추적 | trace |
-| 로직 위치 탐색 | find-logic |
-| 기본 신규 파일 체크리스트 | scaffolder |
-| **변경 영향도 분석** | analyze-impact |
-| **안전한 변경 진행** | safe-modify |
-| **컨벤션 따라 신규 기능 생성** | scaffold-feature |
-| **마이그레이션 계획** | plan-migration |
-| **SQL 영향도/리뷰** | review-sql |
-| **전체 스택 기능 생성 (pair 연동 시)** | cross-repo-scaffold |
-
-## 작업 시 주의사항
-[분석 리포트의 "보완 권장 (자동 탐지 불가)" 중 중요 항목]
-
-## 파트너 프로젝트 ([frontend/backend]) — pair_config.md 있는 경우만 추가
-
-- 파트너 경로: [절대경로]
-- 스택: [스택]
-- API 계약: `_workspace/index/api_contract.json`
-- 연동일: [YYYY-MM-DD]
-
-### 크로스 리포 워크플로우
-| 상황 | 명령 |
-|------|------|
-| 전체 스택 기능 동시 생성 | "전체 스택 기능 만들어줘" → cross-repo-scaffold |
-| API 변경 전 파트너 영향 확인 | "영향도 분석해줘" → analyze-impact |
-| API 드리프트 재확인 | "API 드리프트 확인해줘" → pair-init 재실행 |
-| 프론트 서비스 스텁만 생성 | "프론트 스텁 만들어줘" → api-bridge |
-
-## 변경 이력
-| 날짜 | 변경 내용 | 대상 | 사유 |
-|------|----------|------|------|
-| [YYYY-MM-DD] | 초기 구성 (analyzer 출력 기반) | 전체 | harness-fin v1 적용 |
+```json
+{
+  "project_name": "[프로젝트명 — package.json/pom.xml 등에서 확인, 없으면 빈 문자열]",
+  "one_line_desc": "[한 줄 설명]",
+  "tech_stack_summary": "[기술 스택 2~3줄 요약]",
+  "request_flow": "[분석 리포트의 요청 흐름 그대로]",
+  "file_locations_rows": "[주요 파일 위치 테이블의 행(row)만. 예: '| Controller | src/controllers/ |\\n| Service | src/services/ |']",
+  "build_run": "[빌드/실행 명령]",
+  "cautions": "[분석 리포트의 '보완 권장 (자동 탐지 불가)' 중 중요 항목]"
+}
 ```
+
+이 필드들은 실제 코드 이해가 필요한 서술형 내용이라 여전히 writer(LLM)가 작성한다 — 없어지는 건 모든 프로젝트에서 토씨 하나 안 바뀌는 워크플로우 표·변경이력 헤더·파트너 섹션 서식을 매번 재작성하던 부분뿐.
 
 ---
 
-## 2~5. trace / scaffolder / find-logic / domain-expert
+## 2~4. trace / scaffolder / find-logic
 
 생성 규칙은 기존 harness-new writer와 동일. (description 트리거는 한국어 ≥3개 / 영어 ≥2개 / 스택 키워드 ≥1개 충족.)
 
@@ -133,147 +96,14 @@ writer는 패턴 파일 *스켈레톤*만 만들고, 실제 컨벤션 추출은 
 - **trace.md** — 요청 흐름 단계별 탐색 절차 (스택별 분기)
 - **scaffolder.md** — 신규 기능 파일 체크리스트 (기본형, 패턴 강제는 scaffold-feature가 담당)
 - **find-logic.md** — 역방향(쿼리/route → 코드) 탐색
-- **domain-expert.md** — 분석 리포트 전체를 시스템 프롬프트에 주입
+
+`domain-expert.md`는 writer 소관 아님 (위 "C. 작업용 에이전트" 참조 — skills_builder.py가 analyzer_report 복사로 생성).
 
 ---
 
-## 6. analyze-impact.md (NEW)
+## 6~10. analyze-impact.md / safe-modify.md / scaffold-feature.md / plan-migration.md / review-sql.md
 
-```yaml
----
-name: analyze-impact
-description: 변경 대상(파일/함수/클래스/SQL/엔드포인트)의 영향도를 분석한다. "이거 수정하면 어디 영향?", "영향도 분석", "impact analysis", "이 함수 수정해도 돼?", "이 SQL 바꿨을 때 어디 영향?", "이 컬럼 추가했을 때 영향" 등 요청 시 트리거.
----
-
-# Analyze Impact (오케스트레이터)
-
-변경 대상이 주어지면 `impact-analyzer` 에이전트를 호출해 직간접 영향과 위험도를 평가한다.
-
-## 입력
-사용자가 자연어로 변경 대상을 명시 ("OrderService.cancel 수정 예정", "TBL_ORDER에 STATUS 컬럼 추가").
-
-## 실행
-1. `_workspace/index/` 인덱스 존재 확인. 없으면 → analyzer를 `feature-scoped` 모드로 호출해 최소 인덱스 생성.
-2. impact-analyzer 에이전트 호출 (general-purpose, opus):
-   - 입력: 변경 대상, 인덱스 경로
-   - 출력: `_workspace/impact_<slug>.md`
-3. 결과를 사용자에게 보고 (1~10 위험도, 영향받는 파일/테스트/외부 시스템).
-
-상세 로직은 `.claude/agents/impact-analyzer.md` 참조 (harness-fin 공통).
-```
-
----
-
-## 7. safe-modify.md (NEW)
-
-```yaml
----
-name: safe-modify
-description: 코드 변경을 안전하게 수행하는 워크플로우. "이거 안전하게 수정해줘", "회귀 위험 없이 변경", "safe modify", "이 변경 안전한가?", "변경 전 체크", "이 패치 적용해도 돼?" 요청 시 트리거.
----
-
-# Safe Modify (오케스트레이터)
-
-변경을 적용하기 전후로 영향도·안전성 평가를 자동 수행한다.
-
-## 단계
-1. **사전 분석** — analyze-impact 호출 (위의 6번과 동일)
-2. **변경 적용** — 사용자 확인 후 코드 수정 진행
-3. **사후 검증** — `change-safety` 에이전트 호출:
-   - 입력: git diff, impact 리포트
-   - 출력: `_workspace/safety_<slug>.md` (GO/HOLD/STOP 권고)
-4. **테스트 권고** — 영향받는 테스트 목록 + 신규 회귀 테스트가 필요한 위치 표시
-
-상세 로직은 `.claude/agents/change-safety.md` 참조 (harness-fin 공통).
-```
-
----
-
-## 8. scaffold-feature.md (NEW)
-
-```yaml
----
-name: scaffold-feature
-description: 추출된 프로젝트 컨벤션에 따라 신규 기능을 스캐폴딩한다. "[기능명] 기능 추가", "주문 취소 기능 만들어줘", "scaffold feature", "신규 모듈 생성 (컨벤션 준수)", "패턴대로 만들어줘" 요청 시 트리거.
----
-
-# Scaffold Feature (오케스트레이터)
-
-`.claude/patterns/` 에 추출된 컨벤션 파일들을 로드한 뒤 신규 파일을 생성한다.
-
-## 단계
-1. `.claude/patterns/*.md` 모두 로드 (없으면 pattern-extractor 먼저 호출)
-2. 사용자에게 기능명·범위 확인 (1~2회 질문)
-3. 영향받을 레이어 식별 (Controller→Service→DAO→Table 등)
-4. 각 레이어에 컨벤션 준수 보일러플레이트 생성
-5. 테스트 골격 생성
-6. 사전 영향도 체크 (analyze-impact 호출, 기존 코드와 충돌 여부)
-
-기본 scaffolder.md와의 차이: scaffolder는 *체크리스트만* 제공, scaffold-feature는 *실제 파일 생성*까지 수행.
-```
-
----
-
-## 9. plan-migration.md (NEW — 조건부)
-
-대상 스택이 마이그레이션 후보로 식별된 경우(예: Struts 1.x, iBatis, EJB 2, Spring 3, .NET FW 2~3)에만 생성한다. 그 외는 스킵.
-
-```yaml
----
-name: plan-migration
-description: 스택 마이그레이션 계획을 수립한다. "Spring Boot로 마이그레이션", "Struts → Spring", "iBatis → MyBatis", "마이그레이션 계획", "migration plan", ".NET Core로 옮겨야 해" 요청 시 트리거.
----
-
-# Plan Migration (오케스트레이터)
-
-`migration-planner` 에이전트를 호출해 단계별 계획·매핑 테이블·롤백 시나리오를 생성한다.
-
-## 입력
-- 소스 스택 (분석 리포트에서 자동 추출)
-- 타겟 스택 (사용자 입력)
-- 범위 (전체 / 모듈 단위)
-
-## 출력
-`_workspace/migration/` 하위 다중 파일:
-- 00_inventory.md, 01_mapping_table.md, 02_phased_plan.md
-- 03_risk_register.md, 04_test_strategy.md, 05_rollback_plan.md
-- checkpoints/[phase].md
-
-상세 로직은 `.claude/agents/migration-planner.md` 참조 (harness-fin 공통).
-```
-
----
-
-## 10. review-sql.md (NEW — 조건부)
-
-DB 사용이 식별된 경우에만 생성.
-
-```yaml
----
-name: review-sql
-description: SQL 영향도·성능·보안을 리뷰한다. "이 SQL 리뷰해줘", "쿼리 점검", "SQL review", "N+1 확인", "이 쿼리 성능", "인덱스 잘 쓰고 있어?" 요청 시 트리거.
----
-
-# Review SQL (오케스트레이터)
-
-`sql-reviewer` 에이전트를 호출해 SQL 텍스트 또는 변경 diff를 리뷰한다.
-
-## 검사 항목
-- 사용처 역추적 (어디서 호출되나)
-- 인덱스 활용 가능성
-- N+1 패턴
-- SQL 인젝션 위험
-- 트랜잭션 적정성
-- DB 스키마 영향 (DDL인 경우)
-
-상세 로직은 `.claude/agents/sql-reviewer.md` 참조 (harness-fin 공통).
-```
-
----
-
-## 11. domain-expert.md (기존과 동일)
-
-분석 리포트 전체를 시스템 프롬프트에 주입.
+writer는 이 5개 파일을 직접 작성하지 않는다. 정적 텍스트 원본은 `agents/lib/skills/*.template.md`에 있고, `agents/lib/skills_builder.py`가 배포한다 (analyze-impact/safe-modify/scaffold-feature는 항상, plan-migration/review-sql은 조건부). writer가 할 일은 위 "### B. 작업용 스킬" 섹션에 설명한 대로 조건부 2종의 생성 여부 판단 + `_workspace/02_writer_files.md` 기록뿐이다.
 
 ---
 
@@ -343,20 +173,24 @@ hooks를 생성할 이유가 명확하지 않으면 **생성하지 않는다.** 
 
 생성된 파일:
 
-[Core]
-- CLAUDE.md
+[Core — writer 직접 작성]
+- _workspace/claude_md_fields.json           (CLAUDE.md 필드 — 아래 skills_builder.py가 조립)
 - .claude/skills/trace.md
 - .claude/skills/scaffolder.md
 - .claude/skills/find-logic.md
-- .claude/agents/domain-expert.md
 
-[Workflow Skills]
+[skills_builder.py가 뒤이어 배포 — 여기 안 씀]
+- CLAUDE.md                                 (claude_md_fields.json + 템플릿 조립)
+- .claude/agents/domain-expert.md           (analyzer_report 복사)
 - .claude/skills/analyze-impact.md
 - .claude/skills/safe-modify.md
 - .claude/skills/scaffold-feature.md
-- .claude/skills/plan-migration.md          (생성 조건 충족 시)
-- .claude/skills/review-sql.md              (DB 사용 확인 시)
+- .claude/skills/plan-migration.md          (생성 조건 충족 시 — 아래 판단 참조)
+- .claude/skills/review-sql.md              (DB 사용 확인 시 — 아래 판단 참조)
+
+[Workflow Skills — writer 직접 작성]
 - .claude/skills/cross-repo-scaffold.md     (pair_config.md 있는 경우)
+- .claude/skills/cross-repo-modify.md       (pair_config.md 있는 경우)
 
 [Pattern Skeletons — pattern-extractor가 채울 예정]
 - .claude/patterns/[목록]
@@ -368,6 +202,7 @@ hooks를 생성할 이유가 명확하지 않으면 **생성하지 않는다.** 
 - plan-migration.md: [생성/미생성 + 사유]
 - review-sql.md: [생성/미생성 + 사유]
 - cross-repo-scaffold.md: [생성/미생성 — pair_config.md 존재 여부]
+- cross-repo-modify.md: [생성/미생성 — pair_config.md 존재 여부]
 
 적용 결정 사유:
 - [선택한 패턴과 이유]

@@ -1,0 +1,21 @@
+---
+name: plan-migration
+description: 스택 마이그레이션 계획을 수립한다. "Spring Boot로 마이그레이션", "Struts → Spring", "iBatis → MyBatis", "마이그레이션 계획", "migration plan", ".NET Core로 옮겨야 해" 요청 시 트리거.
+---
+
+# Plan Migration (오케스트레이터)
+
+`migration-planner` 에이전트를 호출해 단계별 계획·매핑 테이블·롤백 시나리오를 생성한다.
+
+## 입력
+- 소스 스택 (분석 리포트에서 자동 추출)
+- 타겟 스택 (사용자 입력)
+- 범위 (전체 / 모듈 단위)
+
+## 출력
+`_workspace/migration/` 하위 다중 파일:
+- 00_inventory.md, 01_mapping_table.md, 02_phased_plan.md
+- 03_risk_register.md, 04_test_strategy.md, 05_rollback_plan.md
+- checkpoints/[phase].md
+
+상세 로직은 `.claude/agents/migration-planner.md` 참조 (harness-fin 공통).

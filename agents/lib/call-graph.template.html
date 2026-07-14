@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{PROJECT_NAME}} Call Graph</title>
+  <script data-noframing="true" src="lib/vis-network.min.js"></script>
+  <link data-noframing="true" href="lib/vis-network.min.css" rel="stylesheet" />
+  <script>
+    (function() {
+      var currentPath = window.location.pathname;
+      var baseDir = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
+      if (window.location.hash && window.location.hash.indexOf('#/') === 0) {
+      }
+    })();
+  </script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    .header { background: rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.1); padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+    .header h1 { font-size: 18px; font-weight: 700; color: #fff; }
+    .header .subtitle { font-size: 11px; color: #888; margin-top: 2px; }
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    #searchInput { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 6px 12px; color: #fff; font-size: 13px; width: 200px; outline: none; }
+    #searchInput::placeholder { color: #666; }
+    #searchInput:focus { border-color: #4A90D9; }
+    .filter-bar { background: rgba(0,0,0,0.3); border-bottom: 1px solid rgba(255,255,255,0.07); padding: 8px 20px; display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: wrap; }
+    .filter-bar span { font-size: 11px; color: #888; margin-right: 4px; }
+    .filter-btn { padding: 4px 12px; border-radius: 20px; border: 1px solid; font-size: 11px; cursor: pointer; transition: all .2s; font-weight: 600; background: transparent; }
+    .filter-btn.active { opacity: 1; }
+    .filter-btn:not(.active) { opacity: 0.35; }
+    .filter-btn[data-type="all"]      { border-color: #aaa;     color: #aaa; }
+    .filter-btn[data-type="view"],
+    .filter-btn[data-type="vue_view"]      { border-color: #E74C3C;  color: #E74C3C; }
+    .filter-btn[data-type="endpoint"]      { border-color: #4A90D9;  color: #4A90D9; }
+    .filter-btn[data-type="function"]      { border-color: #9B59B6;  color: #9B59B6; }
+    .filter-btn[data-type="dao"]           { border-color: #2E86C1;  color: #2E86C1; }
+    .filter-btn[data-type="external"],
+    .filter-btn[data-type="sap_interface"] { border-color: #F5A623;  color: #F5A623; }
+    .filter-btn[data-type="db_table"],
+    .filter-btn[data-type="mssql_table"]   { border-color: #7ED321;  color: #7ED321; }
+    .filter-btn[data-type="util"]          { border-color: #48C9B0;  color: #48C9B0; }
+    .main { display: flex; flex: 1; overflow: hidden; }
+    #graph { flex: 1; background: #0f0f1e; }
+    #detail { width: 280px; background: rgba(255,255,255,0.04); border-left: 1px solid rgba(255,255,255,0.08); padding: 16px; overflow-y: auto; flex-shrink: 0; }
+    #detail h3 { font-size: 13px; color: #aaa; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .5px; }
+    #detail .empty { color: #555; font-size: 13px; line-height: 1.6; }
+    .detail-card { background: rgba(255,255,255,0.06); border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+    .detail-card .label { font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 4px; }
+    .detail-card .value { font-size: 13px; color: #e0e0e0; word-break: break-all; }
+    .detail-card .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; margin-top: 6px; }
+    .conn-list { list-style: none; }
+    .conn-list li { font-size: 12px; color: #ccc; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .conn-list li:last-child { border-bottom: none; }
+    .conn-arrow { color: #4A90D9; margin-right: 4px; }
+    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+    .stat-box { background: rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; text-align: center; }
+    .stat-box .num { font-size: 22px; font-weight: 700; color: #4A90D9; }
+    .stat-box .lbl { font-size: 10px; color: #888; margin-top: 2px; }
+    .legend { margin-top: 16px; }
+    .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; color: #ccc; }
+    .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div>
+      <h1>🗺️ {{PROJECT_NAME}} Call Graph</h1>
+      <div class="subtitle">정적 분석 기반 · 런타임 동적 호출 미포함 · {{STACK_DESCRIPTION}}</div>
+    </div>
+    <div class="header-right">
+      <input id="searchInput" type="text" placeholder="노드 검색..." />
+    </div>
+  </div>
+
+  <div class="filter-bar">
+    <span>필터:</span>
+    <button class="filter-btn active" data-type="all">전체</button>
+    {{FILTER_BUTTONS}}
+  </div>
+
+  <div class="main">
+    <div id="graph"></div>
+    <div id="detail">
+      <h3>통계</h3>
+      <div class="stats">
+        <div class="stat-box"><div class="num" id="stat-nodes">0</div><div class="lbl">노드</div></div>
+        <div class="stat-box"><div class="num" id="stat-edges">0</div><div class="lbl">엣지</div></div>
+        {{EXTRA_STATS}}
+      </div>
+      <div class="legend">
+        {{LEGEND_ITEMS}}
+      </div>
+      <hr style="border-color:rgba(255,255,255,0.08);margin:16px 0;" />
+      <h3>노드 상세</h3>
+      <div id="detailContent" class="empty">노드를 클릭하면<br />상세 정보가 표시됩니다.</div>
+    </div>
+  </div>
+
+  <script>
+    const COLORS = {{COLORS}};
+    const nodeTypeMap = {};
+
+    function nodeColor(type) {
+      const c = COLORS[type] || { bg: '#1e293b', border: '#334155' };
+      return { background: c.bg, border: c.border, highlight: { background: c.border, border: '#fff' } };
+    }
+
+    function nodeShape(type) {
+      const shapes = {
+        view: 'ellipse', vue_view: 'ellipse',
+        endpoint: 'box',
+        function: 'hexagon', dao: 'hexagon',
+        external: 'diamond', sap_interface: 'diamond',
+        db_table: 'database', mssql_table: 'database',
+        util: 'dot'
+      };
+      return shapes[type] || 'dot';
+    }
+
+    function mkNode(id, label, type, extra = {}) {
+      const c = COLORS[type] || { bg: '#1e293b', border: '#334155', font: '#e0e0e0' };
+      nodeTypeMap[id] = type;
+      return {
+        id, label,
+        color: nodeColor(type),
+        font: { color: c.font || '#e0e0e0', size: 12 },
+        shape: nodeShape(type),
+        borderWidth: 2,
+        shadow: true,
+        ...extra
+      };
+    }
+
+    const nodesData = {{NODES_DATA}};
+
+    function edge(from, to, label = '', dashed = false) {
+      return {
+        from, to, label, arrows: 'to', dashes: dashed,
+        color: { color: 'rgba(150,150,200,0.4)', highlight: '#4A90D9' },
+        font: { size: 9, color: '#999', align: 'middle' },
+        smooth: { type: 'curvedCW', roundness: 0.1 }
+      };
+    }
+
+    const edgesData = {{EDGES_DATA}};
+    const META = {{META}};
+
+    const container = document.getElementById('graph');
+    const nodes = new vis.DataSet(nodesData);
+    const edges_ds = new vis.DataSet(edgesData);
+    const network = new vis.Network(container, { nodes, edges: edges_ds }, {
+      physics: {
+        enabled: true, solver: 'forceAtlas2Based',
+        forceAtlas2Based: { gravitationalConstant: -60, centralGravity: 0.005, springLength: 120, springConstant: 0.04, damping: 0.4 },
+        stabilization: { iterations: 250 }
+      },
+      interaction: { hover: true, tooltipDelay: 200, navigationButtons: false, keyboard: false },
+      edges: { width: 1.2, smooth: { type: 'dynamic' } },
+      nodes: { borderWidth: 2, shadow: true },
+      layout: { improvedLayout: true }
+    });
+
+    document.getElementById('stat-nodes').textContent = nodesData.length;
+    document.getElementById('stat-edges').textContent = edgesData.length;
+
+    function getLabel(id) {
+      const n = nodesData.find(x => x.id === id);
+      return n ? n.label.replace(/\n/g, ' ') : id;
+    }
+
+    network.on('click', params => {
+      const dc = document.getElementById('detailContent');
+      if (!params.nodes.length) {
+        dc.innerHTML = '<span class="empty">노드를 클릭하면<br/>상세 정보가 표시됩니다.</span>';
+        return;
+      }
+      const id = params.nodes[0];
+      const m = META[id] || {};
+      const lbl = getLabel(id);
+      const type = nodeTypeMap[id];
+      const c = COLORS[type];
+      const typeColor = c ? c.border : '#aaa';
+      const connEdges = edgesData.filter(e => e.from === id || e.to === id);
+      const outgoing = connEdges.filter(e => e.from === id).map(e => `<li><span class="conn-arrow">→</span>${getLabel(e.to)}</li>`).join('');
+      const incoming = connEdges.filter(e => e.to === id).map(e => `<li><span class="conn-arrow">←</span>${getLabel(e.from)}</li>`).join('');
+      dc.innerHTML = `
+        <div class="detail-card">
+          <div class="label">노드</div>
+          <div class="value">${lbl}</div>
+          ${m.type ? `<span class="badge" style="background:${typeColor}22;color:${typeColor};border:1px solid ${typeColor}">${m.type}</span>` : ''}
+        </div>
+        ${m.file ? `<div class="detail-card"><div class="label">파일</div><div class="value" style="font-family:monospace;font-size:11px">${m.file}</div></div>` : ''}
+        ${m.api  ? `<div class="detail-card"><div class="label">API</div><div class="value" style="font-size:11px">${m.api}</div></div>` : ''}
+        ${m.note ? `<div class="detail-card"><div class="label">설명</div><div class="value" style="font-size:11px;white-space:pre-wrap">${m.note}</div></div>` : ''}
+        ${outgoing ? `<div class="detail-card"><div class="label">호출 대상 (→ ${connEdges.filter(e => e.from === id).length}개)</div><ul class="conn-list">${outgoing}</ul></div>` : ''}
+        ${incoming ? `<div class="detail-card"><div class="label">호출처 (← ${connEdges.filter(e => e.to === id).length}개)</div><ul class="conn-list">${incoming}</ul></div>` : ''}
+      `;
+    });
+
+    network.on('doubleClick', params => {
+      if (!params.nodes.length) { network.unselectAll(); return; }
+      const id = params.nodes[0];
+      const connected = edgesData.filter(e => e.from === id || e.to === id).flatMap(e => [e.from, e.to]);
+      network.selectNodes([...new Set(connected)]);
+    });
+
+    const allTypes = [...new Set(nodesData.map(n => nodeTypeMap[n.id]))];
+    const activeTypes = new Set(allTypes);
+
+    document.querySelectorAll('.filter-btn[data-type]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const type = btn.dataset.type;
+        if (type === 'all') {
+          const allOn = activeTypes.size === allTypes.length;
+          activeTypes.clear();
+          if (!allOn) allTypes.forEach(t => activeTypes.add(t));
+          document.querySelectorAll('.filter-btn:not([data-type="all"])').forEach(b => b.classList.toggle('active', activeTypes.has(b.dataset.type)));
+        } else {
+          if (activeTypes.has(type)) activeTypes.delete(type); else activeTypes.add(type);
+          btn.classList.toggle('active', activeTypes.has(type));
+        }
+        nodesData.forEach(n => {
+          const t = nodeTypeMap[n.id];
+          nodes.update({ id: n.id, hidden: !activeTypes.has(t), color: nodeColor(t) });
+        });
+      });
+    });
+
+    document.getElementById('searchInput').addEventListener('input', e => {
+      const q = e.target.value.trim().toLowerCase();
+      nodesData.forEach(n => {
+        const type = nodeTypeMap[n.id];
+        if (!q) { nodes.update({ id: n.id, color: nodeColor(type) }); return; }
+        const match = n.label.toLowerCase().includes(q);
+        const c = COLORS[type] || { bg: '#1e293b', border: '#334155' };
+        nodes.update({
+          id: n.id,
+          color: match
+            ? { background: c.border, border: '#fff', highlight: { background: '#fff', border: c.border } }
+            : { background: '#333', border: '#555' }
+        });
+      });
+    });
+  </script>
+</body>
+</html>

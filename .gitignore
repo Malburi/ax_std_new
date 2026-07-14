@@ -3,5 +3,6 @@ _workspace/
 *.log
 .DS_Store
 Thumbs.db
+.env
 presentation-ai-journey.html
 presentation.html

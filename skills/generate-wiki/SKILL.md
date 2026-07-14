@@ -1,13 +1,11 @@
 ---
 name: generate-wiki
-description: harness 산출물(_workspace + .claude)을 기반으로 프로젝트 wiki 페이지 세트를 생성한다. call_graph.json을 vis-network 기반 인터랙티브 HTML(call-graph.html)로 변환하는 것을 포함. HTML 템플릿은 wiki-builder 에이전트에 내장(외부 파일 의존성 없음). "wiki 만들어줘", "wiki 생성", "문서 wiki", "프로젝트 wiki 생성", "위키 만들어줘", "generate wiki", "위키 업데이트", "call graph 시각화", "호출 그래프 wiki" 요청 시 트리거. harness-init 완료 후 자동 제안.
+description: harness 산출물(_workspace + .claude)을 기반으로 프로젝트 wiki 페이지 세트를 생성한다. call_graph.json을 vis-network 기반 인터랙티브 HTML(call-graph.html)로 변환하는 것을 포함. "wiki 만들어줘", "wiki 생성", "문서 wiki", "프로젝트 wiki 생성", "위키 만들어줘", "generate wiki", "위키 업데이트", "call graph 시각화", "호출 그래프 wiki" 요청 시 트리거. harness-init 완료 후 자동 제안.
 ---
 
 # Generate Wiki (오케스트레이터)
 
-`wiki-builder` 에이전트를 호출해 harness 산출물로부터 탐색 가능한 wiki 페이지 세트를 만든다.  
-`_workspace/index/call_graph.json`을 **vis-network 기반 인터랙티브 HTML 파일(call-graph.html)**로 변환한다.  
-HTML 구조·디자인은 `wiki-builder.md`에 내장된 템플릿을 사용하며 외부 파일 의존성이 없다.
+`wiki-builder` 에이전트와 후속 `wiki_generator.py` 프로그램을 연계하여 토큰을 절약하는 방식으로 wiki 문서를 빌드한다.
 
 ---
 
@@ -19,7 +17,6 @@ HTML 구조·디자인은 `wiki-builder.md`에 내장된 템플릿을 사용하�
 |---------|---------|
 | `_workspace/01_analyzer_report.md` | "harness-init을 먼저 실행해주세요" 안내 후 중단 |
 | `CLAUDE.md` | 경고만 표시, 계속 진행 |
-| `_workspace/index/call_graph.json` | call-graph.html을 "데이터 없음" 상태로 생성 |
 
 ### 기존 wiki 감지
 
@@ -38,42 +35,72 @@ HTML 구조·디자인은 `wiki-builder.md`에 내장된 템플릿을 사용하�
 
 ## Phase 1: 페이지 범위 확인
 
-기본적으로 발견된 데이터 기반으로 자동 결정하지만, 사용자가 범위를 지정할 수 있다:
-
-```
-사용 가능한 wiki 페이지:
-✅ Home, architecture, workflows          (항상 생성 — .md)
-✅ call-graph.html                        (항상 생성 — vis-network 인터랙티브 HTML)
-✅ api-endpoints     (API 엔드포인트 탐지됨 / ❌ 미탐지)
-✅ database          (DB 사용 탐지됨 / ❌ 미탐지)
-✅ patterns          (patterns/ 파일 있음 / ❌ 없음)
-✅ external-systems  (외부 연동 탐지됨 / ❌ 없음)
-✅ issues            (validator/QA 이슈 있음 / ❌ 없음)
-
-전체 생성하시겠습니까? (Y) / 특정 페이지만 선택하시겠습니까? (페이지명 입력)
-```
-
-"Y" 또는 응답 없이 "생성해줘"면 전체 진행.  
-페이지명이 명시되면 해당 페이지만 생성.
+기본적으로 발견된 데이터 기반으로 자동 결정하지만, 사용자가 범위를 지정할 수 있다.
 
 ---
 
-## Phase 2: wiki-builder 호출
+## Phase 1.5: 저장 위치 선택
+
+```
+시스템 wiki를 어디에 저장할까요?
+
+1. 폴더 (기본) — wiki/ 폴더에 파일로 저장, wiki/index.html을 더블클릭으로 바로 열람 (서버·CDN 불필요)
+2. DB (MSSQL) — 프로젝트 루트의 .env(MSSQL_HOST/PORT/USER/PASSWORD/DATABASE) 접속 정보로
+   harness_wiki_pages 테이블에 저장. 조회는 agents/lib/wiki_db_server.py 로컬 서버로 브라우저 열람.
+   (wiki/ 폴더는 빌드 스테이징 겸 로컬 캐시로 계속 남음)
+
+선택? (1/2)
+```
+
+| 선택 | `wiki_generator.py --storage` |
+|------|------|
+| 1 / 폴더 | `folder` (기본값 — 생략 가능) |
+| 2 / DB | `db` |
+
+`.env` 없거나 접속 실패 시 → wiki_generator.py가 폴더 저장은 그대로 완료하고 `07_wiki_build.md`에 DB 실패 사유만 기록한다 (전체 실패로 처리하지 않음). 해당 경우 사용자에게 `.env` 설정 확인 안내.
+
+### DB 선택 시 — 시스템 키 확인
+
+여러 시스템(백엔드/프론트엔드, 또는 서로 다른 프로젝트)의 wiki가 같은 DB에 쌓이므로,
+프로젝트 루트 `.env`에 `WIKI_SYSTEM_KEY`가 이미 있는지 먼저 확인한다.
+
+| 상태 | 동작 |
+|------|------|
+| `.env`에 `WIKI_SYSTEM_KEY` 있음 | "시스템 키: [값] (기존 설정 재사용)" 안내만 하고 재질문 없이 진행 |
+| 없음 | 아래 질문 후 응답을 `.env`에 저장하고 진행 |
+
+```
+이 시스템을 DB에서 구분할 고유 키를 입력하세요 (예: ORDER-BACKEND, ORDER-FRONTEND).
+다른 시스템과 겹치지 않는 이름을 권장합니다.
+(미입력 시 폴더명 "[basename]"을 사용 — 다른 시스템도 폴더명이 같으면 데이터가 섞일 수 있습니다)
+```
+
+응답을 `.env`에 `WIKI_SYSTEM_KEY=[값]`으로 저장(이미 있으면 덮어쓰지 않음 — 기존 시스템 키가 실수로
+바뀌는 사고 방지). 이후 `wiki_generator.py`는 `.env`를 다시 읽으므로 별도 인자 전달 불필요.
+
+---
+
+## Phase 2: wiki-builder 호출 및 빌더 스크립트 실행
+
+### Step 1: wiki-builder 에이전트를 호출해 요약 JSON 생성
 
 ```
 Agent(
   subagent_type="general-purpose",
-  description="wiki 페이지 생성",
-  prompt="<wiki-builder 에이전트 지침에 따라 wiki 페이지 세트를 생성한다.
+  description="wiki 요약 JSON 생성",
+  prompt="<wiki-builder 에이전트 지침에 따라 분석 후 JSON 형태의 요약 데이터를 생성한다.
   프로젝트 루트: [절대경로].
-  wiki 출력 경로: [절대경로]/wiki/.
-  생성할 페이지: [Phase 1에서 확정된 목록].
-  call_graph.json 경로: _workspace/index/call_graph.json.
-  pair_config 연동: _workspace/pair_config.md가 존재하면 파트너 프로젝트의 산출물(01_analyzer_report.md, index/*.json 등)도 함께 읽어 프론트엔드-백엔드가 병합된 통합 위키 및 통합 호출 그래프를 생성할 것.
-  HTML 템플릿: wiki-builder.md 내장 (외부 파일 불필요).
-  출력: wiki/ 하위 페이지 파일들 + _workspace/07_wiki_build.md>",
+  출력 파일: _workspace/07_wiki_summary.json>",
   model="sonnet"
 )
+```
+
+### Step 2: wiki_generator.py 실행
+
+요약 데이터가 정상적으로 생성되면, 다음 터미널 명령을 통해 최종 위키 파일과 인터랙티브 호출 그래프를 프로그램식으로 병합 및 빌드한다.
+
+```powershell
+python agents/lib/wiki_generator.py --root "[절대경로]" --wiki-dir "[절대경로]/wiki" --summary "[절대경로]/_workspace/07_wiki_summary.json" --storage [folder|db]
 ```
 
 ---
@@ -83,87 +110,19 @@ Agent(
 `_workspace/07_wiki_build.md`를 읽어 요약 보고:
 
 ```
-wiki 생성 완료 (docsify 기반)
+wiki 생성 완료
 
 출력 위치: wiki/
-열기 방법: 브라우저로 wiki/index.html 직접 열기 (또는 로컬 서버)
-
-생성된 파일:
-- wiki/index.html          ★ docsify 진입점 (사이드바·검색·테마 포함)
-- wiki/_sidebar.md         ★ 좌측 트리 네비게이션
-- wiki/_navbar.md          ★ 상단 네비게이션 바
-- wiki/Home.md
-- wiki/architecture.md
-- wiki/workflows.md
-- wiki/call-graph.html   ★ (노드: N개, 엣지: M개, 허브: H개, 데드코드 후보: D개)
-- wiki/api-endpoints.md  (있는 경우)
-- wiki/database.md       (있는 경우)
-- wiki/patterns.md       (있는 경우)
-- wiki/external-systems.md (있는 경우)
-- wiki/issues.md         (있는 경우)
-
-call-graph.html:
-  - vis-network 라이브러리: CDN (cdn.jsdelivr.net/npm/vis-network@9.1.9)
-  - 노드 타입: endpoint N개, function M개, dependency K개
-  - 허브 노드: [id 목록]
-  - 데드 코드 후보: [id 목록]
-  - 필터 그룹: [그룹명 목록]
-  - 인터랙션: 클릭(상세패널), 더블클릭(연결강조), 필터버튼, 줌/팬
-
-주의사항:
-[파싱 경고·스킵 항목 있으면 표시]
-
-다음 단계:
-  wiki 전체 보기:  브라우저로 wiki/index.html 열기
-                   (좌측 트리 사이드바 + 상단 검색 + 페이지 내비게이션 포함)
-  call-graph 보기: wiki/index.html에서 사이드바 "호출 그래프 ↗" 클릭 (새 탭, data-noframing="true" 우회 적용)
-                   또는 wiki/call-graph.html 직접 열기
-  GitHub Pages:   wiki/ 폴더를 gh-pages 브랜치에 push (docsify가 자동 렌더링)
-  로컬 서버:       cd wiki && python -m http.server 8080 → http://localhost:8080
-                   (참고: Docsify 해시 라우팅 구조 하에서 가로채기 방지를 위해 target="_blank" 및 data-noframing="true"가 적용됨)
-  wiki 업데이트:   "wiki 업데이트해줘" (기존 wiki_prev/ 백업 후 재생성)
+열기 방법: wiki/index.html을 브라우저로 더블클릭해서 열기 (정적 렌더링 — 로컬 서버·인터넷 CDN 불필요)
+  - wiki/_html/*.html: Home·architecture·workflows 등 페이지의 브라우저용 렌더 사본 (원본은 wiki/*.md 그대로 유지)
+  - wiki/call-graph.html: 데이터가 파일 안에 인라인으로 포함된 완전 독립 페이지
 ```
 
----
+DB 저장을 선택한 경우, `07_wiki_build.md`의 "저장 위치" 줄(페이지 수·project_name·`wiki_db_server.py` 실행 명령)을 그대로 포함해 보고.
 
-## Phase 4: call-graph.html 특이사항 안내 (조건부)
+`pair_config.md`가 있으면 `07_wiki_build.md`의 "크로스 리포 병합" 줄을 그대로 포함해 보고 (병합 성공 시 파트너 노드/추론된 크로스 엣지 수, 스킵 시 사유).
 
-call_graph.json이 없거나 빈 경우:
-
-```
-call-graph.html은 생성됐지만 call_graph.json이 없어 그래프 데이터가 없습니다.
-
-해결 방법:
-  1. harness-init을 Standard/Full Tier로 재실행 (인덱스 생성 포함)
-  2. 또는: "인덱스만 갱신해줘" → analyzer incremental 실행 → "wiki 업데이트해줘"
-```
-
----
-
-## 시나리오 예시
-
-### 시나리오 1: harness-init 완료 후 wiki 생성
-사용자: "wiki 생성하시겠습니까?" → "예"
-
-1. Phase 0: _workspace/01_analyzer_report.md ✅, call_graph.json ✅
-2. Phase 1: 전체 페이지 자동 확인 (DB·외부연동 탐지 기반)
-3. Phase 2: wiki-builder 실행
-4. Phase 3: wiki/ 9개 파일 생성 보고 (call-graph.html 포함)
-
-### 시나리오 2: call graph만 별도 생성
-사용자: "call graph html 만들어줘"
-
-1. Phase 0: call_graph.json ✅, callgraph.html 템플릿 ✅
-2. Phase 1: call-graph.html 페이지만 선택
-3. Phase 2: wiki-builder 실행 (call-graph.html만)
-4. Phase 3: "wiki/call-graph.html 생성 완료. 노드 47개, 엣지 132개. 허브: 3개. 브라우저로 직접 열어서 확인하세요."
-
-### 시나리오 3: 코드 변경 후 wiki 업데이트
-사용자: "인덱스 갱신 후 wiki 업데이트해줘"
-
-1. Phase 0: 기존 wiki/ 감지 → 백업 제안
-2. 사용자 Y → wiki_prev/ 백업 후 재생성
-3. Phase 2~3: 최신 산출물 기반 wiki 재생성 (call-graph.html 포함)
+이후 DB ↔ 폴더 저장 위치를 바꾸고 싶으면 `sync-wiki` 스킬 안내.
 
 ---
 
@@ -172,11 +131,3 @@ call-graph.html은 생성됐지만 call_graph.json이 없어 그래프 데이터
 ### wiki는 산출물의 뷰, 소스는 harness
 wiki 파일은 `_workspace/`·`.claude/`에서 *생성*된다.  
 wiki 파일을 직접 편집해도 다음 `generate-wiki` 실행 시 덮어씌워진다.
-
-### call-graph.html은 정적 분석 기반
-런타임 동적 호출, 리플렉션, AOP 적용 메서드는 포함되지 않을 수 있다.  
-call-graph.html 상단 subtitle에 이 한계를 항상 명시한다.
-
-### HTML 템플릿은 wiki-builder.md에 내장
-call-graph.html 생성에 필요한 전체 HTML 템플릿은 `wiki-builder.md` 안에 완전히 내장되어 있다.  
-외부 템플릿 파일 불필요. 디자인: 다크 테마, 우측 고정 사이드바(통계·범례·노드 상세), 타입 기반 필터 토글, 헤더 실시간 검색.

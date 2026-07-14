@@ -46,9 +46,46 @@ description: 별도 저장소로 분리된 백엔드·프론트엔드 프로젝�
 PowerShell: `Test-Path "[파트너 경로]"` 또는 bash: `[ -d "[파트너 경로]" ]`
 
 - 경로 없음 → "경로를 확인해주세요" 안내 후 재입력 요청.
-- 파트너에 `CLAUDE.md` 없음 → WARN: "파트너 하네스가 없습니다. 먼저 파트너 프로젝트에서 `harness-init` 실행을 권장합니다. 없이 진행할까요? (Y/N)"
-  - Y → API 계약 추출만 하고 validate 스킵.
-  - N → 중단.
+- 파트너에 `CLAUDE.md` 없음 → 다음 3개 선택지 제시:
+
+```
+파트너 프로젝트([파트너 경로])에 하네스가 없습니다.
+
+1. 자동으로 파트너 하네스 생성 (권장) — subagent가 파트너 루트에서 harness-init을 대신 실행합니다.
+2. 하네스 없이 진행 — API 계약 추출만 하고 드리프트 검증(validate)은 스킵합니다.
+3. 중단 — 파트너 프로젝트에서 직접 harness-init 실행 후 재시도하세요.
+
+선택? (1/2/3)
+```
+
+| 선택 | 동작 |
+|------|------|
+| 1 | 아래 "파트너 하네스 자동 생성" 실행 후 Phase 2로 진행 |
+| 2 | API 계약 추출만 하고 validate 스킵 (기존 동작) |
+| 3 | 중단 |
+
+### 파트너 하네스 자동 생성 (선택 1)
+
+파트너 루트에서 harness-init을 subagent로 대신 실행한다:
+
+```
+Agent(
+  subagent_type="general-purpose",
+  description="파트너 하네스 자동 생성 ([파트너 경로])",
+  prompt="skills/harness-init/SKILL.md 파일을 읽고 그 지침을 그대로 따라 harness-init을 수행하라.
+  프로젝트 루트: [파트너 절대경로] (cwd 아님 — 이 경로 기준으로 모든 파일 읽기/쓰기 수행).
+  repo_structure: 'multi' (멀티레포 확정 상태 — Phase -2 재질문 불필요).
+  partner_info: { role: '[현재 프로젝트 역할과 반대]', path: '[현재 프로젝트 절대경로]', api_url: '[api_base_url]' }.
+  Phase -2는 위 partner_info로 이미 충족되었으므로 스킵하고 Phase -1로 직행.
+  Phase 3.5(pair-init)는 이미 호출 중인 pair-init 상위 흐름과 중복이므로 스킵하고 Phase 3.6(wiki 제안)부터 재개.
+  복잡도에 따라 Lite/Standard/Full 티어 자동 판단(기존 harness-init 로직 그대로).
+  완료 후 결과를 [파트너 절대경로]/_workspace/06_eval_report.md 및 CLAUDE.md 존재 여부로 보고하라.",
+  model="opus"
+)
+```
+
+- 현재 진행 중인 harness-init(현재 프로젝트 쪽)이 있다면, 이 Agent 호출을 **같은 메시지에서 현재 프로젝트의 남은 Phase 호출과 병렬로** 실행해 두 하네스 초기화가 동시에 진행되게 한다 (harness-init Phase 3.5 참조).
+- 완료 후 파트너 `CLAUDE.md` 존재 확인. 실패 시 → WARN 후 선택지 2(하네스 없이 진행)로 폴백.
 
 ---
 
@@ -140,6 +177,7 @@ Agent(
 | 상황 | 명령 |
 |------|------|
 | 전체 스택 기능 동시 생성 | "전체 스택 기능 만들어줘" → cross-repo-scaffold |
+| 기존 기능 개선/수정 양쪽 반영 | "이 기능 개선해줘 (프론트도 같이)" → cross-repo-modify |
 | API 변경 전 프론트 영향 확인 | "영향도 분석해줘" → analyze-impact (파트너 영향 자동 포함) |
 | 프론트 서비스 스텁만 생성 | "프론트 스텁 만들어줘" → api-bridge generate-stub |
 | API 드리프트 재확인 | "API 드리프트 확인해줘" → pair-init 재실행 |
@@ -160,6 +198,7 @@ Agent(
 | 상황 | 명령 |
 |------|------|
 | 전체 스택 기능 동시 생성 | "전체 스택 기능 만들어줘" → cross-repo-scaffold |
+| 기존 기능 개선/수정 양쪽 반영 | "이 기능 개선해줘 (백엔드도 같이)" → cross-repo-modify |
 | 사용 가능한 API 목록 확인 | "API 목록 보여줘" → api-bridge extract (재읽기) |
 | 드리프트 감지 | "API 드리프트 확인해줘" → pair-init 재실행 |
 ```
@@ -205,3 +244,4 @@ HIGH 드리프트가 있으면 "즉시 수정 권장" 항목 명시.
 | api-bridge extract 실패 | WARN 기록, 나머지 Phase 계속 진행 |
 | 파트너 CLAUDE.md 수정 권한 없음 | 현재 프로젝트 CLAUDE.md만 수정, 파트너는 수동 안내 |
 | pair_config.md 이미 있음 | 덮어쓰기 전 사용자 확인 |
+| 파트너 하네스 자동 생성(선택 1) 실패 | WARN 후 선택지 2(하네스 없이 진행)로 폴백, 중단하지 않음 |
