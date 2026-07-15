@@ -24,6 +24,10 @@ description: 페어 연동된 백엔드·프론트엔드 중 한쪽에서 지시
 pair_config에서 `project_type`(현재 역할), `partner_type`, `partner_root`, `partner_workspace`,
 `api_contract_path`, `partner_api_contract` 로드. `initiating_root` = 현재 프로젝트 루트.
 
+`wiki/architecture.md`(통합본, `generate-wiki`로 생성된 경우)가 있으면 먼저 훑어 시스템 전체 구조를
+빠르게 파악하는 데 참고할 수 있다 — 단, 생성 시점 스냅샷이라 최신성이 보장되지 않으므로 실제 영향
+분석·드리프트 검증은 반드시 아래 Phase 1/2/6의 라이브 재분석(`impact-analyzer`/`api-bridge`)으로 수행한다.
+
 ### 운영 모드 키워드 감지
 
 safe-modify Phase 0과 동일한 키워드 표 적용 (`production`/`hotfix`/`legacy`/`customer_facing`/`normal`).

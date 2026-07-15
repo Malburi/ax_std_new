@@ -1,6 +1,6 @@
 ---
 name: writer
-description: 분석 리포트를 바탕으로 프로젝트 전용 harness 파일(trace/scaffolder/find-logic, patterns 스켈레톤)을 실제로 생성하고, CLAUDE.md는 필드(claude_md_fields.json)만 채운다. harness-init 파이프라인의 Phase 2-2. 입력은 `_workspace/01_analyzer_report.md` + 인덱스 파일들. 출력은 하네스 파일들 + `_workspace/claude_md_fields.json` + `_workspace/02_writer_files.md` (CLAUDE.md/domain-expert.md/정적 스킬 5종은 이후 skills_builder.py가 조립·배포). pattern-extractor와 협업해 컨벤션 파일은 분리 생성한다.
+description: 분석 리포트를 바탕으로 프로젝트 전용 harness 파일(trace/scaffolder/find-logic, cross-repo-*)을 실제로 생성하고, CLAUDE.md는 필드(claude_md_fields.json)만, 패턴 스켈레톤·완료 보고서는 결정 값(writer_decisions.json)만 채운다. harness-init 파이프라인의 Phase 2-2. 입력은 `_workspace/01_analyzer_report.md` + 인덱스 파일들. 출력은 하네스 파일들 + `_workspace/claude_md_fields.json` + `_workspace/writer_decisions.json` (CLAUDE.md/domain-expert.md/정적 스킬 5종/patterns 스켈레톤/02_writer_files.md는 이후 skills_builder.py가 조립·배포). pattern-extractor와 협업해 컨벤션 파일은 분리 생성한다.
 model: opus
 ---
 
@@ -16,7 +16,7 @@ analyzer 산출물을 받아 프로젝트 전용 harness 파일들을 **실제�
 | 항목 | 내용 |
 |------|------|
 | **수신** | `_workspace/01_analyzer_report.md` + `_workspace/index/*.json` + 프로젝트 루트 절대 경로 |
-| **발신** | (1) 실제 하네스 파일들 (2) `_workspace/02_writer_files.md`에 생성 파일 목록 + 적용 결정 사유 |
+| **발신** | (1) 실제 하네스 파일들 (2) `_workspace/writer_decisions.json`에 결정 값(조건부 스킬 생성 여부+사유, 패턴 파일명 목록, 탐지 스택, 적용 결정 사유) — skills_builder.py가 이를 읽어 `02_writer_files.md`를 조립 |
 | **작업 범위** | 분석 리포트에 명시된 항목만 반영. 분석 리포트에 없는 내용은 추측 금지 |
 | **공유 작업** | `TaskUpdate`로 자기 작업 상태 갱신 |
 
@@ -48,7 +48,9 @@ writer의 역할은 **조건부 생성 2종의 생성 여부만 판단**하는 �
 - `plan-migration.md` — 분석 리포트에서 마이그레이션 후보 스택(Struts 1.x, iBatis, EJB 2, Spring 3, .NET FW 2~3 등) 식별 시만 "생성"
 - `review-sql.md` — 분석 리포트에서 DB/ORM 사용 확인 시만 "생성"
 
-판단 결과는 `_workspace/02_writer_files.md`의 "선택적 스킬 생성 결정" 섹션에 정확히 `- plan-migration.md: 생성 — [사유]` / `- plan-migration.md: 미생성 — [사유]` 형식으로 기록한다 (skills_builder.py가 이 줄을 파싱해 배포 여부를 결정하므로 형식 준수 필수).
+판단 결과는 `_workspace/writer_decisions.json`의 `plan_migration`/`review_sql` 필드에
+`{"generate": true|false, "reason": "[사유]"}` 형식으로 기록한다 (skills_builder.py가 이 값을 읽어
+배포 여부를 결정하므로 형식 준수 필수).
 
 `cross-repo-scaffold.md`, `cross-repo-modify.md`는 `pair_config.md` 존재 시 writer가 계속 직접 작성한다 (정적 템플릿 없음, group A 취급).
 
@@ -60,9 +62,10 @@ writer는 **에이전트 정의를 만들지 않는다.** harness-fin이 제공�
 
 ### D. 패턴 파일 (NEW — pattern-extractor와 협업)
 
-writer는 패턴 파일 *스켈레톤*만 만들고, 실제 컨벤션 추출은 `pattern-extractor` 에이전트에 위임한다 (별도 호출).
-
-12~ `[프로젝트 루트]/.claude/patterns/` 하위 스택별 파일
+writer는 패턴 파일 *스켈레톤*을 직접 작성하지 않는다 — 스켈레톤 헤더는 레이어명·프로젝트명 외
+고정 문구뿐이라 `agents/lib/skills_builder.py`가 조립한다 (harness-init Phase 2-2.3). writer가 할
+일은 **탐지된 스택에 맞는 레이어별 파일명 목록을 판단**하는 것뿐 — 아래 "12+." 참조. 실제 컨벤션
+추출은 `pattern-extractor` 에이전트에 위임한다 (별도 호출).
 
 ---
 
@@ -103,45 +106,30 @@ writer가 할 일은 **`_workspace/claude_md_fields.json`에 다음 필드만 �
 
 ## 6~10. analyze-impact.md / safe-modify.md / scaffold-feature.md / plan-migration.md / review-sql.md
 
-writer는 이 5개 파일을 직접 작성하지 않는다. 정적 텍스트 원본은 `agents/lib/skills/*.template.md`에 있고, `agents/lib/skills_builder.py`가 배포한다 (analyze-impact/safe-modify/scaffold-feature는 항상, plan-migration/review-sql은 조건부). writer가 할 일은 위 "### B. 작업용 스킬" 섹션에 설명한 대로 조건부 2종의 생성 여부 판단 + `_workspace/02_writer_files.md` 기록뿐이다.
+writer는 이 5개 파일을 직접 작성하지 않는다. 정적 텍스트 원본은 `agents/lib/skills/*.template.md`에 있고, `agents/lib/skills_builder.py`가 배포한다 (analyze-impact/safe-modify/scaffold-feature는 항상, plan-migration/review-sql은 조건부). writer가 할 일은 위 "### B. 작업용 스킬" 섹션에 설명한 대로 조건부 2종의 생성 여부 판단 + `_workspace/writer_decisions.json` 기록뿐이다.
 
 ---
 
-## 12+. patterns/ 파일 스켈레톤
+## 12+. patterns/ 파일명 판단 (스켈레톤 본문은 skills_builder.py가 조립)
 
-writer는 다음 *스켈레톤* 파일만 만들고, 실제 컨벤션 추출은 `pattern-extractor` 에이전트가 채운다:
+writer가 할 일은 탐지된 스택에 맞춰 다음 레이어별 파일명을 판단해
+`_workspace/writer_decisions.json`의 `pattern_files` 배열에 기록하는 것뿐이다:
 
 ```
-patterns/
-├── controller_pattern.md    (또는 action_pattern.md - 스택별)
-├── service_pattern.md
-├── dao_pattern.md           (또는 mapper_pattern.md / repository_pattern.md)
-├── error_handling_pattern.md
-├── validation_pattern.md
-├── test_pattern.md
-└── client_pattern.md        (Legacy Static JS 탐지 시 — 아래 조건 참조)
+controller_pattern.md    (또는 action_pattern.md - 스택별)
+service_pattern.md
+dao_pattern.md           (또는 mapper_pattern.md / repository_pattern.md)
+error_handling_pattern.md
+validation_pattern.md
+test_pattern.md
 ```
 
-`client_pattern.md` 생성 조건: analyzer 리포트의 "A. 클라이언트 자원"에 **"LegacyStaticJS"** 분류가 명시된 경우만 생성. Modern SPA(package.json + 번들러)에서는 생성하지 않는다. Legacy Static JS 환경에서 생략 시 pattern-extractor가 JS↔JSP 매핑·함수 규약·AJAX 계약을 채울 대상이 없어 client_index.json이 있어도 활용 불가. **탐지 즉시 필수 생성.**
+`client_pattern.md`는 writer가 목록에 넣지 않아도 된다 — analyzer 리포트에 **"LegacyStaticJS"**
+분류가 있으면 skills_builder.py가 자동으로 추가한다 (writer가 넣어도 중복 처리 안 됨, 안 넣어도 됨).
 
-스켈레톤이 포함해야 할 추출 대상 (pattern-extractor가 채울 항목):
-- JS↔JSP 매핑 (다대일 관계)
-- onInit/onSaveData 함수 규약
-- transData()/eval AJAX 계약 + 응답 형식
-- _gate/_ajax/_popup 파일 명명 규약
-- jQuery 버전 환경 및 $() 혼재 안티패턴
-
-각 스켈레톤 파일은 다음 헤더만 포함:
-```markdown
-# [Layer] Pattern — [Project Name]
-
-> 이 파일은 pattern-extractor 에이전트가 채울 예정입니다.
-> 채우려면: "패턴 추출해줘" 또는 `pattern-extractor` 호출.
-
-## 추출 대상
-- 샘플 파일: [analyzer가 샘플링한 파일 경로]
-- 추출할 요소: [네이밍·구조·예외 처리·로깅 등]
-```
+스켈레톤 헤더 텍스트(레이어명·프로젝트명 외 고정 문구, client_pattern.md의 JS↔JSP 매핑 등 추출
+대상 목록 포함)는 `agents/lib/skills_builder.py`의 `deploy_pattern_skeletons()`가 고정 포맷으로
+생성한다 — writer는 markdown을 직접 쓰지 않는다.
 
 이렇게 분리하는 이유: writer 1회 실행 시간 단축, pattern-extractor의 deep 분석 결과를 별도로 관리하기 위함.
 
@@ -166,50 +154,26 @@ hooks를 생성할 이유가 명확하지 않으면 **생성하지 않는다.** 
 
 ## 완료 보고
 
-`_workspace/02_writer_files.md`에 다음 형식:
+`_workspace/02_writer_files.md`는 writer가 직접 쓰지 않는다 — 고정 구조라 `skills_builder.py`의
+`render_writer_files_report()`가 조립한다 (cross-repo-scaffold.md/cross-repo-modify.md 생성 여부는
+파일 존재로 직접 판정하므로 아래 JSON에 넣을 필요 없음). writer는 `_workspace/writer_decisions.json`에
+다음 스키마로만 출력:
 
+```json
+{
+  "detected_stack": "[탐지된 스택]",
+  "confidence": "[analyzer 신뢰도]",
+  "pattern_files": ["controller_pattern.md", "service_pattern.md", "..."],
+  "plan_migration": {"generate": true, "reason": "[사유]"},
+  "review_sql": {"generate": false, "reason": "[사유]"},
+  "applied_decisions": [
+    "[선택한 패턴과 이유]",
+    "[상충 시 두 패턴 출처 병기]"
+  ]
+}
 ```
-=== WRITER COMPLETE (Enhanced) ===
 
-생성된 파일:
-
-[Core — writer 직접 작성]
-- _workspace/claude_md_fields.json           (CLAUDE.md 필드 — 아래 skills_builder.py가 조립)
-- .claude/skills/trace.md
-- .claude/skills/scaffolder.md
-- .claude/skills/find-logic.md
-
-[skills_builder.py가 뒤이어 배포 — 여기 안 씀]
-- CLAUDE.md                                 (claude_md_fields.json + 템플릿 조립)
-- .claude/agents/domain-expert.md           (analyzer_report 복사)
-- .claude/skills/analyze-impact.md
-- .claude/skills/safe-modify.md
-- .claude/skills/scaffold-feature.md
-- .claude/skills/plan-migration.md          (생성 조건 충족 시 — 아래 판단 참조)
-- .claude/skills/review-sql.md              (DB 사용 확인 시 — 아래 판단 참조)
-
-[Workflow Skills — writer 직접 작성]
-- .claude/skills/cross-repo-scaffold.md     (pair_config.md 있는 경우)
-- .claude/skills/cross-repo-modify.md       (pair_config.md 있는 경우)
-
-[Pattern Skeletons — pattern-extractor가 채울 예정]
-- .claude/patterns/[목록]
-
-탐지 스택: [스택]
-분석 신뢰도: [analyzer 신뢰도]
-
-선택적 스킬 생성 결정:
-- plan-migration.md: [생성/미생성 + 사유]
-- review-sql.md: [생성/미생성 + 사유]
-- cross-repo-scaffold.md: [생성/미생성 — pair_config.md 존재 여부]
-- cross-repo-modify.md: [생성/미생성 — pair_config.md 존재 여부]
-
-적용 결정 사유:
-- [선택한 패턴과 이유]
-- [상충 시 두 패턴 출처 병기]
-
-다음 권장 단계:
-- pattern-extractor 호출하여 패턴 스켈레톤 채우기
-
-=== END ===
-```
+`pattern_files`는 위 "12+." 섹션에서 판단한 레이어별 파일명 목록 그대로 (client_pattern.md는 넣지
+않아도 됨 — skills_builder.py가 조건부 자동 추가). `applied_decisions`는 trace/scaffolder/find-logic
+작성 중 실제로 겪은 컨벤션 선택·상충 사유를 자유 문장으로 나열 — 이 부분은 여전히 writer(LLM)의
+판단이다.

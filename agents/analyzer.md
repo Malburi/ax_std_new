@@ -405,7 +405,23 @@ DB 접속 불가 시:
 
 ## 출력: 분석 리포트
 
-**파일 경로:** `_workspace/01_analyzer_report.md`  
+**파일 경로:** `_workspace/01_analyzer_report.md`
+
+Section B/D 중 "의존성 그래프 요약"·"트랜잭션 경계"·"외부 통신"·"환경 분기"·"데드 코드 후보"·
+"DB 스키마"는 이미 `_workspace/index/*.json`에 있는 카운트를 재진술하는 것뿐이므로 직접 쓰지 않는다.
+Phase C에서 인덱스 JSON을 다 쓴 뒤 다음을 실행:
+
+```
+python agents/lib/analyzer_index_summary.py --root "[프로젝트 루트 절대 경로]"
+```
+
+생성된 `_workspace/01b_index_summary.md`를 읽어 아래 템플릿의 `[SECTION_B_INDEX_SUMMARY_INSERT]` 자리에
+그대로 삽입한다 (내용을 다시 요약·재작성하지 않는다). 스크립트가 WARN만 내고 아무것도 못 만들면
+(인덱스 파일이 전혀 없는 경우) 해당 자리는 비워두거나 "인덱스 없음 — 재분석 필요"로 대체.
+
+`비동기/스케줄/이벤트`·`인증/인가 경로`는 대응하는 JSON 인덱스가 없어 기계화 대상이 아니다 —
+지금처럼 Step 12/14 탐지 결과를 직접 프로즈로 작성한다.
+
 Write 도구로 다음 형식의 리포트를 작성한다. 반환 메시지는 "리포트 작성 완료 — `_workspace/01_analyzer_report.md`" 한 줄.
 
 ```
@@ -432,48 +448,18 @@ Write 도구로 다음 형식의 리포트를 작성한다. 반환 메시지는 
 
 ## A. 빌드 / 실행 명령
 
-## B. 의존성 그래프 요약
-- 노드 수: N, 엣지 수: M
-- 핵심 허브 메서드 (in-degree 상위 10개): [목록]
-- 인덱스: _workspace/index/call_graph.json
-
-## B. 트랜잭션 경계
-- 식별된 경계: N개
-- 가장 큰 경계 (메서드 호출 수): [위치]
-- 인덱스: _workspace/index/transactions.json
-
-## B. 외부 통신
-- HTTP 호출: N건 ([대상 시스템 요약])
-- 메시지 큐: N건
-- 파일 IO: N건
-- 외부 DB: N건
-- 인덱스: _workspace/index/external_io.json
-
 ## B. 비동기/스케줄/이벤트
 - `@Scheduled`: N개
 - `@Async`: N개
 - 이벤트 발행/구독: N쌍
 - cron/외부 스케줄러: [목록]
 
-## B. 환경 분기
-- 활성 프로파일: [목록]
-- 분기 위치: N곳
-- 인덱스: _workspace/index/env_branches.json
-
 ## B. 인증/인가 경로
 - 보안 설정 파일: [경로]
 - 보호되는 엔드포인트: N개
 - 공개 엔드포인트: N개
 
-## B. 데드 코드 후보
-- 미사용 public 메서드 후보: N개 (확정 아님, 리플렉션/동적 호출 확인 필요)
-- 미사용 SQL ID 후보: N개
-- 인덱스: _workspace/index/dead_code.json
-
-## D. DB 스키마 (가능한 경우)
-- 테이블 수: N
-- 인덱스: _workspace/index/schema.json
-- 출처: [DB 직접 접속 / DDL 파일 / ORM 역추출]
+[SECTION_B_INDEX_SUMMARY_INSERT]
 
 ## 탐지 신뢰도
 - 스택 탐지: [HIGH/MEDIUM/LOW]

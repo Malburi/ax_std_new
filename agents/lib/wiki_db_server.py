@@ -13,34 +13,37 @@ LIB_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, LIB_DIR)
 import wiki_db  # noqa: E402
 import wiki_render  # noqa: E402
+import docsify_convert  # noqa: E402
 
 STATIC_MIME = {".js": "application/javascript", ".css": "text/css"}
 
 
-def _render_markdown_page(system_key, page_path, content):
-    return wiki_render.render_markdown_page(system_key, page_path, content, index_href="/")
+def _present_slugs(pages):
+    """DB에 저장된 page_path 목록에서 Docsify 사이드바용 slug 집합을 추린다.
+    call-graph.html/_html/*는 콘텐츠 페이지가 아니라 렌더 결과물이라 제외."""
+    slugs = set()
+    for page_path, _content_type, _updated in pages:
+        if page_path == "call-graph.html" or page_path.startswith("_html/"):
+            continue
+        slug = os.path.splitext(page_path)[0]
+        if slug and slug != "Home":
+            slugs.add(slug)
+    return slugs
 
 
-def _render_index(system_key, pages, other_systems):
-    entries = [
-        (f"/{p[0]}?key={system_key}", p[0], f"({p[1]}, {p[2]})")
-        for p in pages
-    ]
+def _other_systems_sidebar_section(system_key, other_systems):
     others = [s for s in other_systems if s[0] != system_key]
-    switcher = ""
-    if others:
-        other_rows = "\n".join(
-            f'<li><a href="/?key={html.escape(name)}">{html.escape(name)}</a> '
-            f'<small>({count}개 페이지, {updated})</small></li>'
-            for name, count, updated in others
-        )
-        switcher = f"<h3>다른 시스템</h3><ul>{other_rows}</ul>"
-    return wiki_render.render_index(
-        title=f"{system_key} - System Wiki (DB)",
-        heading=f"{system_key} — System Wiki (DB 저장)",
-        entries=entries,
-        extra_html=switcher,
+    if not others:
+        return ""
+    rows = "\n".join(
+        f"  - [{html.escape(name)} ({count}개, {updated})](/?key={html.escape(name)} ':ignore')\n"
+        for name, count, updated in others
     )
+    return f"- **다른 시스템**\n{rows}"
+
+
+def _render_index(system_key):
+    return wiki_render.render_index(title=f"{system_key} - System Wiki (DB)")
 
 
 def make_handler(project_root, default_key):
@@ -58,13 +61,24 @@ def make_handler(project_root, default_key):
             system_key = self._current_key(query)
 
             if path == "/":
+                self._send(200, "text/html", _render_index(system_key).encode("utf-8"))
+                return
+
+            if path in ("/_sidebar.md", "/_navbar.md"):
                 try:
                     pages = wiki_db.list_pages(project_root, system_key=system_key)
                     other_systems = wiki_db.list_systems(project_root)
                 except Exception as e:
                     self._send(500, "text/plain", f"DB 조회 실패: {e}".encode("utf-8"))
                     return
-                self._send(200, "text/html", _render_index(system_key, pages, other_systems).encode("utf-8"))
+                slugs = _present_slugs(pages)
+                has_call_graph = any(p[0] == "call-graph.html" for p in pages)
+                if path == "/_sidebar.md":
+                    body = docsify_convert.build_sidebar(system_key, slugs, has_call_graph)
+                    body += _other_systems_sidebar_section(system_key, other_systems)
+                else:
+                    body = docsify_convert.build_navbar(slugs, has_call_graph)
+                self._send(200, "text/plain", body.encode("utf-8"))
                 return
 
             if path.startswith("/lib/"):
@@ -93,8 +107,8 @@ def make_handler(project_root, default_key):
             if content_type == "text/html":
                 self._send(200, "text/html", content.encode("utf-8"))
             else:
-                body = _render_markdown_page(system_key, page_path, content)
-                self._send(200, "text/html", body.encode("utf-8"))
+                # Docsify JS가 raw markdown을 fetch해서 클라이언트 렌더링
+                self._send(200, "text/plain", content.encode("utf-8"))
 
         def _send(self, status, content_type, body_bytes):
             self.send_response(status)

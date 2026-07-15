@@ -25,6 +25,10 @@ pair_config에서 읽어오는 변수:
 
 변수를 기반으로 `backend_root`·`frontend_root`를 결정.
 
+`wiki/architecture.md`(통합본, `generate-wiki`로 생성된 경우)가 있으면 먼저 훑어 기존 시스템 구조를
+빠르게 파악하는 데 참고할 수 있다 — 단, 생성 시점 스냅샷이므로 실제 API 계약·패턴은 아래처럼
+반드시 `_workspace/index/api_contract.json`·패턴 파일을 라이브로 다시 확인한다.
+
 ### 양쪽 패턴 파일 확인
 
 - 백엔드: `[backend_root]/.claude/patterns/*.md`

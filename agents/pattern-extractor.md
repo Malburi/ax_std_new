@@ -198,24 +198,22 @@ public class XxxService {
 
 ### Step 6: 요약 리포트
 
-`_workspace/05_patterns_extracted.md` 에 다음 작성:
+"처리한 스켈레톤 수"·"샘플 수집 수"·집계 표(샘플수/신뢰도/안티패턴 발견)·"일관성 낮은 영역"은
+각 패턴 파일에 Step 5에서 이미 써놓은 값(샘플 파일 수/신뢰도/위치/빈도)을 그대로 취합한 것뿐이므로
+직접 작성하지 않는다. Step 5 완료 후:
+
+```
+python agents/lib/pattern_tally.py --root "[프로젝트 루트 절대 경로]" --patterns-dir "[프로젝트 루트]/.claude/patterns"
+```
+
+생성된 `_workspace/05b_pattern_tally.md`를 그대로 읽어 `_workspace/05_patterns_extracted.md`에
+다음과 같이 삽입하고, "## 권고" 문단만 직접 작성한다 (내용을 다시 요약·재작성하지 않는다):
 
 ```
 === PATTERN EXTRACTION SUMMARY ===
 
 추출 시각: [YYYY-MM-DD HH:MM]
-처리한 스켈레톤: N개
-샘플 수집: 총 M개 파일
-
-| 패턴 파일 | 샘플 수 | 신뢰도 | 안티패턴 발견 |
-|----------|--------|--------|------------|
-| controller_pattern.md | 12 | HIGH | 0 |
-| service_pattern.md | 15 | HIGH | 1 (LegacyService.java:120) |
-| dao_pattern.md | 8 | MEDIUM | 0 |
-| ...
-
-## 일관성 낮은 영역
-- [영역]: 빈도 X% → "주요 패턴 + 부 패턴" 병기
+[05b_pattern_tally.md 내용 그대로 삽입 — 처리한 스켈레톤/샘플 수집/집계 표/일관성 낮은 영역]
 
 ## 권고
 - scaffold-feature 사용 가능
@@ -224,6 +222,9 @@ public class XxxService {
 
 === END ===
 ```
+
+`pattern_tally.py`가 WARN만 내고 아무것도 못 만들면(패턴 파일이 전혀 없는 경우) 표 부분을
+"패턴 파일 없음"으로 직접 대체.
 
 ---
 

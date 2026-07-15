@@ -1,8 +1,9 @@
 import html
 
 # 서버(wiki_db_server.py)와 정적 빌드(wiki_generator.py) 양쪽이 공유하는 최소 HTML 렌더러.
-# 외부 CDN(marked.js, docsify 등) 의존 없이 markdown을 이스케이프 후 <pre>로 보여준다 —
-# 폐쇄망 환경에서도, file:// 로 직접 열어도 동작해야 하기 때문.
+# render_markdown_page()는 외부 CDN 의존 없이 markdown을 이스케이프 후 <pre>로 보여준다 —
+# 폐쇄망 환경에서도, file:// 로 직접 열어도 동작해야 하기 때문. (DB 뷰어·_html/ 정적 렌더 사본에서 사용)
+# render_index()는 [2026-07-15]부터 Docsify 기반이라 예외 — 외부 CDN 필요, file://는 미지원(serve.bat으로 로컬 서버 실행 필요).
 
 PAGE_STYLE = """
 body { font-family: -apple-system, Segoe UI, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; }
@@ -32,18 +33,94 @@ def render_markdown_page(title, page_path, content, index_href="index.html"):
 </body></html>"""
 
 
-def render_index(title, heading, entries, extra_html=""):
-    """페이지 목록 인덱스. entries: [(href, label, sublabel), ...]"""
-    rows = "\n".join(
-        f'<li><a href="{html.escape(href)}">{html.escape(label)}</a> '
-        f'<small>{html.escape(sublabel)}</small></li>'
-        for href, label, sublabel in entries
-    )
+def render_index(title, heading="", entries=None, extra_html="", **kwargs):
+    """Docsify 4 기반 index.html 생성.
+    [2026-07-15] 토큰 절감 리팩토링으로 단순 정적 HTML로 교체됐던 것을 Docsify로 복원.
+    향후 이 함수를 단순 정적 HTML로 되돌리지 말 것 — _sidebar.md/_navbar.md가 짝으로 필요.
+    title 인자를 project_name으로 사용. heading/entries/extra_html 무시 (Docsify가 처리).
+    """
+    project_name = title
+    safe = html.escape(project_name)
     return f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>{html.escape(title)}</title>
-<style>{INDEX_STYLE}</style></head>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>{safe}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/docsify-themeable@0/dist/css/theme-simple.css">
+  <style>
+    :root {{
+      --theme-color: #2563eb;
+      --base-font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --base-font-size: 15px;
+      --sidebar-width: 280px;
+      --content-max-width: 960px;
+      --heading-font-weight: 700;
+      --sidebar-background: #0f172a;
+      --sidebar-name-color: #ffffff;
+      --sidebar-nav-link-color: #cbd5e1;
+      --sidebar-nav-link-color--active: #38bdf8;
+      --sidebar-nav-link-color--hover: #ffffff;
+      --base-line-height: 1.7;
+      --heading-h1-color: #0f172a;
+      --heading-h2-color: #1e293b;
+      --heading-h3-color: #334155;
+      --blockquote-border-color: #3b82f6;
+      --blockquote-background: #eff6ff;
+    }}
+    .sidebar-nav > ul > li > p {{
+      font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.6px; color: #64748b;
+      margin: 16px 0 4px 12px;
+    }}
+    table {{ border-collapse: separate; border-spacing: 0; border-radius: 8px; overflow: hidden; }}
+    th {{ background: #f8fafc; }}
+    td, th {{ padding: 10px 14px; }}
+    blockquote {{ border-radius: 0 8px 8px 0; }}
+  </style>
+</head>
 <body>
-<h1>{html.escape(heading)}</h1>
-<ul>{rows}</ul>
-{extra_html}
-</body></html>"""
+  <div id="app">로딩 중...</div>
+  <script>
+    window.$docsify = {{
+      name: '📋 {safe}',
+      repo: '',
+      homepage: 'Home.md',
+      loadSidebar: true,
+      loadNavbar: true,
+      subMaxLevel: 3,
+      auto2top: true,
+      executeScript: false,
+      search: {{
+        maxAge: 86400000,
+        paths: 'auto',
+        placeholder: '문서 검색...',
+        noData: '검색 결과가 없습니다.',
+        depth: 6,
+        hideOtherSidebarContent: false
+      }},
+      pagination: {{
+        previousText: '← 이전',
+        nextText: '다음 →',
+        crossChapter: true,
+      }},
+      copyCode: {{
+        buttonText: '복사',
+        errorText: '오류',
+        successText: '복사됨 ✓'
+      }},
+      themeColor: '#2563eb',
+    }}
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/docsify.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify@4/lib/plugins/search.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify-copy-code@2/dist/docsify-copy-code.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/docsify-pagination/dist/docsify-pagination.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-python.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-javascript.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-bash.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-sql.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1/components/prism-json.min.js"></script>
+</body>
+</html>"""

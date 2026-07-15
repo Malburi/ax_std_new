@@ -5,7 +5,10 @@ description: harness 산출물(_workspace + .claude)을 기반으로 프로젝�
 
 # Generate Wiki (오케스트레이터)
 
-`wiki-builder` 에이전트와 후속 `wiki_generator.py` 프로그램을 연계하여 토큰을 절약하는 방식으로 wiki 문서를 빌드한다.
+`wiki_generator.py`(zero-LLM)가 `_workspace/`·`.claude/` 산출물을 그대로 wiki 페이지로 복사/집계하고,
+구조화 JSON(`api_contract.json`/`schema.json`/`external_io.json` 등)은 표로 변환한다. LLM 호출 없음.
+`_workspace/pair_config.md`(크로스 리포 연동)가 있으면 architecture/api-endpoints/database/external-systems
+4개 페이지에 파트너 저장소 데이터가 자동 병합된다 (call-graph.html의 파트너 그래프 병합과 동일한 원리 — 어느 쪽에서 실행해도 통합됨).
 
 ---
 
@@ -44,7 +47,7 @@ description: harness 산출물(_workspace + .claude)을 기반으로 프로젝�
 ```
 시스템 wiki를 어디에 저장할까요?
 
-1. 폴더 (기본) — wiki/ 폴더에 파일로 저장, wiki/index.html을 더블클릭으로 바로 열람 (서버·CDN 불필요)
+1. 폴더 (기본) — wiki/ 폴더에 파일로 저장, Docsify 기반(wiki/serve.bat 실행 후 http://localhost:3501)으로 열람 (인터넷 CDN 필요, file:// 직접 열기는 미지원)
 2. DB (MSSQL) — 프로젝트 루트의 .env(MSSQL_HOST/PORT/USER/PASSWORD/DATABASE) 접속 정보로
    harness_wiki_pages 테이블에 저장. 조회는 agents/lib/wiki_db_server.py 로컬 서버로 브라우저 열람.
    (wiki/ 폴더는 빌드 스테이징 겸 로컬 캐시로 계속 남음)
@@ -80,27 +83,12 @@ description: harness 산출물(_workspace + .claude)을 기반으로 프로젝�
 
 ---
 
-## Phase 2: wiki-builder 호출 및 빌더 스크립트 실행
+## Phase 2: wiki_generator.py 실행
 
-### Step 1: wiki-builder 에이전트를 호출해 요약 JSON 생성
-
-```
-Agent(
-  subagent_type="general-purpose",
-  description="wiki 요약 JSON 생성",
-  prompt="<wiki-builder 에이전트 지침에 따라 분석 후 JSON 형태의 요약 데이터를 생성한다.
-  프로젝트 루트: [절대경로].
-  출력 파일: _workspace/07_wiki_summary.json>",
-  model="sonnet"
-)
-```
-
-### Step 2: wiki_generator.py 실행
-
-요약 데이터가 정상적으로 생성되면, 다음 터미널 명령을 통해 최종 위키 파일과 인터랙티브 호출 그래프를 프로그램식으로 병합 및 빌드한다.
+LLM 호출 없이, 다음 터미널 명령 한 번으로 wiki 페이지 + 인터랙티브 호출 그래프를 생성한다.
 
 ```powershell
-python agents/lib/wiki_generator.py --root "[절대경로]" --wiki-dir "[절대경로]/wiki" --summary "[절대경로]/_workspace/07_wiki_summary.json" --storage [folder|db]
+python agents/lib/wiki_generator.py --root "[절대경로]" --wiki-dir "[절대경로]/wiki" --storage [folder|db]
 ```
 
 ---
@@ -113,14 +101,15 @@ python agents/lib/wiki_generator.py --root "[절대경로]" --wiki-dir "[절대�
 wiki 생성 완료
 
 출력 위치: wiki/
-열기 방법: wiki/index.html을 브라우저로 더블클릭해서 열기 (정적 렌더링 — 로컬 서버·인터넷 CDN 불필요)
-  - wiki/_html/*.html: Home·architecture·workflows 등 페이지의 브라우저용 렌더 사본 (원본은 wiki/*.md 그대로 유지)
-  - wiki/call-graph.html: 데이터가 파일 안에 인라인으로 포함된 완전 독립 페이지
+열기 방법: wiki/serve.bat 실행 후 브라우저로 http://localhost:3501 접속 (Docsify 기반 — 인터넷 CDN 필요, file:// 직접 열기는 미지원)
+  - wiki/_sidebar.md, wiki/_navbar.md: Docsify 네비게이션
+  - wiki/_html/*.html: Home·architecture·workflows 등 페이지의 서버 없는 열람용 렌더 사본 (원본은 wiki/*.md 그대로 유지)
+  - wiki/call-graph.html: 데이터가 파일 안에 인라인으로 포함된 완전 독립 페이지 (file://로 직접 열람 가능)
 ```
 
 DB 저장을 선택한 경우, `07_wiki_build.md`의 "저장 위치" 줄(페이지 수·project_name·`wiki_db_server.py` 실행 명령)을 그대로 포함해 보고.
 
-`pair_config.md`가 있으면 `07_wiki_build.md`의 "크로스 리포 병합" 줄을 그대로 포함해 보고 (병합 성공 시 파트너 노드/추론된 크로스 엣지 수, 스킵 시 사유).
+`pair_config.md`가 있으면 `07_wiki_build.md`의 "크로스 리포 병합" 줄 2개(call-graph.html 노드/엣지 병합 + architecture/api-endpoints/database/external-systems markdown 페이지 병합)를 그대로 포함해 보고 (병합 성공 시 파트너 노드/추론된 크로스 엣지 수 또는 병합된 페이지 목록, 스킵 시 사유).
 
 이후 DB ↔ 폴더 저장 위치를 바꾸고 싶으면 `sync-wiki` 스킬 안내.
 

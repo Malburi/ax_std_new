@@ -80,7 +80,8 @@ DB 저장 완료: [host]:[port]/[database] — N개 페이지 (project=[project_
 
 [DB → 폴더]
 폴더 복원 완료: [wiki_dir] — N개 페이지 (project=[project_name])
-열기 방법: wiki/index.html을 브라우저로 더블클릭 (정적 렌더링, 서버 불필요)
+열기 방법: wiki/serve.bat 실행 후 http://localhost:3501 (Docsify — 인터넷 CDN 필요, file:// 직접 열기는 미지원)
+  단, wiki/_html/*.html 개별 페이지는 서버 없이 더블클릭으로도 열람 가능
 ```
 
 ---
@@ -91,9 +92,10 @@ DB 저장 완료: [host]:[port]/[database] — N개 페이지 (project=[project_
 방향의 반대쪽 저장소 내용은 그대로 덮어써진다. 폴더→DB 시 폴더에 없는 DB 페이지는 삭제되고,
 DB→폴더 시 폴더의 기존 내용은 DB 내용으로 대체된다. 되돌릴 수 없으므로 실행 전 방향을 반드시 확인.
 
-### DB 조회는 서빙 시점 렌더링, 폴더는 정적 파일로 미리 구워둠
+### DB 조회는 서빙 시점 렌더링, 폴더는 정적 파일 + Docsify index.html
 DB에 저장된 wiki는 `agents/lib/wiki_db_server.py`가 요청 시점에 페이지를 렌더링해 서빙한다
 (markdown은 이스케이프 후 `<pre>`로 표시, call-graph.html은 그대로 서빙). 폴더 모드(`generate-wiki`의
 폴더 저장, 그리고 `wiki_db.py --direction to-folder`로 DB에서 내려받은 결과 모두)는 같은 렌더 방식
-(`agents/lib/wiki_render.py` 공용)으로 `wiki/_html/*.html` + `wiki/index.html`을 미리 구워두므로
-서버 없이 더블클릭만으로 열람 가능.
+(`agents/lib/wiki_render.py` 공용)으로 `wiki/_html/*.html`(서버 없이 더블클릭 열람 가능)을 미리 구워둔다.
+`wiki/index.html`은 [2026-07-15]부터 Docsify 기반이라 예외 — `serve.bat` 실행 후 브라우저로 접속 필요
+(인터넷 CDN 의존, file://는 미지원).

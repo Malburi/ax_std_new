@@ -306,25 +306,27 @@ Tier별 model:
 Agent(
   subagent_type="general-purpose",
   description="하네스 파일 생성",
-  prompt="<writer 에이전트 지침에 따라 하네스 파일 작성. 프로젝트 루트: [절대경로]. tier: [Lite/Standard/Full]. 입력: _workspace/01_analyzer_report.md. 출력: 하네스 파일들(trace/scaffolder/find-logic + patterns 스켈레톤) + _workspace/claude_md_fields.json + _workspace/02_writer_files.md>",
+  prompt="<writer 에이전트 지침에 따라 하네스 파일 작성. 프로젝트 루트: [절대경로]. tier: [Lite/Standard/Full]. 입력: _workspace/01_analyzer_report.md. 출력: 하네스 파일들(trace/scaffolder/find-logic, cross-repo-* 있는 경우) + _workspace/claude_md_fields.json + _workspace/writer_decisions.json>",
   model="[sonnet/opus]"
 )
 ```
 
-> writer는 trace.md·scaffolder.md·find-logic.md·patterns 스켈레톤만 markdown으로 직접 작성한다. CLAUDE.md는 `_workspace/claude_md_fields.json`에 필드(프로젝트명·한줄설명·스택요약·요청흐름·파일위치표 행·빌드명령·주의사항)만 채워서 낸다. domain-expert.md(analyzer_report 그대로 주입)와 analyze-impact.md·safe-modify.md·scaffold-feature.md·plan-migration.md·review-sql.md(정적 텍스트)는 writer가 쓰지 않고 다음 단계(2-2.3)에서 배포한다. writer는 `_workspace/02_writer_files.md`의 "선택적 스킬 생성 결정" 섹션에 plan-migration/review-sql 생성 여부만 기록.
+> writer는 trace.md·scaffolder.md·find-logic.md만 markdown으로 직접 작성한다 (pair_config.md 있으면 cross-repo-scaffold.md·cross-repo-modify.md도). CLAUDE.md는 `_workspace/claude_md_fields.json`에 필드(프로젝트명·한줄설명·스택요약·요청흐름·파일위치표 행·빌드명령·주의사항)만, patterns 스켈레톤·02_writer_files.md는 `_workspace/writer_decisions.json`에 결정 값(조건부 스킬 생성 여부+사유, 패턴 파일명 목록, 탐지 스택, 적용 결정 사유)만 채워서 낸다. domain-expert.md(analyzer_report 그대로 주입)와 analyze-impact.md·safe-modify.md·scaffold-feature.md·plan-migration.md·review-sql.md(정적 텍스트)·patterns 스켈레톤·02_writer_files.md는 writer가 쓰지 않고 다음 단계(2-2.3)에서 배포한다.
 
-### 2-2.3. skills_builder.py 실행 (CLAUDE.md + 정적 워크플로우 스킬 + domain-expert.md 배포)
+### 2-2.3. skills_builder.py 실행 (CLAUDE.md + 정적 워크플로우 스킬 + domain-expert.md + 패턴 스켈레톤 + 02_writer_files.md 배포)
 
 writer 완료 후 다음을 전부 처리한다 (LLM 호출 없음, 전부 결정론적 파일 조립/복사):
 - `_workspace/claude_md_fields.json` + `agents/lib/claude_md.template.md`(고정 골격) → `CLAUDE.md` 조립. `pair_config.md` 있으면 "파트너 프로젝트" 섹션도 그 필드값으로 자동 채움
-- `_workspace/02_writer_files.md`의 생성 여부 판단을 읽어 정적 스킬 템플릿(`agents/lib/skills/*.template.md`)을 대상 프로젝트 `.claude/skills/`에 복사 (analyze-impact/safe-modify/scaffold-feature는 항상, plan-migration/review-sql은 조건 충족 시만)
+- `_workspace/writer_decisions.json`의 생성 여부 판단을 읽어 정적 스킬 템플릿(`agents/lib/skills/*.template.md`)을 대상 프로젝트 `.claude/skills/`에 복사 (analyze-impact/safe-modify/scaffold-feature는 항상, plan-migration/review-sql은 조건 충족 시만)
 - `_workspace/01_analyzer_report.md`를 그대로 복사해 `.claude/agents/domain-expert.md` 생성
+- `writer_decisions.json`의 `pattern_files` 목록(+ "LegacyStaticJS" 탐지 시 client_pattern.md 자동 추가)으로 `.claude/patterns/*.md` 스켈레톤 생성 (이미 pattern-extractor가 채운 파일은 덮어쓰지 않음)
+- 위 모든 결과 + `writer_decisions.json`을 조합해 `_workspace/02_writer_files.md` 조립
 
 ```powershell
-python agents/lib/skills_builder.py --root "[절대경로]" --summary "_workspace/02_writer_files.md"
+python agents/lib/skills_builder.py --root "[절대경로]" --summary "_workspace/writer_decisions.json"
 ```
 
-실패 시(python 미설치, claude_md_fields.json 누락 등) 1회만 재시도하고, 그래도 실패하면 "CLAUDE.md/정적 스킬/domain-expert.md 배포 실패 — writer 재실행 또는 수동 작성 필요" WARN 후 계속 진행 (개별 항목은 부분적으로 성공할 수 있음 — 스크립트가 항목별로 독립 처리).
+실패 시(python 미설치, claude_md_fields.json/writer_decisions.json 누락 등) 1회만 재시도하고, 그래도 실패하면 "CLAUDE.md/정적 스킬/domain-expert.md/패턴 스켈레톤/02_writer_files.md 배포 실패 — writer 재실행 또는 수동 작성 필요" WARN 후 계속 진행 (개별 항목은 부분적으로 성공할 수 있음 — 스크립트가 항목별로 독립 처리).
 
 ### 2-2.5. ito-guide.md 생성 (writer 완료 직후, 모든 Tier)
 
@@ -394,26 +396,40 @@ Agent(
 
 ### 2-4. validator 호출
 
-모든 Tier에서 실행. `_workspace/02_writer_files.md` 확인 후:
+모든 Tier에서 실행. `_workspace/02_writer_files.md` 확인 후, validator Agent() 호출 전에 기계 체크를
+먼저 실행 (LLM 미사용 — validator 체크 1,2,3,4,6,7,8,9를 대신 계산):
+
+```powershell
+python agents/lib/validator_checks.py --root "[절대경로]" --out "_workspace/validator_mechanical.json"
+```
+
+실패 시(python 미설치 등) WARN 후 계속 진행 — validator가 해당 체크를 직접 수행하는 기존 방식으로 폴백.
 
 ```
 Agent(
   subagent_type="general-purpose",
   description="하네스 구조 검증",
-  prompt="<validator 에이전트 지침. 프로젝트 루트: [절대경로]. tier: [Lite/Standard/Full]. 입력: _workspace/01_analyzer_report.md, _workspace/02_writer_files.md, (있으면) _workspace/index/. 출력: _workspace/03_validator_report.md>",
+  prompt="<validator 에이전트 지침. 프로젝트 루트: [절대경로]. tier: [Lite/Standard/Full]. 입력: _workspace/01_analyzer_report.md, _workspace/02_writer_files.md, _workspace/validator_mechanical.json(있으면), (있으면) _workspace/index/. 출력: _workspace/03_validator_report.md>",
   model="sonnet"
 )
 ```
 
 ### 2-5. qa 호출 (Full만)
 
-**Lite/Standard면 스킵.** Full + validator 통과 후에만 실행. **반드시 `general-purpose` 타입.**
+**Lite/Standard면 스킵.** Full + validator 통과 후에만 실행. qa Agent() 호출 전에 Boundary 6 기계
+체크를 먼저 실행 (LLM 미사용):
+
+```powershell
+python agents/lib/qa_boundary6.py --root "[절대경로]" --out "_workspace/qa_boundary6.md"
+```
+
+실패 시 WARN 후 계속 진행 — qa가 Boundary 6을 직접 확인하는 기존 방식으로 폴백. **qa Agent 호출은 반드시 `general-purpose` 타입.**
 
 ```
 Agent(
   subagent_type="general-purpose",
   description="경계면 교차 비교 QA",
-  prompt="<qa 에이전트 지침. 프로젝트 루트: [절대경로]. 입력: _workspace/01~03 + _workspace/index/. 출력: _workspace/04_qa_report.md>",
+  prompt="<qa 에이전트 지침. 프로젝트 루트: [절대경로]. 입력: _workspace/01~03 + _workspace/qa_boundary6.md(있으면) + _workspace/index/. 출력: _workspace/04_qa_report.md>",
   model="sonnet"
 )
 ```
@@ -581,9 +597,9 @@ Phase 3 보고 직후, `_workspace/pair_config.md` 존재 + 파트너 `CLAUDE.md
 ```
 wiki를 생성하시겠습니까? (Phase 3.6)
 파트너 프로젝트([partner_root])도 하네스가 준비되어, 통합(cross-repo) wiki 생성이 가능합니다:
-  - Home, 아키텍처, 워크플로우 스킬 사용법
+  - Home, 워크플로우 스킬 사용법, 패턴, 이슈 목록 — 이 저장소 기준
+  - 통합 아키텍처/API 엔드포인트/DB 스키마/외부 연동 — 백엔드+프론트엔드 데이터가 한 페이지에 병합
   - 통합 호출 그래프 — 백엔드+프론트엔드 call_graph.json 병합, API 계약 기준 크로스 엣지 자동 추론
-  - API 엔드포인트, DB 스키마, 패턴, 외부 연동, 이슈 목록 (탐지된 경우)
 
   1. 통합 wiki 생성 (권장) — 현재 프로젝트에 파트너 정보까지 포함된 wiki 생성
   2. 이 프로젝트 단독 wiki만 생성
@@ -594,7 +610,7 @@ wiki를 생성하시겠습니까? (Phase 3.6)
 
 | 선택 | 동작 |
 |------|------|
-| 1 또는 2 | `generate-wiki` 스킬 실행 → 완료 후 Phase 4로 진행 (pair_config.md가 있으면 wiki-builder·wiki_generator.py가 파트너 call_graph.json을 자동 병합하므로, "2. 단독"을 선택해도 통합 그래프가 나타나는 게 정상 동작임을 안내) |
+| 1 또는 2 | `generate-wiki` 스킬 실행 → 완료 후 Phase 4로 진행 (pair_config.md가 있으면 `wiki_generator.py`가 파트너의 call_graph.json뿐 아니라 01_analyzer_report.md·api_contract.json·schema.json·external_io.json도 함께 읽어 architecture/api-endpoints/database/external-systems 페이지에 자동 병합하므로, "2. 단독"을 선택해도 통합 wiki가 나타나는 게 정상 동작임을 안내) |
 | 3 | 스킵 → Phase 4로 진행 |
 
 ### 파트너 하네스 없는 경우 (단일 스택 / 모노레포 / 파트너 초기화 실패) — 기존 질문
@@ -621,7 +637,7 @@ harness 산출물(_workspace + .claude)을 기반으로 아래 페이지를 포�
 
 `generate-wiki` 실행 시 → `generate-wiki` 스킬의 Phase 0~3을 그대로 수행한다. Phase 0의 "사전 확인"은 harness-init이 방금 완료했으므로 존재 확인은 스킵 가능.
 
-> **어느 쪽에서 실행해도 통합됨**: `wiki_generator.py`의 `merge_partner_call_graph()`는 pair_config.md의 `partner_workspace`를 읽어 병합하므로, frontend에서 generate-wiki를 실행해도 backend에서 실행해도 동일하게 통합 그래프가 나온다. 프론트엔드 쪽에서 통합 wiki를 보고 싶으면 프론트엔드 프로젝트에서 generate-wiki를 실행하면 된다.
+> **어느 쪽에서 실행해도 통합됨**: `wiki_generator.py`는 pair_config.md의 `partner_workspace`를 읽어 call_graph.json 병합(`merge_partner_call_graph()`)뿐 아니라 architecture/api-endpoints/database/external-systems 4개 markdown 페이지에도 파트너 데이터를 병합하므로, frontend에서 generate-wiki를 실행해도 backend에서 실행해도 동일하게 통합 wiki가 나온다. 프론트엔드 쪽에서 통합 wiki를 보고 싶으면 프론트엔드 프로젝트에서 generate-wiki를 실행하면 된다.
 
 ---
 
@@ -690,6 +706,7 @@ Eval 품질 점수: 63/100 → 84/100 (+21, PARTIAL→PASS)
 | analyzer가 인덱스 일부만 생성 | writer/validator/qa는 진행, 누락 인덱스에 의존하는 워크플로우 스킬은 "인덱스 누락" WARN |
 | writer 일부 파일만 생성 | 누락 목록 보고. validator는 생성된 파일에만 검증. 누락 워크플로우 스킬 명시 |
 | writer가 claude_md_fields.json 미생성 | skills_builder.py가 CLAUDE.md 조립 스킵. "CLAUDE.md 미생성 — writer 재실행 필요" WARN. 다른 항목(스킬·domain-expert.md)은 계속 배포 |
+| writer가 writer_decisions.json 미생성 | skills_builder.py가 조건부 스킬·패턴 스켈레톤·02_writer_files.md 조립 전부 스킵. "writer 재실행 필요" WARN. CLAUDE.md·domain-expert.md·항상배포 스킬 3종은 계속 배포 |
 | pattern-extractor 실패 | patterns/ 는 스켈레톤 상태 유지. "pattern-extractor 재실행 권고" 안내 |
 | validator 보안 위험 발견 | 자동 수정 금지. 위치 명시, 사용자 직접 처리 |
 | qa DEAD/ORPHAN 발견 | 자동 수정 금지. 우선순위 표시, 사용자 직접 처리 |

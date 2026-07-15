@@ -77,7 +77,14 @@ validator(구조 검증)와 역할 분리:
 
 ## NEW — Boundary 6: 신규 워크플로우 스킬 ↔ 인덱스 의존성
 
-writer가 생성한 워크플로우 스킬(analyze-impact, safe-modify 등)이 실제로 인덱스를 활용 가능한지 확인:
+파일 존재 확인뿐이라 LLM 판단이 필요 없다. qa 실행 전 다음을 실행:
+
+```
+python agents/lib/qa_boundary6.py --root "[프로젝트 루트 절대 경로]"
+```
+
+생성된 `_workspace/qa_boundary6.md`를 그대로 리포트의 "## Boundary 6" 자리에 삽입 — 재검증 불필요.
+스크립트 실행 실패 시에만 기존 방식(아래)으로 직접 확인:
 
 1. `analyze-impact.md`가 참조하는 `_workspace/index/call_graph.json` 존재 확인
 2. `review-sql.md`가 참조하는 `_workspace/index/sql_usage.json`, `_workspace/index/schema.json` 존재 확인

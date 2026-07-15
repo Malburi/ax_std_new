@@ -11,18 +11,26 @@ Read·Glob 도구로 파일을 실제로 읽고 교차 확인한다.
 
 기존 6점 검증 위에 **인덱스 무결성**과 **신규 워크플로우 스킬 등록 확인**을 추가했다.
 
+10개 검증 항목 중 1,2,3,4,6,7,8,9는 file-exists/JSON-parse/regex-grep 뿐이라 LLM 판단이 필요 없다.
+`agents/lib/validator_checks.py`가 이 8개를 먼저 계산해 `_workspace/validator_mechanical.json`에
+저장한다 — **먼저 이 파일을 읽고, 체크 1,2,3,4,6,7,8,9는 재검증하지 말고 `report_fragments`를
+그대로 리포트에 전사(轉寫)한다.** validator(LLM)가 직접 판단할 몫은 체크 5(레이어 커버리지)와
+체크 10 중 스크립트가 `check10_undecided`로 남긴 항목뿐이다.
+
 ---
 
 ## 팀 통신 프로토콜
 
 | 항목 | 내용 |
 |------|------|
-| **수신** | `_workspace/01_analyzer_report.md`, `_workspace/02_writer_files.md`, `_workspace/index/*.json`, 프로젝트 루트 절대 경로 |
+| **수신** | `_workspace/01_analyzer_report.md`, `_workspace/02_writer_files.md`, `_workspace/validator_mechanical.json`, `_workspace/index/*.json`, 프로젝트 루트 절대 경로 |
 | **발신** | `_workspace/03_validator_report.md`에 검증 리포트 작성 |
 | **작업 범위** | 검증·리포트만. 자동 수정·삭제·보안 위험 자동 처리 금지 |
 | **공유 작업** | `TaskUpdate`로 자기 작업 상태 갱신 |
 
 writer가 상충 패턴을 병기했다면, validator가 분석 리포트와 실제 코드를 교차 비교해 우선 패턴을 권고(자동 적용 X).
+
+`validator_mechanical.json`이 없으면(스크립트 실행 실패) 1,2,3,4,6,7,8,9도 지금까지처럼 직접 검증한다 — 아래 항목별 절차는 기계 파일이 없을 때의 폴백으로도 유효하다.
 
 ---
 
@@ -133,6 +141,10 @@ writer가 만든 patterns/ 파일들이 *스켈레톤*인지 *본문*인지 구�
 신뢰도 = max(0, 기본 - 차감)
 ```
 
+`validator_mechanical.json`의 `mechanical_deduction` 값이 체크 1,2,3,4,6,7,8,9의 차감 합계다.
+여기에 체크 5(레이어 커버리지)·체크 10 미결 항목에서 직접 판단한 FAIL/WARN 차감만 더하면 최종
+신뢰도가 나온다 — 이미 계산된 차감을 다시 세지 않는다.
+
 해석:
 - **80~100**: 바로 커밋 가능
 - **60~79**: 경미한 보완 후 사용 권장
@@ -142,6 +154,12 @@ writer가 만든 patterns/ 파일들이 *스켈레톤*인지 *본문*인지 구�
 ---
 
 ## 출력: 검증 리포트
+
+`validator_mechanical.json`의 `report_fragments.1to6`/`.7`/`.8`/`.9`/`.10`/`.security`를 각 섹션에
+그대로 삽입한다. `## 1~6. 기본 검증`에는 스크립트 결과에 더해 체크 5(레이어 커버리지)에서 직접
+찾은 PASS/WARN/FAIL 항목을 같은 형식(`✅ PASS: ...` / `⚠️ WARN: ...` / `❌ FAIL: ...`)으로 이어붙인다.
+`## 10. patterns/ 상태`는 스크립트 결과에서 "판정 불가"로 남은 파일(`check10_undecided`)만 직접
+읽어 SKELETON/FILLED로 확정한 줄로 교체한다.
 
 `_workspace/03_validator_report.md`에 다음 형식:
 

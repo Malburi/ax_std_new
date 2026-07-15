@@ -4,5 +4,6 @@ _workspace/
 .DS_Store
 Thumbs.db
 .env
+__pycache__/
 presentation-ai-journey.html
 presentation.html
