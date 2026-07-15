@@ -732,25 +732,3 @@ Eval 품질 점수: 63/100 → 84/100 (+21, PARTIAL→PASS)
 
 각 에이전트는 자기 `.md`에 명시된 입력 파일을 읽고 출력 파일을 작성. 오케스트레이터는 의존성 순서로 호출하고 산출물 존재 확인.
 
----
-
-## 테스트 시나리오
-
-### 정상 흐름 (초기 실행)
-1. 사용자가 신규 프로젝트에서 "하네스 초기화"
-2. Phase 0: 없음 확인, `_workspace/` + `_workspace/index/` 생성
-3. Phase 1: TaskCreate로 의존성 체인 (T-A → T-W → T-V → T-Q, T-P는 T-W 직후)
-4. Phase 2: 모두 실행, 인덱스 + 패턴 본문 생성
-5. Phase 3: 종합 보고
-
-### 부분 재실행: 패턴만 다시
-1. 사용자 "패턴만 다시 추출"
-2. Phase 0: 부분 모드, 기존 `_workspace/01, 02` 보존
-3. Phase 2-3 (pattern-extractor)만 실행
-4. Phase 3: 패턴 추출 결과만 보고
-
-### 인덱스 리프레시
-1. 사용자 "인덱스만 갱신해줘"
-2. Phase 0: incremental 모드
-3. Phase 2-1 (analyzer incremental)만 실행 — 변경 파일만 재분석
-4. Phase 3: 인덱스 변화량 보고

@@ -39,7 +39,7 @@ Agent(
   subagent_type="general-purpose",
   description="로직 흐름 추적",
   prompt="<logic-tracer 에이전트 지침. 추적 대상: [추출된 대상]. 프로젝트 루트: [절대경로]. 출력: _workspace/trace_<slug>.md>",
-  model="opus"
+  model="sonnet"
 )
 ```
 

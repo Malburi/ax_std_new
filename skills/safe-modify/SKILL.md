@@ -70,7 +70,7 @@ Agent(
   subagent_type="general-purpose",
   description="변경 안전성 평가",
   prompt="<change-safety 에이전트 지침. 변경 파일: [목록]. mode: [감지된 모드]. impact 리포트: _workspace/impact_<slug>.md. 출력: _workspace/safety_<slug>.md>",
-  model="opus"
+  model="sonnet"
 )
 ```
 
@@ -126,30 +126,3 @@ GO 결정 시:
 
 자동 호출은 기본 OFF. 사용자가 "테스트도 만들어줘", "문서도 업데이트해줘" 같이 요청한 경우만.
 
----
-
-## 시나리오 예시
-
-### 시나리오 1: 작은 버그 수정
-1. "OrderService.cancel의 null 체크 추가해서 안전하게 수정해줘"
-2. Phase 0: mode=normal
-3. Phase 1: analyze-impact 호출 → LOW (3/10)
-4. Phase 2: 변경 적용 (Edit)
-5. Phase 3: change-safety → 종합 2/10, GO
-6. Phase 4: GO 보고, 영향 테스트 실행 권고
-
-### 시나리오 2: 운영 핫픽스
-1. "긴급 핫픽스 — UserAuth.validate 검증 로직 수정"
-2. Phase 0: mode=hotfix
-3. Phase 1: analyze-impact → MEDIUM (5/10), 영향 테스트 12개, 보안 컨텍스트 포함
-4. Phase 2: 사용자에게 확인 ("회귀 테스트 먼저 작성 권고") → 사용자 "진행"
-5. Phase 3: 변경 적용
-6. Phase 4: change-safety → 보안 점수 6/10 (인증 코드), HOLD
-7. 보완 안내 + 사용자가 보완 후 재평가 요청
-
-### 시나리오 3: 마이그레이션 단계 변경
-1. "Struts Action 하나 → Spring Controller로 변환했어. 안전 평가해줘"
-2. Phase 0: mode=normal (마이그레이션 컨텍스트는 별도 plan-migration이 관리)
-3. Phase 2: 이미 변경되어 있으므로 git diff로 수집
-4. Phase 3: change-safety → 컨벤션 일치도 낮음 (새 스타일 도입), 사이드이펙트 변경 (인증 처리 위치 이동)
-5. Phase 4: HOLD, "마이그레이션 매핑 테이블에 따라 표준 변환 패턴 확인 권고"

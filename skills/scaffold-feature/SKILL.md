@@ -127,7 +127,7 @@ Agent(
   subagent_type="general-purpose",
   description="신규 기능 테스트 생성",
   prompt="<test-generator 지침. 대상: [생성된 파일 목록]. 컨벤션: .claude/patterns/test_pattern.md.>",
-  model="opus"
+  model="sonnet"
 )
 ```
 
@@ -180,31 +180,6 @@ Agent(
 - 빌드/실행: [명령어]
 - 통과 후 commit
 ```
-
----
-
-## 시나리오 예시
-
-### 시나리오: "주문 취소 기능 추가"
-
-1. Phase 0: patterns 본문 확인 ✓
-2. Phase 1:
-   - 기능명: 주문 취소
-   - 영향 레이어: Controller, Service, DAO, DTO, Test
-   - 유사 모듈: OrderRefund
-   - 엔드포인트: POST /api/orders/{id}/cancel
-   - DB: TBL_ORDER.STATUS 업데이트
-3. Phase 2: analyze-impact → 충돌 없음, OrderRefund 패턴 참조 가능
-4. Phase 3:
-   - OrderCancelController 생성
-   - OrderCancelService 생성
-   - OrderCancelDao 또는 OrderCancelMapper 생성
-   - CancelRequest, CancelResponse DTO 생성
-   - 쿼리 XML 추가 (ORDER_CANCEL_U01 — STATUS 업데이트)
-   - test-generator로 테스트 골격
-   - Bean 등록 (Spring XML 기반인 경우)
-5. Phase 4: change-safety → 컨벤션 95%, 사이드이펙트 1건(@Transactional 신규 — 정상), GO
-6. Phase 5: 보고 + TODO 안내
 
 ---
 

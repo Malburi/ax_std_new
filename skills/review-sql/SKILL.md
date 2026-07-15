@@ -46,7 +46,7 @@ Agent(
   subagent_type="general-purpose",
   description="SQL 종합 리뷰",
   prompt="<sql-reviewer 지침. SQL: [원문 또는 ID]. mode: [감지된 모드]. 프로젝트 루트: [...]. 인덱스: _workspace/index/sql_usage.json, schema.json. 출력: _workspace/sql_review_<slug>.md>",
-  model="opus"
+  model="sonnet"
 )
 ```
 
@@ -107,46 +107,6 @@ DDL이고 GO 결정 시:
 
 DML 변경 SQL인 경우:
 - 영향 받는 코드 위치를 analyze-impact로 추가 분석 권장
-
----
-
-## 시나리오 예시
-
-### 시나리오 1: 인덱스 확인
-사용자: "ORDER_LMS_S01 쿼리 인덱스 잘 쓰고 있어?"
-
-1. Phase 0: SQL ID → sql_usage.json에서 텍스트 조회
-2. Phase 1: mode=normal
-3. Phase 2: sql-reviewer 실행
-4. Phase 3: 보고 — "WHERE에 user_id, status 사용. 인덱스 IDX_ORDER_USER_STATUS 매칭 OK. GO."
-
-### 시나리오 2: 운영 컬럼 추가
-사용자: "운영 DB에 TBL_ORDER.STATUS 컬럼 추가해야 해. 영향 분석해줘"
-
-1. Phase 0: DDL 모드
-2. Phase 1: mode=production (운영 키워드)
-3. Phase 2: sql-reviewer DDL 분석
-4. Phase 3 결과:
-   - 영향받는 SQL ID: 24개
-   - 영향받는 @Entity: Order.java
-   - NOT NULL + DEFAULT 없음 → 기존 데이터 영향 가능
-   - 위험도: 6/10 (HOLD)
-   - 권고: NOT NULL + DEFAULT 'PENDING' 으로 수정, 단계적 배포
-
-### 시나리오 3: 위험한 운영 패치
-사용자: "운영 시간에 UPDATE TBL_ORDER SET STATUS='C' WHERE ID > 100000 실행해도 돼?"
-
-1. Phase 0: DML
-2. Phase 1: mode=live_patch
-3. Phase 2: sql-reviewer 분석
-4. Phase 3:
-   - WHERE 조건 비효율 → full scan 가능
-   - 대량 처리 + 운영 시간 → 락 영향 큼
-   - 위험도: 8/10 (HIGH, STOP)
-   - 대안:
-     - 1000 row씩 batch
-     - 야간 배치 윈도우로 이동
-     - WHERE 조건을 인덱스 활용 가능하게
 
 ---
 
