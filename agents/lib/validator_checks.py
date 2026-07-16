@@ -1,3 +1,4 @@
+# validator 10개 체크 중 8개를 기계 실행하는 zero-LLM 검사기 (LLM 담당은 체크 5·10만)
 import os
 import re
 import sys

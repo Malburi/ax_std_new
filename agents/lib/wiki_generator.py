@@ -1,3 +1,4 @@
+# harness 산출물을 wiki 폴더(Docsify·call-graph.html·정적 HTML)로 변환하는 zero-LLM 오케스트레이터
 import os
 import json
 import re

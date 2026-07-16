@@ -1,3 +1,4 @@
+# MSSQL harness_wiki_pages 테이블에 wiki 페이지를 upsert/조회하는 DB 클라이언트 (pymssql 기반)
 import os
 import sys
 

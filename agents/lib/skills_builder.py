@@ -1,3 +1,4 @@
+# harness 산출물(스킬 5종·도메인 에이전트·패턴·CLAUDE.md)을 프로그램식으로 배포하는 zero-LLM 빌더
 import os
 import re
 import sys

@@ -1,3 +1,4 @@
+# pattern-extractor 산출물(05_patterns_extracted.md) 집계 표를 패턴 파일에서 취합하는 zero-LLM 빌더
 import os
 import re
 import sys

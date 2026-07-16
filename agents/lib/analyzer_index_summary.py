@@ -1,3 +1,4 @@
+# analyzer 리포트 Section B/D를 인덱스 JSON에서 기계 생성하는 zero-LLM 빌더
 import os
 import sys
 import json

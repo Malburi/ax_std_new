@@ -1,3 +1,4 @@
+# DB 저장 wiki를 Docsify 방식으로 서빙하는 stdlib 기반 로컬 HTTP 뷰어
 import os
 import sys
 import html

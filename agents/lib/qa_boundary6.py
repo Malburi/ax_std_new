@@ -1,3 +1,4 @@
+# qa Boundary 6(워크플로우 스킬 ↔ 인덱스 의존성)을 기계 실행하는 zero-LLM 검사기
 import os
 import sys
 import argparse
