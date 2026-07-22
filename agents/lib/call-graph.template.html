@@ -6,14 +6,6 @@
   <title>{{PROJECT_NAME}} Call Graph</title>
   <script data-noframing="true" src="lib/vis-network.min.js"></script>
   <link data-noframing="true" href="lib/vis-network.min.css" rel="stylesheet" />
-  <script>
-    (function() {
-      var currentPath = window.location.pathname;
-      var baseDir = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
-      if (window.location.hash && window.location.hash.indexOf('#/') === 0) {
-      }
-    })();
-  </script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -25,7 +17,8 @@
     #searchInput::placeholder { color: #666; }
     #searchInput:focus { border-color: #4A90D9; }
     .filter-bar { background: rgba(0,0,0,0.3); border-bottom: 1px solid rgba(255,255,255,0.07); padding: 8px 20px; display: flex; gap: 8px; align-items: center; flex-shrink: 0; flex-wrap: wrap; }
-    .filter-bar span { font-size: 11px; color: #888; margin-right: 4px; }
+    .filter-bar span.label { font-size: 11px; color: #888; margin-right: 4px; }
+    .filter-spacer { flex: 1; }
     .filter-btn { padding: 4px 12px; border-radius: 20px; border: 1px solid; font-size: 11px; cursor: pointer; transition: all .2s; font-weight: 600; background: transparent; }
     .filter-btn.active { opacity: 1; }
     .filter-btn:not(.active) { opacity: 0.35; }
@@ -40,6 +33,8 @@
     .filter-btn[data-type="db_table"],
     .filter-btn[data-type="mssql_table"]   { border-color: #7ED321;  color: #7ED321; }
     .filter-btn[data-type="util"]          { border-color: #48C9B0;  color: #48C9B0; }
+    .tool-btn { padding: 4px 12px; border-radius: 20px; border: 1px solid #4A90D9; color: #4A90D9; font-size: 11px; cursor: pointer; font-weight: 600; background: transparent; }
+    .tool-btn.active { background: rgba(74,144,217,0.18); }
     .main { display: flex; flex: 1; overflow: hidden; }
     #graph { flex: 1; background: #0f0f1e; }
     #detail { width: 280px; background: rgba(255,255,255,0.04); border-left: 1px solid rgba(255,255,255,0.08); padding: 16px; overflow-y: auto; flex-shrink: 0; }
@@ -53,13 +48,14 @@
     .conn-list li { font-size: 12px; color: #ccc; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
     .conn-list li:last-child { border-bottom: none; }
     .conn-arrow { color: #4A90D9; margin-right: 4px; }
-    .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
-    .stat-box { background: rgba(255,255,255,0.05); border-radius: 6px; padding: 10px; text-align: center; }
-    .stat-box .num { font-size: 22px; font-weight: 700; color: #4A90D9; }
-    .stat-box .lbl { font-size: 10px; color: #888; margin-top: 2px; }
-    .legend { margin-top: 16px; }
-    .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; color: #ccc; }
-    .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+    .stat-hero { background: rgba(255,255,255,0.05); border-radius: 8px; padding: 14px; text-align: center; margin-bottom: 16px; }
+    .stat-num { font-size: 32px; font-weight: 800; color: #4A90D9; line-height: 1.2; }
+    .stat-caption { font-size: 12px; color: #ccc; margin-top: 4px; }
+    .stat-sub { font-size: 11px; color: #888; margin-top: 4px; }
+    .legend-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 4px 10px; margin-bottom: 4px; }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #ccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .legend-note { grid-column: 1 / -1; font-size: 11px; color: #888; margin-top: 2px; }
   </style>
 </head>
 <body>
@@ -75,26 +71,27 @@
   </div>
 
   <div class="filter-bar">
-    <span>필터:</span>
+    <span class="label">필터:</span>
     <button class="filter-btn active" data-type="all">전체</button>
     {{FILTER_BUTTONS}}
+    <div class="filter-spacer"></div>
+    <button id="findBtn" class="tool-btn">찾기</button>
+    <button id="resetHighlightBtn" class="tool-btn">강조 초기화</button>
+    <button id="physicsToggle" class="tool-btn active">물리엔진 ON</button>
   </div>
 
   <div class="main">
     <div id="graph"></div>
     <div id="detail">
-      <h3>통계</h3>
-      <div class="stats">
-        <div class="stat-box"><div class="num" id="stat-nodes">0</div><div class="lbl">노드</div></div>
-        <div class="stat-box"><div class="num" id="stat-edges">0</div><div class="lbl">엣지</div></div>
-        {{EXTRA_STATS}}
-      </div>
-      <div class="legend">
+      <h3>그래프 정보</h3>
+      {{STAT_SUMMARY}}
+      <h3>범례</h3>
+      <div class="legend-grid">
         {{LEGEND_ITEMS}}
       </div>
       <hr style="border-color:rgba(255,255,255,0.08);margin:16px 0;" />
-      <h3>노드 상세</h3>
-      <div id="detailContent" class="empty">노드를 클릭하면<br />상세 정보가 표시됩니다.</div>
+      <h3>선택 노드</h3>
+      <div id="detailContent" class="empty">노드를 클릭하세요.</div>
     </div>
   </div>
 
@@ -134,6 +131,8 @@
     }
 
     const nodesData = {{NODES_DATA}};
+    const baseOpacity = {};
+    nodesData.forEach(n => { baseOpacity[n.id] = n.opacity ?? 1; });
 
     function edge(from, to, label = '', dashed = false) {
       return {
@@ -150,6 +149,7 @@
     const container = document.getElementById('graph');
     const nodes = new vis.DataSet(nodesData);
     const edges_ds = new vis.DataSet(edgesData);
+    let physicsOn = true;
     const network = new vis.Network(container, { nodes, edges: edges_ds }, {
       physics: {
         enabled: true, solver: 'forceAtlas2Based',
@@ -162,21 +162,13 @@
       layout: { improvedLayout: true }
     });
 
-    document.getElementById('stat-nodes').textContent = nodesData.length;
-    document.getElementById('stat-edges').textContent = edgesData.length;
-
     function getLabel(id) {
       const n = nodesData.find(x => x.id === id);
       return n ? n.label.replace(/\n/g, ' ') : id;
     }
 
-    network.on('click', params => {
+    function showDetail(id) {
       const dc = document.getElementById('detailContent');
-      if (!params.nodes.length) {
-        dc.innerHTML = '<span class="empty">노드를 클릭하면<br/>상세 정보가 표시됩니다.</span>';
-        return;
-      }
-      const id = params.nodes[0];
       const m = META[id] || {};
       const lbl = getLabel(id);
       const type = nodeTypeMap[id];
@@ -185,6 +177,7 @@
       const connEdges = edgesData.filter(e => e.from === id || e.to === id);
       const outgoing = connEdges.filter(e => e.from === id).map(e => `<li><span class="conn-arrow">→</span>${getLabel(e.to)}</li>`).join('');
       const incoming = connEdges.filter(e => e.to === id).map(e => `<li><span class="conn-arrow">←</span>${getLabel(e.from)}</li>`).join('');
+      dc.classList.remove('empty');
       dc.innerHTML = `
         <div class="detail-card">
           <div class="label">노드</div>
@@ -197,13 +190,54 @@
         ${outgoing ? `<div class="detail-card"><div class="label">호출 대상 (→ ${connEdges.filter(e => e.from === id).length}개)</div><ul class="conn-list">${outgoing}</ul></div>` : ''}
         ${incoming ? `<div class="detail-card"><div class="label">호출처 (← ${connEdges.filter(e => e.to === id).length}개)</div><ul class="conn-list">${incoming}</ul></div>` : ''}
       `;
+      network.selectNodes([id]);
+    }
+
+    network.on('click', params => {
+      if (!params.nodes.length) {
+        const dc = document.getElementById('detailContent');
+        dc.classList.add('empty');
+        dc.innerHTML = '노드를 클릭하세요.';
+        return;
+      }
+      showDetail(params.nodes[0]);
     });
 
+    function resetHighlight() {
+      nodes.update(nodesData.map(n => ({ id: n.id, opacity: baseOpacity[n.id] })));
+    }
+
     network.on('doubleClick', params => {
-      if (!params.nodes.length) { network.unselectAll(); return; }
+      if (!params.nodes.length) { resetHighlight(); return; }
       const id = params.nodes[0];
-      const connected = edgesData.filter(e => e.from === id || e.to === id).flatMap(e => [e.from, e.to]);
-      network.selectNodes([...new Set(connected)]);
+      const keep = new Set([id, ...network.getConnectedNodes(id)]);
+      nodes.update(nodesData.map(n => ({ id: n.id, opacity: keep.has(n.id) ? baseOpacity[n.id] : 0.15 })));
+    });
+
+    document.getElementById('resetHighlightBtn').addEventListener('click', resetHighlight);
+
+    document.getElementById('physicsToggle').addEventListener('click', function() {
+      physicsOn = !physicsOn;
+      this.textContent = '물리엔진 ' + (physicsOn ? 'ON' : 'OFF');
+      this.classList.toggle('active', physicsOn);
+      network.setOptions({ physics: { enabled: physicsOn } });
+    });
+
+    document.getElementById('findBtn').addEventListener('click', () => {
+      const q = document.getElementById('searchInput').value.trim().toLowerCase();
+      if (!q) return;
+      const hit = nodesData.find(n => {
+        const m = META[n.id] || {};
+        return n.id.toLowerCase().includes(q) || n.label.toLowerCase().includes(q) || (m.file || '').toLowerCase().includes(q);
+      });
+      if (hit) {
+        network.focus(hit.id, { scale: 1.35, animation: true });
+        showDetail(hit.id);
+      }
+    });
+
+    document.getElementById('searchInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('findBtn').click();
     });
 
     const allTypes = [...new Set(nodesData.map(n => nodeTypeMap[n.id]))];
