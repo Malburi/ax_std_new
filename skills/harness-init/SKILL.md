@@ -602,9 +602,15 @@ for each fix_target in eval_report.fix_targets (우선순위 순):
     범위: [fix_target.scope].
     프로젝트 루트: [절대경로].
     기존 산출물: _workspace/01_analyzer_report.md, _workspace/02_writer_files.md>",
-    model="[tier별 모델]"
+    model="[아래 규칙]"
   )
 ```
+
+재실행 model 규칙 (2-1/2-2와 동일 — "tier별 모델"로 뭉뚱그리지 않는다):
+- `analyzer` 재실행: Full이면 opus, Standard면 sonnet
+- `writer` 재실행: 모든 Tier에서 sonnet (2026-07-23 결정)
+
+writer 재실행 후에는 2-2.3(skills_builder.py)을 다시 실행해 CLAUDE.md·02_writer_files.md 등을 재조립한다.
 
 재생성 완료 후 harness-evaluator 1회 재실행 (평가 회차 = 2):
 

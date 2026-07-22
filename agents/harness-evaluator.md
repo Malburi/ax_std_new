@@ -32,16 +32,18 @@ Karpathy의 AutoResearch 패턴에서 영감을 받아, 출력을 평가하고 �
 
 **목적:** 코드베이스의 주요 레이어·스택·패턴이 harness에 빠짐없이 반영되었는가.
 
+> **정적 배포 스킬 5종(analyze-impact/safe-modify/scaffold-feature/plan-migration/review-sql)은 프로젝트별 변수 없는 고정 텍스트를 skills_builder.py가 복사한 것이다 (2026-07-14 전환).** 이 5종의 *본문·트리거 내용*은 채점 대상이 아니다 — 프로젝트별로 달라질 수 없으므로 감점하면 구조적으로 만족 불가능한 상시 감점이 된다. 배포 *여부*(조건부 스킬의 생성 결정)만 본다.
+
 검증 방법:
 1. `_workspace/01_analyzer_report.md`의 "아키텍처 레이어" 섹션에서 식별된 레이어 목록 추출
-2. CLAUDE.md, skills/, patterns/ 에 각 레이어가 언급되었는지 확인
-3. 외부 통신 탐지 시 → safe-modify/analyze-impact 트리거에 반영 여부 확인
-4. DB 사용 탐지 시 → review-sql 생성 여부 확인
+2. CLAUDE.md, writer 작성 스킬(trace/scaffolder/find-logic), patterns/ 에 각 레이어가 언급되었는지 확인
+3. 외부 통신 탐지 시 → trace.md 또는 CLAUDE.md "작업 시 주의사항"에 외부 연동 지점 반영 여부 확인
+4. DB 사용 탐지 시 → review-sql.md 배포 여부 확인 (writer_decisions.json의 `review_sql.generate` 결정이 근거)
 
 감점:
 - 식별된 레이어 1개 미반영: -3점 (최대 -15점)
-- 외부 시스템 연동 탐지되었으나 skill 미반영: -5점
-- DB 사용 탐지되었으나 review-sql 미생성: -5점
+- 외부 시스템 연동 탐지되었으나 trace.md·CLAUDE.md 어디에도 미반영: -5점
+- DB 사용 탐지되었으나 review-sql 미배포: -5점
 
 ### 차원 2: 정확도 (25점)
 
@@ -66,8 +68,8 @@ Karpathy의 AutoResearch 패턴에서 영감을 받아, 출력을 평가하고 �
 **목적:** 스킬 트리거가 현실적인가, 생성된 워크플로우가 실제로 작동할 수 있는가.
 
 검증 방법:
-1. 각 skill `description`의 트리거 문구 수 확인 (한국어 ≥3개, 영어 ≥2개)
-2. scaffold-feature.md가 실제 레이어 경로를 참조하는가
+1. 각 skill `description`의 트리거 문구 수 확인 (한국어 ≥3개, 영어 ≥2개) — **writer 작성 스킬(trace/scaffolder/find-logic, cross-repo-*)만 대상.** 정적 배포 스킬 5종·harness-init.md는 고정 텍스트라 제외 (validator_checks.py의 STATIC_OR_PREEXISTING_SKILLS와 동일 원칙)
+2. scaffolder.md(writer 작성)가 실제 레이어 경로를 참조하는가
 3. analyze-impact.md·safe-modify.md에서 참조하는 `_workspace/index/` 파일들이 존재하는가
 4. domain-expert.md의 도메인 키워드 수 (최소 10개 이상)
 5. `_workspace/00_spec_report.md` 존재 시 → spec의 goal_hint에 맞는 스킬이 강조되었는가
@@ -116,10 +118,13 @@ PARTIAL/RETRY일 때 점수 낮은 차원 순으로 재생성 대상 나열:
 
 | 실패 차원 | fix_target.agent | fix_target.scope | fix_target.instruction |
 |---------|-----------------|-----------------|----------------------|
-| 커버리지 | `writer` | 누락 레이어 해당 skill·pattern 파일 | "다음 레이어를 skill/pattern에 추가하라: [목록]" |
-| 정확도 | `analyzer`(incremental) + `writer` | 불일치 파일·경로들 | "다음 경로를 재탐지하고 skill을 수정하라: [목록]" |
+| 커버리지 | `writer` | 누락 레이어 해당 writer 작성 파일(trace/scaffolder/find-logic)·claude_md_fields.json·writer_decisions.json(pattern_files) | "다음 레이어를 스킬/패턴 목록에 추가하라: [목록]" |
+| 정확도 (경로 재탐지 필요) | `analyzer` | 불일치 경로들 (mode: incremental) | "다음 경로를 재탐지하라: [목록]" |
+| 정확도 (스킬 본문 수정) | `writer` | 불일치를 참조하는 writer 작성 파일 | "재탐지 결과에 맞춰 스킬을 수정하라: [목록]" |
 | 실행가능성 | `writer` | 트리거 부족 스킬·인덱스 불일치 파일 | "트리거 문구 보강 + 인덱스 참조 수정" |
-| 컨텍스트 품질 | `writer` | domain-expert.md + CLAUDE.md | "요청 흐름 재작성 + 도메인 키워드 추가 + spec 목표 반영" |
+| 컨텍스트 품질 | `writer` | claude_md_fields.json (domain-expert.md는 analyzer_report 복사본 — writer 수정 대상 아님) | "요청 흐름 재작성 + 주의사항 필드 보강" |
+
+한 행에 에이전트 1개만 적는다 — 정확도처럼 두 에이전트가 필요하면 위처럼 행을 나눈다 (analyzer 행이 writer 행보다 우선순위 위).
 
 RETRY일 때는 score가 가장 낮은 2개 차원의 fix_target만 반환 (과도한 재실행 방지).
 
