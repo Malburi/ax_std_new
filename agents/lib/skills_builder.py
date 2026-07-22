@@ -270,8 +270,11 @@ def deploy_claude_md(root):
 def main():
     parser = argparse.ArgumentParser(description="Harness 정적 워크플로우 스킬 + domain-expert.md + CLAUDE.md + 패턴 스켈레톤 + 02_writer_files.md 배포기")
     parser.add_argument("--root", required=True, help="프로젝트 루트 절대 경로")
-    parser.add_argument("--summary", required=True, help="_workspace/writer_decisions.json 경로")
+    parser.add_argument("--summary", default=None,
+                        help="writer_decisions.json 경로 (기본: [root]/_workspace/writer_decisions.json)")
     args = parser.parse_args()
+    if not args.summary:
+        args.summary = os.path.join(args.root, "_workspace", "writer_decisions.json")
 
     skills_dir = os.path.join(args.root, ".claude", "skills")
     os.makedirs(skills_dir, exist_ok=True)

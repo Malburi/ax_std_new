@@ -412,8 +412,10 @@ Section B/D 중 "의존성 그래프 요약"·"트랜잭션 경계"·"외부 통
 Phase C에서 인덱스 JSON을 다 쓴 뒤 다음을 실행:
 
 ```
-python agents/lib/analyzer_index_summary.py --root "[프로젝트 루트 절대 경로]"
+python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/analyzer_index_summary.py" --root "[프로젝트 루트 절대 경로]"
 ```
+
+(스크립트는 대상 프로젝트가 아니라 플러그인 설치 루트에 있다 — PowerShell `$env:CLAUDE_PLUGIN_ROOT`, bash `$CLAUDE_PLUGIN_ROOT`. 비어 있으면 이 에이전트 파일이 위치한 플러그인 디렉터리 절대경로로 대체. cwd 상대경로 `agents/lib/...` 금지.)
 
 생성된 `_workspace/01b_index_summary.md`를 읽어 아래 템플릿의 `[SECTION_B_INDEX_SUMMARY_INSERT]` 자리에
 그대로 삽입한다 (내용을 다시 요약·재작성하지 않는다). 폴백 2가지를 구분한다:

@@ -80,8 +80,10 @@ validator(구조 검증)와 역할 분리:
 파일 존재 확인뿐이라 LLM 판단이 필요 없다. 보통은 오케스트레이터(harness-init Phase 3.6)가 qa 호출 전에 스크립트를 이미 실행해 두므로, **`_workspace/qa_boundary6.md`가 존재하면 그대로 리포트의 "## Boundary 6" 자리에 삽입한다 — 재검증·재실행 불필요.** 파일이 없으면 직접 실행:
 
 ```
-python agents/lib/qa_boundary6.py --root "[프로젝트 루트 절대 경로]"
+python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/qa_boundary6.py" --root "[프로젝트 루트 절대 경로]"
 ```
+
+(스크립트는 플러그인 설치 루트에 있다 — PowerShell `$env:CLAUDE_PLUGIN_ROOT`, bash `$CLAUDE_PLUGIN_ROOT`. 비어 있으면 이 에이전트 파일이 위치한 플러그인 디렉터리 절대경로로 대체. cwd 상대경로 `agents/lib/...` 금지.)
 
 스크립트 실행까지 실패한 경우에만 기존 방식(아래)으로 직접 확인:
 

@@ -599,7 +599,7 @@ def main():
             storage_line = (
                 f"저장 위치: MSSQL DB ({db_result['synced']}개 페이지 upsert, "
                 f"project_name='{db_result['project_name']}') — wiki/ 폴더는 로컬 캐시로 유지\n"
-                f"브라우저 확인: python agents/lib/wiki_db_server.py --root \"{project_root}\" 실행 후 http://localhost:8000\n"
+                f"브라우저 확인: python \"{os.path.join(LIB_DIR, 'wiki_db_server.py')}\" --root \"{project_root}\" 실행 후 http://localhost:8000\n"
             )
         except Exception as e:
             storage_line = f"저장 위치: DB 실패 — {e} (wiki/ 폴더 저장은 정상 완료됨)\n"

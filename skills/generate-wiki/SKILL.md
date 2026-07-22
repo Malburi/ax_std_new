@@ -89,8 +89,10 @@ description: harness 산출물(_workspace + .claude)을 기반으로 프로젝�
 LLM 호출 없이, 다음 터미널 명령 한 번으로 wiki 페이지 + 인터랙티브 호출 그래프를 생성한다.
 
 ```powershell
-python agents/lib/wiki_generator.py --root "[절대경로]" --wiki-dir "[절대경로]/wiki" --storage [folder|db]
+python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/wiki_generator.py" --root "[절대경로]" --wiki-dir "[절대경로]/wiki" --storage [folder|db]
 ```
+
+(스크립트는 플러그인 설치 루트에 있다 — PowerShell `$env:CLAUDE_PLUGIN_ROOT`, bash `$CLAUDE_PLUGIN_ROOT`. 비어 있으면 이 SKILL.md가 위치한 플러그인 디렉터리 절대경로로 대체. cwd 상대경로 `agents/lib/...` 금지.)
 
 ---
 

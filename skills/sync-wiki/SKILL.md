@@ -39,7 +39,7 @@ wiki 동기화 방향을 선택하세요:
 | 방향 | 동작 |
 |------|------|
 | 폴더 → DB | `.env`에 `WIKI_SYSTEM_KEY` 있으면 재사용. 없으면 generate-wiki와 동일한 질문으로 입력받아 `.env`에 저장 후 진행 |
-| DB → 폴더 | `.env`에 `WIKI_SYSTEM_KEY` 있으면 그 값을 기본 제안하되, "다른 시스템의 wiki를 가져올 수도 있으므로" 먼저 `python agents/lib/wiki_db.py --root "[절대경로]" --list-systems` 결과를 보여주고 "가져올 시스템 키를 선택/입력하세요"라고 질문. 이 값은 **`.env`에 저장하지 않고** `--system-key` 1회성 override로만 사용 |
+| DB → 폴더 | `.env`에 `WIKI_SYSTEM_KEY` 있으면 그 값을 기본 제안하되, "다른 시스템의 wiki를 가져올 수도 있으므로" 먼저 `python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/wiki_db.py" --root "[절대경로]" --list-systems` 결과를 보여주고 "가져올 시스템 키를 선택/입력하세요"라고 질문. 이 값은 **`.env`에 저장하지 않고** `--system-key` 1회성 override로만 사용 |
 
 ---
 
@@ -48,8 +48,10 @@ wiki 동기화 방향을 선택하세요:
 ### 폴더 → DB
 
 ```powershell
-python agents/lib/wiki_db.py --root "[절대경로]" --wiki-dir "[절대경로]/wiki" --direction to-db
+python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/wiki_db.py" --root "[절대경로]" --wiki-dir "[절대경로]/wiki" --direction to-db
 ```
+
+(스크립트는 플러그인 설치 루트에 있다 — PowerShell `$env:CLAUDE_PLUGIN_ROOT`, bash `$CLAUDE_PLUGIN_ROOT`. 비어 있으면 이 SKILL.md가 위치한 플러그인 디렉터리 절대경로로 대체. cwd 상대경로 `agents/lib/...` 금지.)
 
 `.env`에 `WIKI_SYSTEM_KEY`가 이미 있으면 자동 사용되므로 인자 불필요. (앞서 시스템 키를 새로 입력받아
 `.env`에 막 저장한 직후라면 그대로 위 명령 실행.)
@@ -60,7 +62,7 @@ python agents/lib/wiki_db.py --root "[절대경로]" --wiki-dir "[절대경로]/
 ### DB → 폴더
 
 ```powershell
-python agents/lib/wiki_db.py --root "[절대경로]" --wiki-dir "[절대경로]/wiki" --direction to-folder --system-key "[선택된 시스템 키]"
+python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/wiki_db.py" --root "[절대경로]" --wiki-dir "[절대경로]/wiki" --direction to-folder --system-key "[선택된 시스템 키]"
 ```
 
 - 기존 `wiki/` 폴더가 있으면 먼저 `wiki_prev/`로 백업 여부 확인 (generate-wiki Phase 0과 동일 원칙).
@@ -76,7 +78,7 @@ python agents/lib/wiki_db.py --root "[절대경로]" --wiki-dir "[절대경로]/
 ```
 [폴더 → DB]
 DB 저장 완료: [host]:[port]/[database] — N개 페이지 (project=[project_name])
-브라우저 확인: python agents/lib/wiki_db_server.py --root "[절대경로]" 실행 후 http://localhost:8000
+브라우저 확인: python "[플러그인 루트]/agents/lib/wiki_db_server.py" --root "[절대경로]" 실행 후 http://localhost:8000
 
 [DB → 폴더]
 폴더 복원 완료: [wiki_dir] — N개 페이지 (project=[project_name])

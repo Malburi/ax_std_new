@@ -283,8 +283,10 @@ writer 완료 후 다음을 전부 처리한다 (LLM 호출 없음, 전부 결�
 - `writer_decisions.json`의 `pattern_files` 목록(+ "LegacyStaticJS" 탐지 시 client_pattern.md 자동 추가)으로 `.claude/patterns/*.md` 스켈레톤 생성 (이미 pattern-extractor가 채운 파일은 덮어쓰지 않음)
 - 위 모든 결과 + `writer_decisions.json`을 조합해 `_workspace/02_writer_files.md` 조립
 
+> **스크립트 경로 규칙 (이 스킬의 모든 `agents/lib/*.py` 호출 공통)**: 스크립트는 대상 프로젝트가 아니라 *플러그인 설치 루트*에 있다. PowerShell은 `$env:CLAUDE_PLUGIN_ROOT`, bash는 `$CLAUDE_PLUGIN_ROOT`로 참조한다. 환경변수가 비어 있으면 이 SKILL.md가 위치한 플러그인 디렉터리(예: `~/.claude/plugins/cache/ax-std-harness/...`)의 절대경로로 대체한다. cwd 기준 상대경로 `agents/lib/...`는 개발 저장소에서만 동작하므로 금지. `--out`/`--summary` 인자는 생략한다 — 스크립트 기본값이 `--root` 기준 경로라, cwd ≠ root인 상황(파트너 하네스 자동 생성 등)에서 상대경로 인자를 넘기면 엉뚱한 프로젝트에 읽기/쓰기가 발생한다.
+
 ```powershell
-python agents/lib/skills_builder.py --root "[절대경로]" --summary "_workspace/writer_decisions.json"
+python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/skills_builder.py" --root "[절대경로]"
 ```
 
 실패 시(python 미설치, claude_md_fields.json/writer_decisions.json 누락 등) 1회만 재시도하고, 그래도 실패하면 "CLAUDE.md/정적 스킬/domain-expert.md/패턴 스켈레톤/02_writer_files.md 배포 실패 — writer 재실행 또는 수동 작성 필요" WARN 후 계속 진행 (개별 항목은 부분적으로 성공할 수 있음 — 스크립트가 항목별로 독립 처리).
@@ -361,8 +363,10 @@ Agent(
 먼저 실행 (LLM 미사용 — validator 체크 1,2,3,4,6,7,8,9를 대신 계산):
 
 ```powershell
-python agents/lib/validator_checks.py --root "[절대경로]" --out "_workspace/validator_mechanical.json"
+python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/validator_checks.py" --root "[절대경로]"
 ```
+
+(출력은 기본값 `[root]/_workspace/validator_mechanical.json` — 경로 규칙은 2-2.3 참조.)
 
 실패 시(python 미설치 등) WARN 후 계속 진행 — validator가 해당 체크를 직접 수행하는 기존 방식으로 폴백.
 
@@ -568,8 +572,10 @@ Phase 3 보고 직후, 기본 파이프라인에 포함되지 않는 QA(경계�
 **QA 선택 시** — Agent() 호출 전에 Boundary 6 기계 체크를 먼저 실행(LLM 미사용):
 
 ```powershell
-python agents/lib/qa_boundary6.py --root "[절대경로]" --out "_workspace/qa_boundary6.md"
+python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/qa_boundary6.py" --root "[절대경로]"
 ```
+
+(출력은 기본값 `[root]/_workspace/qa_boundary6.md` — 경로 규칙은 2-2.3 참조.)
 
 실패 시 WARN 후 계속 진행 — qa가 Boundary 6을 직접 확인하는 기존 방식으로 폴백.
 

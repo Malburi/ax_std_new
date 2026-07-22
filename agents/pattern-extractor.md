@@ -203,8 +203,10 @@ public class XxxService {
 직접 작성하지 않는다. Step 5 완료 후:
 
 ```
-python agents/lib/pattern_tally.py --root "[프로젝트 루트 절대 경로]" --patterns-dir "[프로젝트 루트]/.claude/patterns"
+python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/pattern_tally.py" --root "[프로젝트 루트 절대 경로]" --patterns-dir "[프로젝트 루트]/.claude/patterns"
 ```
+
+(스크립트는 플러그인 설치 루트에 있다 — PowerShell `$env:CLAUDE_PLUGIN_ROOT`, bash `$CLAUDE_PLUGIN_ROOT`. 비어 있으면 이 에이전트 파일이 위치한 플러그인 디렉터리 절대경로로 대체. cwd 상대경로 `agents/lib/...` 금지.)
 
 생성된 `_workspace/05b_pattern_tally.md`를 그대로 읽어 `_workspace/05_patterns_extracted.md`에
 다음과 같이 삽입하고, "## 권고" 문단만 직접 작성한다 (내용을 다시 요약·재작성하지 않는다):
