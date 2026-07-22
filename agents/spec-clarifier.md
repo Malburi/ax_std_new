@@ -143,7 +143,7 @@ harness 초기화 전에 몇 가지 확인이 필요합니다 (선택 질문입�
 - goal_hint: [코드이해 / 버그수정 / 신규개발 / 마이그레이션]
 - constraint_hint: [제약 목록, 없으면 없음]
 - priority_hint: [우선 레이어/기능, 없으면 없음]
-- tier_suggestion: [Lite / Standard / Full / 없음] — 목표·범위 기반 권고
+- tier_suggestion: [Standard / Full / 없음] — 목표·범위 기반 권고
 
 === END ===
 ```
@@ -152,7 +152,7 @@ harness 초기화 전에 몇 가지 확인이 필요합니다 (선택 질문입�
 
 | 목표 + 범위 | 권고 Tier |
 |-----------|---------|
-| 코드 이해 + 특정 모듈 | Lite |
+| 코드 이해 + 특정 모듈 | Standard |
 | 버그 수정 + 전체 | Standard |
 | 신규 기능 개발 | Standard |
 | 마이그레이션 | Full |

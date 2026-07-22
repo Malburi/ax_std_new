@@ -25,7 +25,6 @@ model: opus
 
 | 모드 | 동작 | 사용 Tier |
 |------|------|---------|
-| `lite` | Phase A만 (Step 1~7). 인덱스 생성 없음. 빠른 스택/구조 파악. | Lite |
 | `init` (기본) | Phase A + Phase B (tier에 따라 선택적). 최초 전체 분석. | Standard / Full |
 | `incremental` | 기존 `_workspace/index/*.json`을 로드해 git diff 또는 mtime 기반으로 변경 파일만 재분석 | 모든 Tier |
 | `feature-scoped` | 사용자가 지정한 키워드/경로 범위만 분석 (특정 기능 분석 시 사용) | 모든 Tier |
@@ -169,7 +168,7 @@ pair_linked = true이면 분석 리포트 헤더에 "파트너 연동: [partner_
 
 ## Phase B: 심층 분석 (NEW — 수정/개발/마이그레이션 지원)
 
-> **실행 조건:** `mode: lite`이면 Phase B 전체 스킵. `mode: init` + Standard Tier이면 아래 표에서 해당 스택 스텝만 실행.
+> **실행 조건:** `mode: init` + Standard Tier이면 아래 표에서 해당 스택 스텝만 실행.
 >
 > | Step | Standard에서 실행 조건 | Full |
 > |------|----------------------|------|
@@ -341,7 +340,6 @@ api-bridge 에이전트 없이 analyzer가 직접 추출한다 (harness-init 파
 }
 ```
 
-Lite 모드에서는 스킵. Standard/Full에서만 생성.  
 엔드포인트가 많아 완전 추출이 어려우면 핵심 도메인 모듈 우선, 나머지는 경로·메서드만 표기.
 
 ### Step 15: 데드 코드·미사용 식별
@@ -419,7 +417,7 @@ python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/analyzer_index_summary.py" --root "[�
 
 생성된 `_workspace/01b_index_summary.md`를 읽어 아래 템플릿의 `[SECTION_B_INDEX_SUMMARY_INSERT]` 자리에
 그대로 삽입한다 (내용을 다시 요약·재작성하지 않는다). 폴백 2가지를 구분한다:
-- 스크립트가 WARN만 내고 아무것도 못 만든 경우 (인덱스 파일이 전혀 없음 — Lite 모드 등): 해당 자리는 비워두거나 "인덱스 없음 — 재분석 필요"로 대체.
+- 스크립트가 WARN만 내고 아무것도 못 만든 경우 (인덱스 파일이 전혀 없음 — Phase C 미완료 등): 해당 자리는 비워두거나 "인덱스 없음 — 재분석 필요"로 대체.
 - 스크립트 실행 자체가 실패했지만 (python 미설치 등) 인덱스 JSON은 존재하는 경우: 해당 섹션을 인덱스 JSON의 카운트 기반으로 직접 작성한다 (기계화 이전 방식으로 폴백).
 
 `비동기/스케줄/이벤트`·`인증/인가 경로`는 대응하는 JSON 인덱스가 없어 기계화 대상이 아니다 —
@@ -485,8 +483,7 @@ Write 도구로 다음 형식의 리포트를 작성한다. 반환 메시지는 
 
 | 호출 컨텍스트 | Tier/모드 | 필수 Phase | 선택 Phase |
 |--------------|---------|----------|----------|
-| `harness-init` Lite | lite/sonnet | A | — |
-| `harness-init` Standard | init/sonnet | A, B(조건부) | D (DB 접속 가능 시) |
+| `harness-init` Standard | init/sonnet | A, B(조건부), C | D (DB 접속 가능 시) |
 | `harness-init` Full | init/opus | A, B, C | D (DB 접속 가능 시) |
 | `pair-init` / `api-bridge extract` | init/sonnet | A + B Step 15.5 | — |
 | `analyze-impact` | incremental/sonnet | A 캐시 활용 + B Step 8/9/10 | — |

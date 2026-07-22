@@ -126,8 +126,10 @@ description: 프로젝트를 심층 분석해 맞춤형 하네스(CLAUDE.md, 5+ 
 
 | 키워드 | Tier 강제 |
 |--------|---------|
-| "빠르게"·"간단히"·"빠른"·"quick"·"fast" | **Lite** |
+| "빠르게"·"간단히"·"빠른"·"quick"·"fast" | **Standard** |
 | "깊게"·"심층"·"마이그레이션"·"레거시"·"전체"·"migration"·"legacy"·"deep" | **Full** |
+
+> Lite Tier는 2026-07-23 폐지됨 — 인덱스 없는 하네스는 후속 스킬(analyze-impact 등)이 동작하지 않아 실효가 없었다. Tier는 Standard/Full 2단계만 존재하며 기본은 Full이다.
 
 **② override 없으면 기본 Full + 1회 다운그레이드 확인:**
 
@@ -140,17 +142,16 @@ description: 프로젝트를 심층 분석해 맞춤형 하네스(CLAUDE.md, 5+ 
 더 빠르고 저렴한 Standard로 낮출까요? (기본값: Full 유지)
 ```
 
-응답이 Standard 확인이면 Standard로, 그 외(N·무응답 등)면 Full 그대로 진행. 결정된 Tier는 `_workspace/00_init_scope.md`의 "기계 실행 값" 섹션에 `- tier: Lite | Standard | Full` 행으로 추가 기록한다(Phase -1에서 만든 파일에 이어 씀). 이 질문은 초기 실행/재초기화당 1회만 하며, 부분 재실행·인덱스 리프레시는 `00_init_scope.md`의 `tier:` 값을 재사용해 다시 묻지 않는다(값이 없으면 그때만 다시 묻는다).
+응답이 Standard 확인이면 Standard로, 그 외(N·무응답 등)면 Full 그대로 진행. 결정된 Tier는 `_workspace/00_init_scope.md`의 "기계 실행 값" 섹션에 `- tier: Standard | Full` 행으로 추가 기록한다(Phase -1에서 만든 파일에 이어 씀). 이 질문은 초기 실행/재초기화당 1회만 하며, 부분 재실행·인덱스 리프레시는 `00_init_scope.md`의 `tier:` 값을 재사용해 다시 묻지 않는다(값이 없으면 그때만 다시 묻는다).
 
 **③ Tier별 실행 구성:**
 
 | Tier | 실행 구성 | 스킵 항목 |
 |------|---------|---------|
-| **Lite** | analyzer(lite/sonnet) → writer(sonnet) → validator | pattern-extractor 스킵 |
 | **Standard** | analyzer(init/sonnet, 스택 해당 Phase B만) → writer(sonnet) → pattern(병렬) → validator | — |
 | **Full** | 전체 파이프라인 (analyzer만 opus, writer 포함 나머지는 sonnet) | — |
 
-QA는 Tier와 무관하게 세 Tier 모두 자동 실행에서 스킵되며, Phase 3.6 선택 작업 메뉴에서 사용자가 고를 때만 실행된다(위 표에는 포함하지 않음).
+QA는 Tier와 무관하게 두 Tier 모두 자동 실행에서 스킵되며, Phase 3.6 선택 작업 메뉴에서 사용자가 고를 때만 실행된다(위 표에는 포함하지 않음).
 
 ### Step 3: 실행 모드 분기
 
@@ -191,25 +192,7 @@ _workspace/index/*.json               ← analyzer (인덱스)
 
 `TaskCreate`로 팀원별 작업 + 의존성 설정 (Tier에 따라 생성 작업 다름):
 
-**Lite:**
-```
-T-A (analyzer lite):  → _workspace/01_analyzer_report.md
-T-W (writer):         → _workspace/02_writer_files.md     (blockedBy: T-A)
-T-V (validator):      → _workspace/03_validator_report.md (blockedBy: T-W)
-T-E (harness-eval):   → _workspace/06_eval_report.md      (blockedBy: T-V)
-```
-
-**Standard:**
-```
-T-A (analyzer):          → _workspace/01_analyzer_report.md + _workspace/index/*.json
-T-W (writer):            → _workspace/02_writer_files.md           (blockedBy: T-A)
-T-V (validator):         → _workspace/03_validator_report.md       (blockedBy: T-W)
-T-P (pattern-extractor): → _workspace/05_patterns_extracted.md     (blockedBy: T-W)
-T-E (harness-eval):      → _workspace/06_eval_report.md            (blockedBy: T-V)
-```
-T-P는 T-W 완료 후 T-V/T-E와 병렬 실행 가능.
-
-**Full:**
+**Standard/Full 공통:**
 ```
 T-A (analyzer):          → _workspace/01_analyzer_report.md + _workspace/index/*.json
 T-W (writer):            → _workspace/02_writer_files.md           (blockedBy: T-A)
@@ -240,7 +223,6 @@ QA(`T-Q`)는 Tier와 무관하게 이 초기 작업 그래프에 포함하지 �
 Tier별 mode/model 결정:
 | Tier | mode | model |
 |------|------|-------|
-| Lite | `lite` (Phase A만) | sonnet |
 | Standard | `init` (A + 스택 해당 Phase B만) | sonnet |
 | Full | `init` (A + B 전체) | opus |
 
@@ -248,9 +230,9 @@ Tier별 mode/model 결정:
 Agent(
   subagent_type="general-purpose",
   description="T-A · analyzer · 프로젝트 구조·의존성·레거시 로직 분석",
-  prompt="<analyzer 에이전트 지침에 따라 분석. 프로젝트 루트: [절대경로]. mode: [lite/init]. tier: [Lite/Standard/Full].
+  prompt="<analyzer 에이전트 지침에 따라 분석. 프로젝트 루트: [절대경로]. mode: init. tier: [Standard/Full].
   init_layout/paths: _workspace/00_init_scope.md 참조 (selected-paths면 해당 상대경로만 분석).
-  결과: _workspace/01_analyzer_report.md + (Standard/Full만) _workspace/index/*.json>",
+  결과: _workspace/01_analyzer_report.md + _workspace/index/*.json>",
   model="[sonnet/opus]"
 )
 ```
@@ -267,7 +249,7 @@ model: 모든 Tier에서 sonnet (2026-07-14 하이브리드 빌더 도입으로 
 Agent(
   subagent_type="general-purpose",
   description="T-W · writer · 하네스 파일과 프로젝트 가이드 생성",
-  prompt="<writer 에이전트 지침에 따라 하네스 파일 작성. 프로젝트 루트: [절대경로]. tier: [Lite/Standard/Full]. 입력: _workspace/01_analyzer_report.md. 출력: 하네스 파일들(trace/scaffolder/find-logic, cross-repo-* 있는 경우) + _workspace/claude_md_fields.json + _workspace/writer_decisions.json>",
+  prompt="<writer 에이전트 지침에 따라 하네스 파일 작성. 프로젝트 루트: [절대경로]. tier: [Standard/Full]. 입력: _workspace/01_analyzer_report.md + _workspace/index/*.json (필요 시). 출력: 하네스 파일들(trace/scaffolder/find-logic, cross-repo-* 있는 경우) + _workspace/claude_md_fields.json + _workspace/writer_decisions.json>",
   model="sonnet"
 )
 ```
@@ -342,11 +324,9 @@ Agent(
 
 완료 후 `.claude/ito-guide.md` 존재 확인. 실패해도 파이프라인 계속 진행 ("ito-guide 미생성" WARN으로 처리).
 
-### 2-3. pattern-extractor 호출 (Standard/Full만, 병렬 가능)
+### 2-3. pattern-extractor 호출 (병렬 가능)
 
-**Lite면 스킵.**
-
-writer 완료 후 patterns/ 스켈레톤이 생성되어 있을 때만 호출.
+2-2.3(skills_builder.py)이 patterns/ 스켈레톤을 생성한 뒤에만 호출한다 — 스켈레톤은 writer(2-2)가 아니라 skills_builder.py(2-2.3)의 산출물이므로, T-P를 TaskCreate 의존성만으로 착수시키지 말고 2-2.3 완료를 확인하고 시작한다.
 
 ```
 Agent(
@@ -374,7 +354,7 @@ python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/validator_checks.py" --root "[절대�
 Agent(
   subagent_type="general-purpose",
   description="T-V · validator · 하네스 구조와 근거 검증",
-  prompt="<validator 에이전트 지침. 프로젝트 루트: [절대경로]. tier: [Lite/Standard/Full]. 입력: _workspace/01_analyzer_report.md, _workspace/02_writer_files.md, _workspace/validator_mechanical.json(있으면), (있으면) _workspace/index/. 출력: _workspace/03_validator_report.md>",
+  prompt="<validator 에이전트 지침. 프로젝트 루트: [절대경로]. tier: [Standard/Full]. 입력: _workspace/01_analyzer_report.md, _workspace/02_writer_files.md, _workspace/validator_mechanical.json(있으면), (있으면) _workspace/index/. 출력: _workspace/03_validator_report.md>",
   model="sonnet"
 )
 ```
@@ -390,7 +370,7 @@ Agent(
   subagent_type="general-purpose",
   description="T-E · harness-evaluator · harness 품질 평가",
   prompt="<harness-evaluator 에이전트 지침에 따라 생성된 harness 파일들의 품질을 평가한다.
-  프로젝트 루트: [절대경로]. tier: [Lite/Standard/Full].
+  프로젝트 루트: [절대경로]. tier: [Standard/Full].
   입력: _workspace/01_analyzer_report.md, _workspace/03_validator_report.md,
         생성된 harness 파일들 (CLAUDE.md, .claude/skills/, .claude/agents/, .claude/patterns/).
   출력: _workspace/06_eval_report.md>",
@@ -405,7 +385,7 @@ Agent(
 `_workspace/03_validator_report.md`, `_workspace/05_patterns_extracted.md`(있으면), `_workspace/04_qa_report.md`(있으면, 선택 작업에서 이미 실행한 경우만)를 읽어 사용자에게 다음 형식으로 보고:
 
 ```
-하네스 초기화 완료 (harness-fin v1) [Tier: Lite/Standard/Full]
+하네스 초기화 완료 (harness-fin v1) [Tier: Standard/Full]
 
 생성된 파일:
 
@@ -633,7 +613,7 @@ Agent(
   subagent_type="general-purpose",
   description="T-E-RECHECK · harness-evaluator · harness 품질 재평가 (2차)",
   prompt="<harness-evaluator 에이전트 지침. 평가 회차: 2.
-  프로젝트 루트: [절대경로]. tier: [Lite/Standard/Full].
+  프로젝트 루트: [절대경로]. tier: [Standard/Full].
   출력: _workspace/06_eval_report.md (덮어쓰기)>",
   model="sonnet"
 )

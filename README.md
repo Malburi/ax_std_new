@@ -99,7 +99,7 @@ flowchart LR
     H --> F
 ```
 
-시작 전에 질문 두 개가 나올 수 있습니다 — ① 프로젝트 구성(단일/모노레포/분리저장소/부분범위), ② Tier 확인(기본 Full 유지할지). 요청문에 구성·경로를 이미 적었으면 ①은 생략되고, `"빠르게"`(Lite)·`"심층"`(Full) 같은 키워드를 붙이면 ②도 질문 없이 바로 확정됩니다.
+시작 전에 질문 두 개가 나올 수 있습니다 — ① 프로젝트 구성(단일/모노레포/분리저장소/부분범위), ② Tier 확인(기본 Full 유지할지). 요청문에 구성·경로를 이미 적었으면 ①은 생략되고, `"빠르게"`(Standard)·`"심층"`(Full) 같은 키워드를 붙이면 ②도 질문 없이 바로 확정됩니다.
 
 완료되면 프로젝트 루트에 `CLAUDE.md`와 `.claude/` 폴더가 생깁니다.
 이 파일들을 git에 커밋해 팀원과 공유하세요.
@@ -109,11 +109,11 @@ git add CLAUDE.md .claude/
 git commit -m "docs: add project harness"
 ```
 
-> ⏱️ **소요 시간:** Lite 1~2분 · Standard 3~5분 · Full 10분 내외
+> ⏱️ **소요 시간:** Standard 3~5분 · Full 10분 내외
 
 ---
 
-## ⚡ 분석 깊이 (3-Tier)
+## ⚡ 분석 깊이 (2-Tier)
 
 harness-init의 기본 Tier는 **Full**입니다 — 레거시 유지보수는 얕은 분석이 놓치는 위험(미해결 관계·인증 우회·트랜잭션 경계)이 재작업 비용보다 크다는 전제입니다.
 
@@ -121,15 +121,14 @@ harness-init의 기본 Tier는 **Full**입니다 — 레거시 유지보수는 �
 flowchart TD
     Start([프로젝트 분석 시작]) --> KW{요청에\n키워드 있음?}
 
-    KW -->|"빠르게 / 간단히"| Lite
+    KW -->|"빠르게 / 간단히"| Standard
     KW -->|"심층 / 마이그레이션 / 레거시"| Full
     KW -->|없음| Ask{"Full 유지 vs\nStandard로 낮출까요?\n(1회 확인, 기본값: Full)"}
 
     Ask -->|"Standard 확인"| Standard
     Ask -->|무응답/그 외| Full
 
-    Lite["🟢 Lite\n스택·구조 분석\n+ 하네스 생성 + 검증"]
-    Standard["🟡 Standard\nLite + 의존성 그래프\n트랜잭션·외부통신\n+ 패턴 추출"]
+    Standard["🟡 Standard\n스택·구조 + 의존성 그래프\n트랜잭션·외부통신\n+ 패턴 추출"]
     Full["🔴 Full\nStandard + 데드코드\n환경분기·인증경로"]
 ```
 
@@ -137,8 +136,7 @@ flowchart TD
 
 | Tier | 선택 방법 | 적합한 프로젝트 | 소요 시간 |
 |------|---------|--------------|---------|
-| 🟢 **Lite** | `"빠르게"`/`"간단히"` 키워드 | 소규모 단일 모듈, 사이드 프로젝트 | 1~2분 |
-| 🟡 **Standard** | 다운그레이드 확인 질문에서 선택 | 일반적인 웹 서비스, Spring Boot + DB | 3~5분 |
+| 🟡 **Standard** | `"빠르게"`/`"간단히"` 키워드 또는 다운그레이드 확인 질문에서 선택 | 일반적인 웹 서비스, 소규모 모듈 | 3~5분 |
 | 🔴 **Full** (기본값) | 아무것도 안 하거나 `"심층"`/`"마이그레이션"` 키워드 | 대형 레거시, 마이그레이션 대상 | ~10분 |
 
 ---
@@ -394,7 +392,7 @@ Claude는 HOLD/STOP 상황에서도 자동 수정을 하지 않습니다. **판�
 | 에이전트 | 역할 | 모델 |
 |---------|------|------|
 | `spec-clarifier` | 소크라테스 인터뷰 + 모호성 점수 + 명세 리포트 (spec-gate 스킬 전용) | sonnet |
-| `analyzer` | 코드베이스 분석 + 인덱스 생성 | opus (Full) / sonnet (Lite·Standard) |
+| `analyzer` | 코드베이스 분석 + 인덱스 생성 | opus (Full) / sonnet (Standard) |
 | `writer` | 하네스 파일 생성 | sonnet (모든 Tier) |
 | `pattern-extractor` | 코드 컨벤션 패턴 추출 (Legacy Static JS 포함) | sonnet |
 | `validator` | 하네스 구조 검증 | sonnet |
