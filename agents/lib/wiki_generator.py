@@ -44,7 +44,7 @@ def render_and_track(wiki_dir, page_entries, project_name, filename, content, la
     """폴더 모드에서 서버 없이 브라우저로 바로 열리도록, .md 페이지를
     wiki/_html/<name>.html 정적 렌더 사본으로도 저장하고 index.html용 항목을 기록한다."""
     html_name = os.path.splitext(filename)[0] + ".html"
-    rendered = wiki_render.render_markdown_page(project_name, filename, content, index_href="../index.html")
+    rendered = wiki_render.render_markdown_page(project_name, filename, content, index_href="../offline.html")
     write_file(os.path.join(wiki_dir, "_html", html_name), rendered)
     page_entries.append((f"_html/{html_name}", label, filename))
 
@@ -279,10 +279,10 @@ def main():
     partner_label = partner["label"] if partner else None
 
     # ---- 페이지 존재 판정 ----
-    api_exists = bool((own_api_contract_json or {}).get("endpoints")) or bool((partner_api_contract_json or {}).get("endpoints"))
-    db_exists = bool((own_schema_json or {}).get("tables")) or bool((partner_schema_json or {}).get("tables"))
+    api_exists = wiki_content.has_api_data(own_api_contract_json) or wiki_content.has_api_data(partner_api_contract_json)
+    db_exists = wiki_content.has_schema_data(own_schema_json) or wiki_content.has_schema_data(partner_schema_json)
     patterns_exists = os.path.isdir(patterns_dir) and any(f.endswith(".md") for f in os.listdir(patterns_dir))
-    external_exists = bool((own_external_io_json or {}).get("communications")) or bool((partner_external_io_json or {}).get("communications"))
+    external_exists = wiki_content.has_external_data(own_external_io_json) or wiki_content.has_external_data(partner_external_io_json)
     issues_exists = bool(validator_report_text or qa_report_text or dead_code_json)
 
     # 1. Home.md ← CLAUDE.md 그대로
@@ -467,16 +467,17 @@ def main():
         for t in detected_types:
             if t in COLORS:
                 c = COLORS[t]
-                cnt = sum(1 for n in nodes_data if n["type"] == t)
-                legend_html += f'<div class="legend-item"><div class="legend-dot" style="background:{c["border"]}"></div>{btn_labels.get(t, t)} ({cnt}개)</div>\n        '
+                legend_html += f'<div class="legend-item"><div class="legend-dot" style="background:{c["border"]}"></div>{btn_labels.get(t, t)}</div>\n        '
+        legend_html += f'<div class="legend-note">◎ 허브(in-degree ≥ {hub_threshold})</div>\n        '
+        legend_html += '<div class="legend-note" style="opacity:.55">☠ 데드 코드 후보</div>\n        '
 
-        type_counts = {}
-        for n in nodes_data:
-            type_counts[n["type"]] = type_counts.get(n["type"], 0) + 1
-        sorted_types = sorted(type_counts.items(), key=lambda x: x[1], reverse=True)[:2]
-        extra_stats_html = ""
-        for t, cnt in sorted_types:
-            extra_stats_html += f'<div class="stat-box"><div class="num">{cnt}</div><div class="lbl">{btn_labels.get(t, t)}</div></div>\n        '
+        hub_count = sum(1 for n in nodes_data if n["extra"].get("size") == 28)
+        dead_count = sum(1 for n in nodes_data if n["id"] in dead_code)
+        stat_summary_html = (
+            f'<div class="stat-hero"><div class="stat-num">{len(nodes_data)}</div>'
+            f'<div class="stat-caption">노드 · {len(edges_data)} 엣지</div>'
+            f'<div class="stat-sub">허브 {hub_count} · 데드코드 후보 {dead_count}</div></div>'
+        )
 
         js_nodes = []
         for n in nodes_data:
@@ -493,7 +494,7 @@ def main():
             .replace("{{PROJECT_NAME}}", project_name)\
             .replace("{{STACK_DESCRIPTION}}", "정적 분석 결과")\
             .replace("{{FILTER_BUTTONS}}", filter_buttons_html)\
-            .replace("{{EXTRA_STATS}}", extra_stats_html)\
+            .replace("{{STAT_SUMMARY}}", stat_summary_html)\
             .replace("{{LEGEND_ITEMS}}", legend_html)\
             .replace("{{COLORS}}", json.dumps(COLORS, indent=2))\
             .replace("{{NODES_DATA}}", js_nodes_array_str)\
@@ -516,8 +517,23 @@ def main():
     write_file(os.path.join(wiki_dir, "index.html"), wiki_render.render_index(title=f"{project_name} Wiki"))
     print("Generated index.html")
 
+    write_file(os.path.join(wiki_dir, "offline.html"), wiki_render.render_static_index(project_name, page_entries))
+    print("Generated offline.html (file:// 진입점)")
+
+    # 파트너(frontend) 데이터가 실제로 병합된 페이지만 사이드바에 앵커 서브항목으로 노출
+    frontend_merged_slugs = []
+    if partner:
+        if partner_report_text:
+            frontend_merged_slugs.append("architecture")
+        if wiki_content.has_api_data(partner_api_contract_json):
+            frontend_merged_slugs.append("api-endpoints")
+        if wiki_content.has_external_data(partner_external_io_json):
+            frontend_merged_slugs.append("external-systems")
+
     write_file(os.path.join(wiki_dir, "_sidebar.md"),
-               docsify_convert.build_sidebar(project_name, present_slugs, has_call_graph_file))
+               docsify_convert.build_sidebar(project_name, present_slugs, has_call_graph_file,
+                                              frontend_merged_slugs=frontend_merged_slugs,
+                                              partner_label=partner_label))
     print("Generated _sidebar.md")
 
     write_file(os.path.join(wiki_dir, "_navbar.md"),
@@ -544,6 +560,7 @@ def main():
 - wiki/_navbar.md           ✅ (Docsify 상단 네비바)
 - wiki/serve.bat            ✅ (python -m http.server 3501)
 - wiki/_html/*.html         ✅ ({sum(1 for href, _, _ in page_entries if href.startswith("_html/"))}개 페이지의 브라우저 열람용 렌더 사본)
+- wiki/offline.html         ✅ (서버 없이 file://로 바로 여는 진입점 — call-graph.html과 동일한 방식)
 - wiki/patterns.md          {"✅ (원본: .claude/patterns/*.md)" if patterns_exists else "⏭ (미대상)"}
 - wiki/api-endpoints.md     {"✅ (원본: _workspace/index/api_contract.json)" if api_exists else "⏭ (미대상)"}
 - wiki/database.md          {"✅ (원본: _workspace/index/schema.json + sql_usage.json)" if db_exists else "⏭ (미대상)"}
@@ -562,11 +579,11 @@ def main():
         merged_pages = []
         if partner_report_text:
             merged_pages.append("architecture.md")
-        if (partner_api_contract_json or {}).get("endpoints"):
+        if wiki_content.has_api_data(partner_api_contract_json):
             merged_pages.append("api-endpoints.md")
-        if (partner_schema_json or {}).get("tables"):
+        if wiki_content.has_schema_data(partner_schema_json):
             merged_pages.append("database.md")
-        if (partner_external_io_json or {}).get("communications"):
+        if wiki_content.has_external_data(partner_external_io_json):
             merged_pages.append("external-systems.md")
         if merged_pages:
             report_content += f"크로스 리포 병합 (markdown 페이지): ✅ 파트너({partner_label}) 데이터가 {', '.join(merged_pages)}에 병합됨\n"

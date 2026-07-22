@@ -16,6 +16,7 @@ HTML을 생성하게 됐을 때 기존 wiki를 Docsify로 변환하기 위해 �
 import argparse
 import html as html_mod
 import os
+import re
 import sys
 
 # 페이지 slug → (사이드바 레이블, 섹션)
@@ -120,9 +121,21 @@ def render_index(project_name: str) -> str:
 </html>"""
 
 
-def build_sidebar(project_name: str, present_slugs: set, has_call_graph: bool) -> str:
+_SLUGIFY_PUNCT_RE = re.compile(r"[()\[\]{}'\"!#$%&*+,./:;<=>?@\^`|~]")
+
+
+def slugify(text: str) -> str:
+    """Docsify가 heading에서 만드는 앵커 id 규칙(구두점 제거 + 공백->대시)의 근사치."""
+    text = _SLUGIFY_PUNCT_RE.sub("", text.strip().lower())
+    return re.sub(r"\s+", "-", text)
+
+
+def build_sidebar(project_name: str, present_slugs: set, has_call_graph: bool,
+                   frontend_merged_slugs=None, partner_label=None) -> str:
     lines = [f"- [{project_name} 홈](/)\n"]
     sections: dict[str, list[str]] = {s: [] for s in SECTION_ORDER}
+    frontend_merged_slugs = frontend_merged_slugs or []
+    anchor_id = slugify(f"파트너 ({partner_label or '연동 저장소'})")
 
     for slug, (label, section) in PAGE_META.items():
         if slug == "Home" or section is None:
@@ -130,6 +143,8 @@ def build_sidebar(project_name: str, present_slugs: set, has_call_graph: bool) -
         if slug not in present_slugs:
             continue
         sections[section].append(f"  - [{label}](/{slug})\n")
+        if slug in frontend_merged_slugs:
+            sections[section].append(f"    - [↳ 파트너 ({partner_label or '연동 저장소'})](/{slug}?id={anchor_id})\n")
 
     if has_call_graph:
         sections["분석 리포트"].append("  - [호출 그래프 ↗](/call-graph.html ':ignore')\n")

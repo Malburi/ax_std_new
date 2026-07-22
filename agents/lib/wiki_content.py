@@ -111,20 +111,66 @@ def build_issues(validator_report_text, qa_report_text, dead_code_json):
     return "\n".join(parts)
 
 
+def has_api_data(contract_json):
+    """provider(endpoints) + consumer(dynamic_sql_calls/hiway_rest_endpoints) 계약 둘 다 인식."""
+    if not contract_json:
+        return False
+    return bool(
+        contract_json.get("endpoints")
+        or contract_json.get("dynamic_sql_calls")
+        or contract_json.get("hiway_rest_endpoints")
+    )
+
+
+def _dynamic_sql_calls_md(calls):
+    if not calls:
+        return ""
+    rows = ["| Method | Namespace | SQL ID | Purpose | Callers |", "|--------|-----------|--------|---------|---------|"]
+    for c in calls:
+        callers = c.get("callers", [])
+        callers = ", ".join(callers) if isinstance(callers, list) else callers
+        rows.append(
+            f"| {c.get('method', '')} | {c.get('namespace', '')} | {c.get('sqlid', '')} | "
+            f"{c.get('purpose', '')} | {callers} |"
+        )
+    return "\n".join(rows)
+
+
+def _hiway_rest_endpoints_md(eps):
+    if not eps:
+        return ""
+    rows = ["| Method | Path | File | Purpose |", "|--------|------|------|---------|"]
+    for e in eps:
+        rows.append(f"| {e.get('method', '')} | {e.get('path', '')} | {e.get('file', '')} | {e.get('purpose', '')} |")
+    return "\n".join(rows)
+
+
 def _api_endpoints_table(contract_json):
     if not contract_json:
         return ""
     endpoints = contract_json.get("endpoints", [])
-    if not endpoints:
-        return ""
-    rows = ["| Method | Path | Handler | Auth |", "|--------|------|---------|------|"]
-    for ep in endpoints:
-        auth = "✅" if ep.get("auth_required") else ""
-        rows.append(
-            f"| {ep.get('method', '')} | {ep.get('path', '')} | "
-            f"{ep.get('handler', '')} | {auth} |"
-        )
-    return "\n".join(rows)
+    if endpoints:
+        rows = ["| Method | Path | Handler | Auth |", "|--------|------|---------|------|"]
+        for ep in endpoints:
+            auth = "✅" if ep.get("auth_required") else ""
+            rows.append(
+                f"| {ep.get('method', '')} | {ep.get('path', '')} | "
+                f"{ep.get('handler', '')} | {auth} |"
+            )
+        return "\n".join(rows)
+    # consumer(frontend) 계약 — provider 라우트가 아니라 호출하는 namespace/sqlid·REST 목록
+    parts = []
+    note = contract_json.get("note")
+    if note:
+        parts.append(f"> {note}\n")
+    dsc = _dynamic_sql_calls_md(contract_json.get("dynamic_sql_calls"))
+    if dsc:
+        total = contract_json.get("total_dynamic_sql_calls", len(contract_json.get("dynamic_sql_calls", [])))
+        parts.append(f"#### 동적 SQL 호출 ({total}건)\n\n{dsc}")
+    hre = _hiway_rest_endpoints_md(contract_json.get("hiway_rest_endpoints"))
+    if hre:
+        parts.append(f"#### Hiway REST 호출\n\n{hre}")
+    return "\n\n".join(parts)
 
 
 def build_api_endpoints(own_contract_json, partner_contract_json=None,
@@ -138,12 +184,89 @@ def build_api_endpoints(own_contract_json, partner_contract_json=None,
     return "\n".join(p for p in parts if p)
 
 
+def has_schema_data(schema_json):
+    """index-spec 표준(tables) + 프로시저 중심 프로젝트의 대체 스키마
+    (tables_directly_referenced/stored_procedures) 둘 다 인식."""
+    if not schema_json:
+        return False
+    if schema_json.get("tables"):
+        return True
+    if schema_json.get("tables_directly_referenced"):
+        return True
+    sp = schema_json.get("stored_procedures")
+    if isinstance(sp, dict) and any(
+        k != "note" and isinstance(v, list) and v for k, v in sp.items()
+    ):
+        return True
+    return False
+
+
+FRONTEND_EXTERNAL_IO_KEYS = (
+    "http_client", "backend_gateways", "vite_dev_proxy",
+    "module_federation_remote", "external_scripts", "anti_patterns",
+)
+
+
+def has_external_data(io_json):
+    """index-spec 표준(communications) + outbound/datastores(backend) +
+    http_client/backend_gateways/...(frontend consumer) 셋 다 인식."""
+    if not io_json:
+        return False
+    if io_json.get("communications") or io_json.get("outbound") or io_json.get("datastores"):
+        return True
+    return any(io_json.get(k) for k in FRONTEND_EXTERNAL_IO_KEYS)
+
+
+def _stored_procedures_md(sp):
+    if not sp or not isinstance(sp, dict):
+        return ""
+    out = []
+    note = sp.get("note")
+    if note:
+        out.append(f"> {note}\n")
+    for category, items in sp.items():
+        if category == "note" or not isinstance(items, list) or not items:
+            continue
+        out.append(f"#### {category}")
+        out.append("| Proc | IN | OUT | Note |")
+        out.append("|------|----|----|------|")
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            in_val = it.get("in", "")
+            out_val = it.get("out", "")
+            in_val = ", ".join(in_val) if isinstance(in_val, list) else in_val
+            out_val = ", ".join(out_val) if isinstance(out_val, list) else out_val
+            out.append(f"| {it.get('proc', '')} | {in_val} | {out_val} | {it.get('note', '')} |")
+        out.append("")
+    return "\n".join(out)
+
+
+def _tables_directly_referenced_md(refs):
+    if not refs:
+        return ""
+    rows = ["| Table | Source | Columns | Confidence |", "|-------|--------|---------|------------|"]
+    for t in refs:
+        cols = t.get("columns_seen", [])
+        cols = ", ".join(cols) if isinstance(cols, list) else cols
+        rows.append(f"| {t.get('name', '')} | {t.get('source', '')} | {cols} | {t.get('confidence', '')} |")
+    return "\n".join(rows)
+
+
 def _database_tables_md(schema_json):
     if not schema_json:
         return ""
     tables = schema_json.get("tables", [])
     if not tables:
-        return ""
+        # index-spec 표준 스키마가 아닌 프로시저 중심 프로젝트(tables_directly_referenced/stored_procedures)
+        parts = []
+        refs_md = _tables_directly_referenced_md(schema_json.get("tables_directly_referenced"))
+        if refs_md:
+            parts.append("### 직접 참조 테이블\n\n" + refs_md)
+        sp_md = _stored_procedures_md(schema_json.get("stored_procedures"))
+        if sp_md:
+            parts.append("### 저장 프로시저\n\n" + sp_md)
+        return "\n\n".join(parts)
     out = []
     for t in tables:
         out.append(f"### {t.get('name', '')}")
@@ -201,17 +324,120 @@ def build_database(own_schema_json, own_sql_usage_json,
     return "\n".join(p for p in parts if p)
 
 
+def _outbound_md(outbound):
+    if not outbound:
+        return ""
+    rows = ["| Kind | Target | Caller | File |", "|------|--------|--------|------|"]
+    for c in outbound:
+        if not isinstance(c, dict):
+            continue
+        target = c.get("target") or c.get("endpoint") or c.get("interface") or c.get("class") or ""
+        rows.append(f"| {c.get('kind', '')} | {target} | {c.get('caller', '')} | {c.get('file', '')} |")
+    return "\n".join(rows)
+
+
+def _datastores_md(datastores):
+    if not datastores:
+        return ""
+    out = []
+    for d in datastores:
+        if not isinstance(d, dict):
+            continue
+        out.append(f"#### {d.get('kind', '')}")
+        for k, v in d.items():
+            if k == "kind":
+                continue
+            if isinstance(v, dict):
+                v = ", ".join(f"{kk}={vv}" for kk, vv in v.items())
+            out.append(f"- **{k}**: {v}")
+        out.append("")
+    return "\n".join(out)
+
+
+def _generic_value_md(v, indent=0):
+    """schema를 미리 알 수 없는 임의 dict/list를 중첩 bullet로 렌더링하는 범용 폴백."""
+    pad = "  " * indent
+    if isinstance(v, dict):
+        lines = []
+        for k, vv in v.items():
+            if isinstance(vv, (dict, list)) and vv:
+                lines.append(f"{pad}- **{k}**:")
+                lines.append(_generic_value_md(vv, indent + 1))
+            else:
+                lines.append(f"{pad}- **{k}**: {vv}")
+        return "\n".join(lines)
+    if isinstance(v, list):
+        lines = []
+        for item in v:
+            if isinstance(item, (dict, list)):
+                lines.append(_generic_value_md(item, indent))
+            else:
+                lines.append(f"{pad}- {item}")
+        return "\n".join(lines)
+    return f"{pad}{v}"
+
+
+def _frontend_external_md(io_json):
+    """provider(outbound/datastores)가 아닌 consumer(frontend) external_io 스키마
+    (http_client/backend_gateways/vite_dev_proxy/module_federation_remote/external_scripts/anti_patterns)."""
+    parts = []
+    hc = io_json.get("http_client")
+    if hc:
+        parts.append("### HTTP Client\n\n" + _generic_value_md(hc))
+    bg = io_json.get("backend_gateways")
+    if bg:
+        parts.append("### Backend Gateways\n\n" + _generic_value_md(bg))
+    vdp = io_json.get("vite_dev_proxy")
+    if vdp:
+        rows = ["| Path | Target |", "|------|--------|"]
+        for k, v in vdp.items():
+            rows.append(f"| {k} | {v} |")
+        parts.append("### Vite Dev Proxy\n\n" + "\n".join(rows))
+    mfr = io_json.get("module_federation_remote")
+    if mfr:
+        parts.append("### Module Federation Remote\n\n" + _generic_value_md(mfr))
+    es = io_json.get("external_scripts")
+    if es:
+        rows = ["| File | Resource | Load |", "|------|----------|------|"]
+        for e in es:
+            rows.append(f"| {e.get('file', '')} | {e.get('resource', '')} | {e.get('load', '')} |")
+        parts.append("### External Scripts\n\n" + "\n".join(rows))
+    ap = io_json.get("anti_patterns")
+    if ap:
+        parts.append("### Anti-patterns\n\n" + "\n".join(f"- {a}" for a in ap))
+    return "\n\n".join(parts)
+
+
 def _external_io_table(io_json):
     if not io_json:
         return ""
     comms = io_json.get("communications", [])
-    if not comms:
+    if comms:
+        rows = ["| Type | Target | File:Line |", "|------|--------|-----------|"]
+        for c in comms:
+            target = c.get("target") or c.get("topic") or c.get("path_pattern") or ""
+            rows.append(f"| {c.get('type', '')} | {target} | {c.get('file', '')}:{c.get('line', '')} |")
+        return "\n".join(rows)
+    # index-spec 표준(communications)이 아닌 backend(outbound/datastores) 스키마
+    ob_md = _outbound_md(io_json.get("outbound"))
+    ds_md = _datastores_md(io_json.get("datastores"))
+    note = io_json.get("note")
+    if ob_md or ds_md:
+        parts = []
+        if note:
+            parts.append(f"> {note}\n")
+        if ob_md:
+            parts.append("### Outbound 통신\n\n" + ob_md)
+        if ds_md:
+            parts.append("### Datastores\n\n" + ds_md)
+        return "\n\n".join(parts)
+    # consumer(frontend) 스키마
+    fe_md = _frontend_external_md(io_json)
+    if not fe_md:
         return ""
-    rows = ["| Type | Target | File:Line |", "|------|--------|-----------|"]
-    for c in comms:
-        target = c.get("target") or c.get("topic") or c.get("path_pattern") or ""
-        rows.append(f"| {c.get('type', '')} | {target} | {c.get('file', '')}:{c.get('line', '')} |")
-    return "\n".join(rows)
+    if note:
+        fe_md = f"> {note}\n\n" + fe_md
+    return fe_md
 
 
 def build_external_systems(own_io_json, partner_io_json=None,

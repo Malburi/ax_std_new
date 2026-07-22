@@ -33,6 +33,27 @@ def render_markdown_page(title, page_path, content, index_href="index.html"):
 </body></html>"""
 
 
+def render_static_index(project_name, entries):
+    """file://로 직접 열어도 동작하는 정적 홈 페이지. CDN/서버 불필요 —
+    entries의 href는 wiki_dir 기준 상대경로(예: _html/Home.html, call-graph.html)여야 한다."""
+    items = "\n".join(
+        f'<li><a href="{html.escape(href)}">{html.escape(label)}</a></li>'
+        for href, label, _source in entries
+    )
+    safe = html.escape(project_name)
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<title>{safe} Wiki (오프라인)</title>
+<style>{INDEX_STYLE}</style></head>
+<body>
+<h2>{safe} Wiki</h2>
+<p>file://로 직접 연 오프라인 보기. 서버 실행형(검색·사이드바 포함)은 <code>serve.bat</code> 실행 후 <a href="index.html">index.html</a> 참고.</p>
+<ul>
+{items}
+</ul>
+</body></html>"""
+
+
 def render_index(title, heading="", entries=None, extra_html="", **kwargs):
     """Docsify 4 기반 index.html 생성.
     [2026-07-15] 토큰 절감 리팩토링으로 단순 정적 HTML로 교체됐던 것을 Docsify로 복원.
