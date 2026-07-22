@@ -34,8 +34,8 @@
    → harness-init 실행 (15~30분, 프로젝트 크기에 따라)
 6. 결과 검토:
    - validator 신뢰도 점수 확인 (80+ 즉시 사용 가능)
-   - qa 리포트의 🔴 HIGH 항목 확인
    - pattern-extractor 신뢰도 확인
+   - (선택) "경계 QA 실행해줘" → qa 리포트의 🔴 HIGH 항목 확인
 7. git add CLAUDE.md .claude/ && git commit
 ```
 

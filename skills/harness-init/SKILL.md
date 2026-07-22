@@ -12,47 +12,55 @@ description: 프로젝트를 심층 분석해 맞춤형 하네스(CLAUDE.md, 5+ 
 **실행 모드:** 에이전트 팀 (TaskCreate 의존성 + `_workspace/` 파일 기반 산출물 전달)
 
 **팀 구성 (확장):**
-- 필수 파이프라인: analyzer → writer → validator → qa
+- 필수 파이프라인: analyzer → writer → validator
 - 선택 추가: pattern-extractor (writer 직후, 패턴 채우기)
-- 품질 루프: spec-clarifier (Phase -1) + harness-evaluator (Phase 4)
+- 품질 루프: harness-evaluator (Phase 4)
+- 온디맨드(자동 실행 안 함, Phase 3.6에서 선택 시만): qa, generate-wiki
 
 ---
 
-## Phase -2: 프로젝트 구조 확인
+## Phase -1: 프로젝트 구성 확인
 
-> **스킵 조건**: 아래 중 하나라도 해당하면 Phase -1로 직행
-> - `_workspace/pair_config.md` 이미 존재 (이전 연동 설정 완료)
+> **스킵 조건**: 아래 중 하나라도 해당하면 Phase 0으로 직행
+> - `_workspace/00_init_scope.md` 이미 존재 (이전 구성 확인 완료)
 > - 부분 재실행 ("스킬만"·"에이전트만"·"validator만" 등)
 > - 재초기화 + "다시"만 있음 (추가 목표 변경 없음)
+> - 사용자가 요청문에 구성과 경로를 이미 명시함 (`source: explicit-request`로 기록)
 
-사용자에게 다음 질문을 제시한다:
+사용자에게 다음 질문을 제시한다. 질문 전 현재 작업 폴더 절대경로를 표시한다.
 
 ```
-이 프로젝트의 구조를 알려주세요:
+초기화할 프로젝트 구성을 선택해주세요.
+현재 작업 폴더: [절대경로]
 
-  1. 한 폴더 안에 모두 있음
-     백엔드·프론트엔드가 같은 루트 하위에 함께 위치
-     (예: /my-project/backend/, /my-project/frontend/)
+  1. 현재 폴더를 하나의 프로젝트로 초기화 (Recommended)
+     지금 폴더 전체를 단일 프로젝트로 분석합니다.
 
-  2. 별도 폴더/저장소로 분리됨
-     백엔드·프론트엔드가 각각 독립된 폴더나 저장소에 위치
-     (예: /workspace/my-backend/, /workspace/my-frontend/)
+  2. 현재 폴더 안의 서버·클라이언트를 함께 초기화
+     한 상위 폴더 안의 backend와 frontend/desktop/mobile을 워크스페이스로 통합 분석합니다.
 
-  3. 단일 스택 (백엔드만 또는 프론트엔드만)
+  3. 서로 다른 폴더의 서버·클라이언트를 각각 초기화 후 연결
+     두 프로젝트를 독립적으로 초기화하고 양쪽 검증 후 pair-init으로 연결합니다.
 
-어느 쪽인가요? (1/2/3)
+  4. 현재 폴더의 특정 폴더·모듈만 초기화
+     선택한 상대경로만 분석합니다.
+
+어느 쪽인가요? (1/2/3/4)
 ```
 
 **응답별 분기:**
 
-| 응답 | 설정 | 다음 단계 |
-|------|------|---------|
-| 1 (모노레포) | `repo_structure = "mono"` | Phase -1로 진행 |
-| 2 (멀티레포) | `repo_structure = "multi"` | 파트너 정보 수집 → Phase -1로 진행 |
-| 3 (단일 스택) | `repo_structure = "single"` | Phase -1로 진행 |
-| 기타·미응답 | `repo_structure = "unknown"` | Phase -1로 진행 |
+| 응답 | `init_layout` | 후속 확인 | 다음 단계 |
+|------|------|---------|---------|
+| 1 (단일) | `single-root` | 없음 | Phase 0으로 진행 |
+| 2 (모노레포) | `monorepo` | root 내부 workspace 상대경로와 역할 | Phase 0으로 진행 |
+| 3 (분리 저장소) | `paired-roots` | 파트너 정보 수집 (아래) | Phase 0으로 진행 |
+| 4 (부분 범위) | `selected-paths` | root 내부 상대경로 | Phase 0으로 진행 |
+| 기타·미응답 | `single-root` (기본값) | 없음 | Phase 0으로 진행 |
 
-### 멀티레포 파트너 정보 수집 (응답 2인 경우)
+휴리스틱으로 발견한 `server`/`backend`/`client`/`frontend`/`web`/`mobile` 후보는 경로 확인 표의 제안값으로만 쓰고 사용자의 구성 선택을 자동으로 바꾸지 않는다.
+
+### 분리 저장소(`paired-roots`) 파트너 정보 수집
 
 연속해서 파트너 정보를 입력받는다:
 
@@ -71,67 +79,26 @@ description: 프로젝트를 심층 분석해 맞춤형 하네스(CLAUDE.md, 5+ 
 
 > 수집한 `partner_info`는 Phase 3.5에서 pair-init 자동 실행 시 컨텍스트로 전달된다.
 
----
+### 출력
 
-## Phase -1: 명세 명확화 (Spec Gate) — Ouroboros 영감
+`_workspace/00_init_scope.md`를 일반 파일 쓰기로 기록한다.
 
-### 실행 여부 결정
+```markdown
+# 초기화 분석 범위
 
-다음 조건 중 하나에 해당하면 **Phase -1 스킵** → Phase 0 직행:
+## 사용자 확인 내용
+- 프로젝트 위치: `[절대경로]`
+- 초기화 구성: 단일 | 모노레포 | 분리 저장소 | 부분 범위
+- 포함 경로: `[검증된 상대경로]`
+- 대상 프로젝트: `[절대경로와 역할 목록, paired-roots만]`
 
-| 조건 | 이유 |
-|------|------|
-| "빠르게"·"quick"·"fast"·"스킵"·"skip spec" 포함 | 빠른 초기화 요청 |
-| 부분 재실행 ("스킬만"·"에이전트만"·"validator만" 등) | 이미 범위 명확 |
-| `_workspace/00_spec_report.md` 존재 | 이미 명세화 완료 |
-| 재초기화 + "다시"만 있음 (추가 목표 변경 없음) | 동일 범위 재실행 |
-
-그 외 **초기 실행 / Standard·Full Tier 예상**이면 spec gate 실행.
-
-### spec-clarifier 호출 (question 모드)
-
-```
-Agent(
-  subagent_type="general-purpose",
-  description="명세 명확화 질문 생성",
-  prompt="<spec-clarifier 에이전트 지침에 따라 질문 세트를 생성한다.
-  mode: question.
-  프로젝트 루트: [절대경로].>",
-  model="sonnet"
-)
+## 기계 실행 값
+- init_layout: single-root | monorepo | paired-roots | selected-paths
+- paths: [검증된 상대경로]
+- source: user-selection | explicit-request | reused
 ```
 
-반환된 질문 세트를 사용자에게 그대로 제시한다.  
-**사용자 응답 후에만 다음 단계 진행. 응답 전 Phase 0 진입 금지.**
-
-### spec-clarifier 호출 (score 모드)
-
-사용자 응답을 받아 점수화:
-
-```
-Agent(
-  subagent_type="general-purpose",
-  description="응답 점수화 + 명세 리포트",
-  prompt="<spec-clarifier 에이전트 지침에 따라 응답을 점수화하고 리포트를 작성한다.
-  mode: score.
-  원본 질문: [Phase -1 question 모드 결과].
-  사용자 응답: [사용자 응답 전문].
-  출력: _workspace/00_spec_report.md>",
-  model="sonnet"
-)
-```
-
-### GO 신호 확인
-
-`_workspace/00_spec_report.md`의 신호 확인:
-
-| 신호 | 동작 |
-|------|------|
-| **GO** (점수 ≤ 0.2) | Phase 0으로 진행 |
-| **REFINE** (점수 0.21~0.4) | spec-clarifier가 작성한 재질문 제시 → 응답 수신 → score 재실행 (1회 한도) → Phase 0 진행 |
-| **GO (미답변 진행)** (점수 > 0.4) | Phase 0으로 진행 |
-
-> **`tier_suggestion`이 있으면** Step 2.5 Tier 결정 시 참고 입력으로 활용 (최종 결정은 복잡도 점수 기반).
+`monorepo`/`selected-paths`의 포함 경로는 root 내부 실제 디렉터리만 허용한다 (`..`, root 밖 절대경로 거부).
 
 ---
 
@@ -152,54 +119,43 @@ Agent(
 | `_workspace/index/*.json` 존재 | 인덱스 있음 (incremental 가능) |
 | `_workspace/pair_config.md` 존재 | 파트너 프로젝트 연동 상태 → partner_root 변수 설정 |
 
-### Step 2.5: 복잡도 점수 계산 + Tier 결정
+### Step 2.5: Tier 결정
 
-**① 사용자 요청 override 먼저 확인** (점수 계산 불필요):
+**① 사용자 요청 override 먼저 확인:**
 
 | 키워드 | Tier 강제 |
 |--------|---------|
 | "빠르게"·"간단히"·"빠른"·"quick"·"fast" | **Lite** |
 | "깊게"·"심층"·"마이그레이션"·"레거시"·"전체"·"migration"·"legacy"·"deep" | **Full** |
 
-**② override 없으면 복잡도 점수 계산:**
+**② override 없으면 기본 Full + 1회 다운그레이드 확인:**
 
-소스 파일 수 빠른 카운트 (find 또는 PowerShell):
+기본 Tier는 **Full**이다. 레거시 유지보수는 얕은 분석이 놓치는 위험(미해결 관계·인증 우회·트랜잭션 경계)이 재작업 비용보다 크다는 전제.
+
 ```
-# bash
-find . -type f \( -name "*.java" -o -name "*.kt" -o -name "*.js" -o -name "*.ts" -o -name "*.py" -o -name "*.vue" -o -name "*.cs" -o -name "*.go" \) | wc -l
+기본적으로 Full Tier로 초기화합니다.
+- 비용: analyzer(opus) 1회 + writer(opus) 1회 (전체 심층 분석 포함)
 
-# PowerShell
-(Get-ChildItem -Recurse -Include *.java,*.kt,*.js,*.ts,*.py,*.vue,*.cs,*.go -ErrorAction SilentlyContinue).Count
+더 빠르고 저렴한 Standard로 낮출까요? (기본값: Full 유지)
 ```
 
-점수 항목 (누적):
+응답이 Standard 확인이면 Standard로, 그 외(N·무응답 등)면 Full 그대로 진행. 이 질문은 초기 실행/재초기화당 1회만 하며, 부분 재실행·인덱스 리프레시는 기존 결정을 재사용해 다시 묻지 않는다.
 
-| 항목 | 탐지 방법 | 점수 |
-|------|---------|------|
-| 소스 파일 수 | 위 카운트 결과 | × 1 |
-| DB/ORM 존재 | `pom.xml`/`package.json`에서 mybatis·jpa·hibernate·typeorm·prisma·sequelize·sqlalchemy 확인 | +30 |
-| 레거시 스택 | Struts·iBatis·JSP 50개+·전자정부(egovframework)·`WEB-INF/web.xml` | +40 |
-| 멀티 모듈 | 루트 외 하위에 `pom.xml`/`build.gradle`/`package.json` 2개+ 존재 | +20 |
-| 외부 시스템 | `RestTemplate`·`WebClient`·`axios`·`fetch`·`kafka`·`rabbit`·`feign` 패턴 grep | +20 |
+**③ Tier별 실행 구성:**
 
-**③ Tier 결정:**
+| Tier | 실행 구성 | 스킵 항목 |
+|------|---------|---------|
+| **Lite** | analyzer(lite/sonnet) → writer(sonnet) → validator | pattern-extractor 스킵 |
+| **Standard** | analyzer(init/sonnet, 스택 해당 Phase B만) → writer(sonnet) → pattern(병렬) → validator | — |
+| **Full** | 전체 파이프라인 (기존 동일) | — |
 
-| 점수 | Tier | 실행 구성 | 스킵 항목 |
-|------|------|---------|---------|
-| 0~50 | **Lite** | analyzer(lite/sonnet) → writer(sonnet) → validator | pattern-extractor, QA 스킵 |
-| 51~120 | **Standard** | analyzer(init/sonnet, 스택 해당 Phase B만) → writer(sonnet) → pattern(병렬) → validator | QA 스킵 |
-| 121+ | **Full** | 전체 파이프라인 (기존 동일) | — |
-
-Tier와 산정 근거를 사용자에게 한 줄 표시:
-```
-[Tier: Standard] 소스 213파일(+213) + DB/ORM(+30) + 멀티모듈(+20) = 263점 → Standard
-```
+QA는 Tier와 무관하게 세 Tier 모두 자동 실행에서 스킵되며, Phase 3.6 선택 작업 메뉴에서 사용자가 고를 때만 실행된다(위 표에는 포함하지 않음).
 
 ### Step 3: 실행 모드 분기
 
 | 상황 | 모드 | 처리 |
 |------|------|------|
-| 기존 하네스 없음 | **초기 실행** | 전체 파이프라인 (analyzer init + writer + validator + qa + pattern-extractor) |
+| 기존 하네스 없음 | **초기 실행** | 전체 파이프라인 (analyzer init + writer + validator + pattern-extractor; qa는 Phase 3.6 선택 시만) |
 | 기존 + "다시"·"새로" | **재초기화** | `.claude/backup/[YYYYMMDD-HHMMSS]/`로 백업 후 전체 실행 (analyzer init 모드) |
 | 기존 + "스킬만"·"에이전트만"·"validator만"·"qa만"·"패턴만" | **부분 재실행** | 해당 단계만, 이전 `_workspace/` 산출물 재사용 |
 | 기존 + 일반 보완 | **업데이트** | 백업 후 analyzer incremental + 재실행 |
@@ -218,7 +174,7 @@ Tier와 산정 근거를 사용자에게 한 줄 표시:
 
 산출물 파일명:
 ```
-_workspace/00_spec_report.md          ← spec-clarifier (Phase -1)
+_workspace/00_init_scope.md           ← 구성 확인 (Phase -1)
 _workspace/01_analyzer_report.md      ← analyzer
 _workspace/02_writer_files.md         ← writer
 _workspace/03_validator_report.md     ← validator
@@ -257,11 +213,20 @@ T-P는 T-W 완료 후 T-V/T-E와 병렬 실행 가능.
 T-A (analyzer):          → _workspace/01_analyzer_report.md + _workspace/index/*.json
 T-W (writer):            → _workspace/02_writer_files.md           (blockedBy: T-A)
 T-V (validator):         → _workspace/03_validator_report.md       (blockedBy: T-W)
-T-Q (qa):                → _workspace/04_qa_report.md              (blockedBy: T-V)
 T-P (pattern-extractor): → _workspace/05_patterns_extracted.md     (blockedBy: T-W)
-T-E (harness-eval):      → _workspace/06_eval_report.md            (blockedBy: T-Q)
+T-E (harness-eval):      → _workspace/06_eval_report.md            (blockedBy: T-V)
 ```
-T-P는 T-W 완료 후 T-V/T-Q와 병렬 실행 가능. T-E는 T-Q 완료 후 실행.
+T-P는 T-W 완료 후 T-V/T-E와 병렬 실행 가능.
+
+QA(`T-Q`)는 Tier와 무관하게 이 초기 작업 그래프에 포함하지 않는다 — Phase 3.6의 선택 작업 메뉴에서 사용자가 고를 때만 온디맨드로 실행한다(토큰 절감).
+
+`TaskCreate`가 있으면 위 작업 ID와 한글 설명을 **함께 포함한 제목 그대로** 작업을 생성한다(예: `T-A · analyzer · 프로젝트 구조·의존성·레거시 로직 분석`). 아래 Phase 2의 모든 `Agent()` 호출은 `subagent_type="general-purpose"`를 쓰므로, 호스트 진행 화면에는 기본적으로 `general-purpose`만 노출된다 — 이를 보완하기 위해 각 호출의 `description` 필드에 반드시 `[task-id] · [실제 에이전트 이름] · 한글 목적`을 그대로 넣어 어떤 단계가 실행 중인지 사용자에게 드러낸다. `TaskCreate`가 없는 호스트에서는 `_workspace/00_pipeline_status.md` 체크리스트로 폴백하며 같은 제목을 사용한다.
+
+보완·재검증 작업 제목은 원래 단계 ID를 보존한다.
+
+- `T-A-RETRY · analyzer · 누락된 분석 근거 보완`
+- `T-W-RETRY · writer · 누락된 하네스 파일·패턴 보완`
+- `T-V-RECHECK · validator · 보완된 초기화 결과 재검증`
 
 ---
 
@@ -281,10 +246,9 @@ Tier별 mode/model 결정:
 ```
 Agent(
   subagent_type="general-purpose",
-  description="프로젝트 분석",
+  description="T-A · analyzer · 프로젝트 구조·의존성·레거시 로직 분석",
   prompt="<analyzer 에이전트 지침에 따라 분석. 프로젝트 루트: [절대경로]. mode: [lite/init]. tier: [Lite/Standard/Full].
-  (Phase -1 실행 시) spec_context: _workspace/00_spec_report.md의 'Analyzer 지시 사항' 섹션 참조
-  — scope_hint, goal_hint, constraint_hint, priority_hint를 분석 범위·우선순위에 반영할 것.
+  init_layout/paths: _workspace/00_init_scope.md 참조 (selected-paths면 해당 상대경로만 분석).
   결과: _workspace/01_analyzer_report.md + (Standard/Full만) _workspace/index/*.json>",
   model="[sonnet/opus]"
 )
@@ -305,7 +269,7 @@ Tier별 model:
 ```
 Agent(
   subagent_type="general-purpose",
-  description="하네스 파일 생성",
+  description="T-W · writer · 하네스 파일과 프로젝트 가이드 생성",
   prompt="<writer 에이전트 지침에 따라 하네스 파일 작성. 프로젝트 루트: [절대경로]. tier: [Lite/Standard/Full]. 입력: _workspace/01_analyzer_report.md. 출력: 하네스 파일들(trace/scaffolder/find-logic, cross-repo-* 있는 경우) + _workspace/claude_md_fields.json + _workspace/writer_decisions.json>",
   model="[sonnet/opus]"
 )
@@ -335,7 +299,7 @@ writer 실행 직후, `.claude/ito-guide.md` 사용 가이드를 생성한다.
 ```
 Agent(
   subagent_type="general-purpose",
-  description="ito-guide.md 사용 설명서 생성",
+  description="ito-guide · writer(보조) · 하네스 사용 설명서 생성",
   prompt="프로젝트 루트 [절대경로]의 .claude/ito-guide.md 를 생성하라.
 
   다음 정보를 Read 도구로 수집 후 작성:
@@ -388,7 +352,7 @@ writer 완료 후 patterns/ 스켈레톤이 생성되어 있을 때만 호출.
 ```
 Agent(
   subagent_type="general-purpose",
-  description="패턴 추출",
+  description="T-P · pattern-extractor · 레이어별 컨벤션 패턴 추출",
   prompt="<pattern-extractor 에이전트 지침. 프로젝트 루트: [절대경로]. 입력: .claude/patterns/*.md 스켈레톤 + _workspace/01_analyzer_report.md. 출력: 패턴 파일 본문 + _workspace/05_patterns_extracted.md>",
   model="sonnet"
 )
@@ -408,47 +372,26 @@ python agents/lib/validator_checks.py --root "[절대경로]" --out "_workspace/
 ```
 Agent(
   subagent_type="general-purpose",
-  description="하네스 구조 검증",
+  description="T-V · validator · 하네스 구조와 근거 검증",
   prompt="<validator 에이전트 지침. 프로젝트 루트: [절대경로]. tier: [Lite/Standard/Full]. 입력: _workspace/01_analyzer_report.md, _workspace/02_writer_files.md, _workspace/validator_mechanical.json(있으면), (있으면) _workspace/index/. 출력: _workspace/03_validator_report.md>",
   model="sonnet"
 )
 ```
 
-### 2-5. qa 호출 (Full만)
+> QA(경계면 교차 비교)는 더 이상 Phase 2에서 자동 실행하지 않는다. Agent 호출 방법은 Phase 3.6 "선택 작업 안내"에서 사용자가 선택했을 때만 참조한다 — 토큰 절감을 위해 Tier와 무관하게 항상 온디맨드다.
 
-**Lite/Standard면 스킵.** Full + validator 통과 후에만 실행. qa Agent() 호출 전에 Boundary 6 기계
-체크를 먼저 실행 (LLM 미사용):
+### 2-5. harness-evaluator 호출 (모든 Tier)
 
-```powershell
-python agents/lib/qa_boundary6.py --root "[절대경로]" --out "_workspace/qa_boundary6.md"
-```
-
-실패 시 WARN 후 계속 진행 — qa가 Boundary 6을 직접 확인하는 기존 방식으로 폴백. **qa Agent 호출은 반드시 `general-purpose` 타입.**
+validator 완료 후 실행:
 
 ```
 Agent(
   subagent_type="general-purpose",
-  description="경계면 교차 비교 QA",
-  prompt="<qa 에이전트 지침. 프로젝트 루트: [절대경로]. 입력: _workspace/01~03 + _workspace/qa_boundary6.md(있으면) + _workspace/index/. 출력: _workspace/04_qa_report.md>",
-  model="sonnet"
-)
-```
-
-QA 우회 조건: `_workspace/03_validator_report.md`의 신뢰도 < 50 → qa는 "구조 검증 실패로 미실행" 한 줄만 작성하고 종료.
-
-### 2-6. harness-evaluator 호출 (모든 Tier)
-
-qa (Full) 또는 validator (Lite/Standard) 완료 후 실행:
-
-```
-Agent(
-  subagent_type="general-purpose",
-  description="harness 품질 평가",
+  description="T-E · harness-evaluator · harness 품질 평가",
   prompt="<harness-evaluator 에이전트 지침에 따라 생성된 harness 파일들의 품질을 평가한다.
   프로젝트 루트: [절대경로]. tier: [Lite/Standard/Full].
   입력: _workspace/01_analyzer_report.md, _workspace/03_validator_report.md,
-        생성된 harness 파일들 (CLAUDE.md, .claude/skills/, .claude/agents/, .claude/patterns/),
-        (있으면) _workspace/00_spec_report.md.
+        생성된 harness 파일들 (CLAUDE.md, .claude/skills/, .claude/agents/, .claude/patterns/).
   출력: _workspace/06_eval_report.md>",
   model="sonnet"
 )
@@ -458,10 +401,10 @@ Agent(
 
 ## Phase 3: 결과 종합 및 보고
 
-`_workspace/03_validator_report.md`, `_workspace/04_qa_report.md`, `_workspace/05_patterns_extracted.md`를 읽어 사용자에게 다음 형식으로 보고:
+`_workspace/03_validator_report.md`, `_workspace/05_patterns_extracted.md`(있으면), `_workspace/04_qa_report.md`(있으면, 선택 작업에서 이미 실행한 경우만)를 읽어 사용자에게 다음 형식으로 보고:
 
 ```
-하네스 초기화 완료 (harness-fin v1) [Tier: Lite/Standard/Full | 복잡도 점수: N점]
+하네스 초기화 완료 (harness-fin v1) [Tier: Lite/Standard/Full]
 
 생성된 파일:
 
@@ -491,11 +434,6 @@ Agent(
 
 구조 검증 (validator):
 [신뢰도 점수 + 보완 권장 항목]
-
-경계면 교차 비교 (qa):
-🔴 HIGH: [개수 + 상세]
-🟡 MEDIUM: [...]
-🟢 LOW: [...]
 
 패턴 추출 (pattern-extractor):
 - 처리한 패턴 파일: N개
@@ -529,14 +467,14 @@ HIGH 우선순위 항목이 있으면 사용자에게 명시적 안내. 자동 �
 
 ## Phase 3.5: 파트너 연동 (pair-init)
 
-**Phase -2 결과 및 기존 설정 기반 분기:**
+**Phase -1 결과 및 기존 설정 기반 분기:**
 
 | 조건 | 동작 |
 |------|------|
-| `repo_structure = "mono"` 또는 `"single"` | 이 Phase 전체 스킵 → Phase 3.6으로 |
+| `init_layout = "single-root"`, `"monorepo"`, `"selected-paths"` | 이 Phase 전체 스킵 → Phase 3.6으로 |
 | `_workspace/pair_config.md` 이미 있음 | 이 Phase 전체 스킵 → Phase 3.6으로 |
-| `repo_structure = "multi"` + `partner_info` 수집됨 | pair-init 자동 실행 (사용자 확인 생략) → Phase 3.6으로 |
-| Phase -2 스킵 + `pair_config.md` 없음 | 연동 여부 질문 후 진행 |
+| `init_layout = "paired-roots"` + `partner_info` 수집됨 | pair-init 자동 실행 (사용자 확인 생략) → Phase 3.6으로 |
+| Phase -1 스킵 + `pair_config.md` 없음 | 연동 여부 질문 후 진행 |
 
 ### pair-init 자동 실행 (멀티레포 + 파트너 정보 있는 경우)
 
@@ -569,7 +507,7 @@ pair-init이 실행하는 "파트너 하네스 자동 생성" Agent 호출(파�
 
 > 파트너 초기화 subagent가 실패해도 현재 프로젝트 파이프라인은 막지 않는다 — WARN 기록 후 Phase 3.6에서 통합 wiki 대신 단독 wiki 제안으로 폴백.
 
-### 연동 여부 질문 방식 (Phase -2 스킵 + pair_config.md 없는 경우)
+### 연동 여부 질문 방식 (Phase -1 스킵 + pair_config.md 없는 경우)
 
 ```
 백엔드/프론트엔드가 별도 저장소로 분리되어 있나요?
@@ -588,62 +526,75 @@ pair-init으로 연동하면 아래가 가능합니다:
 
 ---
 
-## Phase 3.6: Wiki 생성 제안
+## Phase 3.6: 선택 작업 안내 (QA·Wiki)
 
-Phase 3 보고 직후, `_workspace/pair_config.md` 존재 + 파트너 `CLAUDE.md` 존재(파트너 초기화 완료) 여부를 확인한다.
+Phase 3 보고 직후, 기본 파이프라인에 포함되지 않는 QA(경계면 교차 비교)와 wiki 생성을 놓치지 않도록 한 번에 제시하고 선택받는다. 둘 다 온디맨드이며 선택하지 않으면 실행하지 않는다(토큰 절감).
 
-### 파트너 하네스가 있는 경우 (pair_config.md 존재 + 파트너 완료) — 통합 wiki 질문
+`_workspace/pair_config.md` 존재 + 파트너 `CLAUDE.md` 존재(파트너 초기화 완료) 여부로 wiki 옵션 문구만 분기한다.
 
-```
-wiki를 생성하시겠습니까? (Phase 3.6)
-파트너 프로젝트([partner_root])도 하네스가 준비되어, 통합(cross-repo) wiki 생성이 가능합니다:
-  - Home, 워크플로우 스킬 사용법, 패턴, 이슈 목록 — 이 저장소 기준
-  - 통합 아키텍처/API 엔드포인트/DB 스키마/외부 연동 — 백엔드+프론트엔드 데이터가 한 페이지에 병합
-  - 통합 호출 그래프 — 백엔드+프론트엔드 call_graph.json 병합, API 계약 기준 크로스 엣지 자동 추론
+> Phase 3.5(파트너 연동 질문)와 Phase 3.6(이 선택 작업 메뉴)은 **순서대로** 제시한다. 두 질문을 동시에 보여주지 않는다.
 
-  1. 통합 wiki 생성 (권장) — 현재 프로젝트에 파트너 정보까지 포함된 wiki 생성
-  2. 이 프로젝트 단독 wiki만 생성
-  3. 생성 안 함
-
-선택? (1/2/3)
-```
-
-| 선택 | 동작 |
-|------|------|
-| 1 또는 2 | `generate-wiki` 스킬 실행 → 완료 후 Phase 4로 진행 (pair_config.md가 있으면 `wiki_generator.py`가 파트너의 call_graph.json뿐 아니라 01_analyzer_report.md·api_contract.json·schema.json·external_io.json도 함께 읽어 architecture/api-endpoints/database/external-systems 페이지에 자동 병합하므로, "2. 단독"을 선택해도 통합 wiki가 나타나는 게 정상 동작임을 안내) |
-| 3 | 스킵 → Phase 4로 진행 |
-
-### 파트너 하네스 없는 경우 (단일 스택 / 모노레포 / 파트너 초기화 실패) — 기존 질문
+### 파트너 하네스 없는 경우 (단일 스택 / 모노레포 / 파트너 초기화 실패)
 
 ```
-wiki를 생성하시겠습니까? (Phase 3.6)
-harness 산출물(_workspace + .claude)을 기반으로 아래 페이지를 포함한 wiki를 생성합니다:
-  - Home, 아키텍처, 워크플로우 스킬 사용법
-  - 호출 그래프 (call_graph.json → vis-network 인터랙티브 HTML, callgraph.html 스타일 적용)
-  - API 엔드포인트, DB 스키마, 패턴, 외부 연동, 이슈 목록 (탐지된 경우)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+초기화는 끝났지만, 아래는 아직 실행하지 않은 선택 작업입니다.
 
-생성하시겠습니까? (Y/N)
+  1. 경계 QA   — writer 주장(패턴·컨벤션)이 실제 코드·인덱스와 일치하는지 교차검증합니다
+  2. 위키 생성 — 호출 그래프·API·SQL·패턴을 브라우저에서 보는 wiki를 만듭니다
+  3. 지금 안 함 — 나중에 "경계 QA 실행해줘"/"wiki 만들어줘"로 개별 호출 가능
+
+어떤 걸 실행할까요? (번호로 답하세요, 복수 선택 가능·예: "1, 2")
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-**사용자 응답 처리:**
+### 파트너 하네스가 있는 경우 (pair_config.md 존재 + 파트너 완료)
 
-| 응답 | 동작 |
-|------|------|
-| Y / 예 / yes / 생성 / 만들어줘 | `generate-wiki` 스킬 실행 → wiki 생성 후 Phase 4로 진행 |
-| N / 아니오 / no / 나중에 / 스킵 | wiki 생성 건너뜀 → Phase 4로 진행 |
-| (무응답·기타) | "나중에 필요하면 `wiki 만들어줘`라고 하세요" 안내 후 Phase 4로 진행 |
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+초기화는 끝났지만, 아래는 아직 실행하지 않은 선택 작업입니다.
 
-> Phase 3.5와 Phase 3.6 질문은 **순서대로** 제시. 두 질문을 동시에 보여주지 않는다.
+  1. 경계 QA          — writer 주장(패턴·컨벤션)이 실제 코드·인덱스와 일치하는지 교차검증합니다
+  2. 통합 wiki 생성 (권장) — 파트너 프로젝트([partner_root])까지 포함한 아키텍처/API/DB/호출그래프 통합 wiki
+  3. 이 프로젝트 단독 wiki만 생성
+  4. 지금 안 함        — 나중에 "경계 QA 실행해줘"/"wiki 만들어줘"로 개별 호출 가능
 
-`generate-wiki` 실행 시 → `generate-wiki` 스킬의 Phase 0~3을 그대로 수행한다. Phase 0의 "사전 확인"은 harness-init이 방금 완료했으므로 존재 확인은 스킵 가능.
+어떤 걸 실행할까요? (번호로 답하세요, 복수 선택 가능·예: "1, 2")
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
 
-> **어느 쪽에서 실행해도 통합됨**: `wiki_generator.py`는 pair_config.md의 `partner_workspace`를 읽어 call_graph.json 병합(`merge_partner_call_graph()`)뿐 아니라 architecture/api-endpoints/database/external-systems 4개 markdown 페이지에도 파트너 데이터를 병합하므로, frontend에서 generate-wiki를 실행해도 backend에서 실행해도 동일하게 통합 wiki가 나온다. 프론트엔드 쪽에서 통합 wiki를 보고 싶으면 프론트엔드 프로젝트에서 generate-wiki를 실행하면 된다.
+`_workspace/03_validator_report.md` 신뢰도 < 50이면 "1. 경계 QA" 항목에 "— 구조 검증 실패로 결과 없이 종료됨" 주석을 붙여 표시한다(선택해도 미실행 사유만 기록).
+
+### 선택 항목 실행
+
+**QA 선택 시** — Agent() 호출 전에 Boundary 6 기계 체크를 먼저 실행(LLM 미사용):
+
+```powershell
+python agents/lib/qa_boundary6.py --root "[절대경로]" --out "_workspace/qa_boundary6.md"
+```
+
+실패 시 WARN 후 계속 진행 — qa가 Boundary 6을 직접 확인하는 기존 방식으로 폴백.
+
+```
+Agent(
+  subagent_type="general-purpose",
+  description="T-Q · qa · 경계면 교차 비교 검증",
+  prompt="<qa 에이전트 지침. 프로젝트 루트: [절대경로]. 입력: _workspace/01~03 + _workspace/qa_boundary6.md(있으면) + _workspace/index/. 출력: _workspace/04_qa_report.md>",
+  model="sonnet"
+)
+```
+
+신뢰도 < 50이면 이 Agent 호출 대신 "구조 검증 실패로 미실행" 한 줄만 `_workspace/04_qa_report.md`에 작성.
+
+**위키 생성 선택 시** — `generate-wiki` 스킬의 Phase 0~3을 그대로 수행한다. Phase 0의 "사전 확인"은 harness-init이 방금 완료했으므로 존재 확인은 스킵 가능. `pair_config.md`가 있으면 (2/3 중 어느 쪽을 골라도) `wiki_generator.py`가 파트너의 call_graph.json·01_analyzer_report.md·api_contract.json·schema.json·external_io.json을 함께 읽어 architecture/api-endpoints/database/external-systems 페이지에 자동 병합하므로, "3. 단독"을 선택해도 통합 wiki가 나타나는 게 정상 동작임을 안내한다.
+
+선택된 항목만 실행하고(둘 다 선택하면 순서 무관, 병렬 가능), 완료 후 Phase 3와 같은 형식으로 결과를 사용자에게 보고한다. "지금 안 함"·무응답·다른 대화 주제로 넘어가면 아무것도 실행하지 않고 Phase 4로 진행한다.
 
 ---
 
 ## Phase 4: Eval Loop — Karpathy AutoResearch 영감
 
-Phase 2-6에서 harness-evaluator가 실행되었다면 `_workspace/06_eval_report.md`에서 총점 확인.
+Phase 2-5에서 harness-evaluator가 실행되었다면 `_workspace/06_eval_report.md`에서 총점 확인.
 
 ### 점수별 동작
 
@@ -655,13 +606,13 @@ Phase 2-6에서 harness-evaluator가 실행되었다면 `_workspace/06_eval_repo
 
 ### 타겟 재생성 실행 (PARTIAL/RETRY)
 
-`_workspace/06_eval_report.md`의 fix_targets를 읽어 각 에이전트 재실행:
+`_workspace/06_eval_report.md`의 fix_targets를 읽어 각 에이전트 재실행. fix_target.agent는 `analyzer` 또는 `writer`만 반환된다 — task-id는 `analyzer→T-A`, `writer→T-W` 매핑을 따른다:
 
 ```
 for each fix_target in eval_report.fix_targets (우선순위 순):
   Agent(
     subagent_type="general-purpose",
-    description="[fix_target.agent] 개선 재실행",
+    description="[fix_target.agent에 대응하는 task-id]-RETRY · [fix_target.agent] · 개선 재실행",
     prompt="<[fix_target.agent] 에이전트 지침에 따라 재실행한다.
     개선 지시: [fix_target.instruction].
     범위: [fix_target.scope].
@@ -676,7 +627,7 @@ for each fix_target in eval_report.fix_targets (우선순위 순):
 ```
 Agent(
   subagent_type="general-purpose",
-  description="harness 품질 재평가 (2차)",
+  description="T-E-RECHECK · harness-evaluator · harness 품질 재평가 (2차)",
   prompt="<harness-evaluator 에이전트 지침. 평가 회차: 2.
   프로젝트 루트: [절대경로]. tier: [Lite/Standard/Full].
   출력: _workspace/06_eval_report.md (덮어쓰기)>",
@@ -710,10 +661,9 @@ Eval 품질 점수: 63/100 → 84/100 (+21, PARTIAL→PASS)
 | pattern-extractor 실패 | patterns/ 는 스켈레톤 상태 유지. "pattern-extractor 재실행 권고" 안내 |
 | validator 보안 위험 발견 | 자동 수정 금지. 위치 명시, 사용자 직접 처리 |
 | qa DEAD/ORPHAN 발견 | 자동 수정 금지. 우선순위 표시, 사용자 직접 처리 |
-| validator 신뢰도 < 50 | qa 스킵. "validator 권고 우선 처리 후 재실행" 안내 |
+| validator 신뢰도 < 50 | Phase 3.6 메뉴의 QA 옵션 선택 시 실행 대신 "구조 검증 실패로 미실행" 한 줄만 작성. "validator 권고 우선 처리 후 재실행" 안내 |
 | 작업 디렉토리 권한 오류 | 즉시 중단, 권한 확인 요청 |
 | `_workspace/` 생성 실패 | 1회 재시도. 실패 시 중단 |
-| spec-clarifier 실패 | Phase -1 스킵. "_workspace/00_spec_report.md 미생성" 기록 후 Phase 0 진행. analyzer는 코드에서 자동 탐지 |
 | harness-evaluator 실패 | eval 없이 Phase 3 결과만 보고. "eval 미실행" 안내 |
 | eval 재생성 후 점수 하락 | 재생성 결과 무시, 초기 harness 유지. 1차·2차 점수 모두 사용자에게 보고 |
 

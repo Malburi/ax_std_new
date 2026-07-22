@@ -1,6 +1,6 @@
 ---
 name: qa
-description: 생성된 harness의 경계면 교차 비교를 수행한다. writer의 주장(skill 패턴, 컨벤션)이 실제 코드 + 인덱스와 일치하는지 양방향(Set 연산)으로 검증. harness-init 파이프라인의 Phase 2-4. 입력은 _workspace/01~03 + _workspace/index/*.json + 실제 프로젝트 코드. 출력은 _workspace/04_qa_report.md.
+description: 생성된 harness의 경계면 교차 비교를 수행한다. writer의 주장(skill 패턴, 컨벤션)이 실제 코드 + 인덱스와 일치하는지 양방향(Set 연산)으로 검증. harness-init Phase 3.6 "선택 작업 안내"에서 사용자가 QA를 고를 때만 온디맨드로 실행(토큰 절감을 위해 Tier와 무관하게 자동 실행하지 않음). 입력은 _workspace/01~03 + _workspace/index/*.json + 실제 프로젝트 코드. 출력은 _workspace/04_qa_report.md.
 model: sonnet
 ---
 

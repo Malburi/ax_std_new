@@ -20,9 +20,9 @@
 
 | 출처 | 핵심 아이디어 | ax-std-harness 적용 |
 |------|-------------|----------------|
-| [Q00/ouroboros](https://github.com/Q00/ouroboros) | 코드 생성 전 모호성을 수치화해 80% 명확해질 때까지 질문 | **Phase -1 Spec Gate** — 목적·범위 확인 후 분석 시작 |
+| [Q00/ouroboros](https://github.com/Q00/ouroboros) | 코드 생성 전 모호성을 수치화해 80% 명확해질 때까지 질문 | **`spec-gate` 스킬** — 대형 작업 전 별도 호출로 목적·범위·제약 확인 (harness-init과는 독립) |
 | [Andrej Karpathy](https://karpathy.bearblog.dev) | 출력을 스스로 평가 → 실패 원인 분석 → 재생성 (AutoResearch) | **Phase 4 Eval Loop** — 4차원 품질 채점 → 80점 미만 시 타겟 재생성 |
-| [obra/superpowers](https://github.com/obra/superpowers) | 에이전트마다 프롬프트를 주지 말고 파이프라인에 방법론을 심어라 | **단계별 검증 파이프라인** — analyzer → writer → validator → qa → eval |
+| [obra/superpowers](https://github.com/obra/superpowers) | 에이전트마다 프롬프트를 주지 말고 파이프라인에 방법론을 심어라 | **단계별 검증 파이프라인** — analyzer → writer → validator → eval (qa·wiki는 온디맨드) |
 
 ---
 
@@ -89,9 +89,8 @@ Claude Code 어느 프로젝트에서나 실행:
 
 ```mermaid
 flowchart LR
-    S([-1️⃣ 명세 명확화\n목적·범위 확인]) --> A
-    A([🔍 복잡도 측정]) --> B([⚖️ Tier 결정\nLite / Standard / Full])
-    B --> C([🔬 코드베이스 분석])
+    S([-1️⃣ 프로젝트 구성 확인\n단일/모노레포/분리저장소/부분범위]) --> A
+    A([⚖️ Tier 확인\n기본 Full, 다운그레이드 1회 확인]) --> C([🔬 코드베이스 분석])
     C --> D([✍️ 하네스 파일 생성])
     D --> E([✅ 구조 검증])
     E --> G([🎯 품질 평가\n4차원 Eval])
@@ -100,7 +99,7 @@ flowchart LR
     H --> F
 ```
 
-시작 전에 몇 가지 질문을 드릴 수 있습니다 (목적·범위·제약 확인). 바로 분석하고 싶으면 **"빠르게"** 를 붙여주세요.
+시작 전에 질문 두 개가 나올 수 있습니다 — ① 프로젝트 구성(단일/모노레포/분리저장소/부분범위), ② Tier 확인(기본 Full 유지할지). 요청문에 구성·경로를 이미 적었으면 ①은 생략되고, `"빠르게"`(Lite)·`"심층"`(Full) 같은 키워드를 붙이면 ②도 질문 없이 바로 확정됩니다.
 
 완료되면 프로젝트 루트에 `CLAUDE.md`와 `.claude/` 폴더가 생깁니다.
 이 파일들을 git에 커밋해 팀원과 공유하세요.
@@ -114,10 +113,9 @@ git commit -m "docs: add project harness"
 
 ---
 
-## ⚡ 분석 깊이 자동 조정 (3-Tier)
+## ⚡ 분석 깊이 (3-Tier)
 
-규모가 작은 프로젝트에 무거운 분석을 돌리는 건 낭비입니다.
-harness-init은 시작 전에 복잡도를 빠르게 측정해서 분석 범위를 자동으로 맞춥니다.
+harness-init의 기본 Tier는 **Full**입니다 — 레거시 유지보수는 얕은 분석이 놓치는 위험(미해결 관계·인증 우회·트랜잭션 경계)이 재작업 비용보다 크다는 전제입니다.
 
 ```mermaid
 flowchart TD
@@ -125,26 +123,23 @@ flowchart TD
 
     KW -->|"빠르게 / 간단히"| Lite
     KW -->|"심층 / 마이그레이션 / 레거시"| Full
-    KW -->|없음| Score[복잡도 점수 계산]
+    KW -->|없음| Ask{"Full 유지 vs\nStandard로 낮출까요?\n(1회 확인, 기본값: Full)"}
 
-    Score --> S1["소스 파일 수 × 1점"]
-    Score --> S2["DB/ORM 존재 +30점"]
-    Score --> S3["레거시 스택 +40점"]
-    Score --> S4["멀티 모듈 +20점"]
-    Score --> S5["외부 시스템 +20점"]
+    Ask -->|"Standard 확인"| Standard
+    Ask -->|무응답/그 외| Full
 
-    S1 & S2 & S3 & S4 & S5 --> Total[합산]
-
-    Total -->|0 ~ 50점| Lite["🟢 Lite\n스택·구조 분석\n+ 하네스 생성 + 검증"]
-    Total -->|51 ~ 120점| Standard["🟡 Standard\nLite + 의존성 그래프\n트랜잭션·외부통신\n+ 패턴 추출"]
-    Total -->|121점+| Full["🔴 Full\nStandard + 데드코드\n환경분기·인증경로\n+ 경계면 QA"]
+    Lite["🟢 Lite\n스택·구조 분석\n+ 하네스 생성 + 검증"]
+    Standard["🟡 Standard\nLite + 의존성 그래프\n트랜잭션·외부통신\n+ 패턴 추출"]
+    Full["🔴 Full\nStandard + 데드코드\n환경분기·인증경로"]
 ```
 
-| Tier | 점수 | 적합한 프로젝트 | 소요 시간 |
-|------|------|--------------|---------|
-| 🟢 **Lite** | ~50점 | 소규모 단일 모듈, 사이드 프로젝트 | 1~2분 |
-| 🟡 **Standard** | 51~120점 | 일반적인 웹 서비스, Spring Boot + DB | 3~5분 |
-| 🔴 **Full** | 121점+ | 대형 레거시, 마이그레이션 대상 | ~10분 |
+경계면 QA와 wiki 생성은 Tier와 무관하게 항상 온디맨드입니다 — 초기화 완료 후 선택 작업 메뉴에서 고를 때만 실행됩니다(토큰 절감).
+
+| Tier | 선택 방법 | 적합한 프로젝트 | 소요 시간 |
+|------|---------|--------------|---------|
+| 🟢 **Lite** | `"빠르게"`/`"간단히"` 키워드 | 소규모 단일 모듈, 사이드 프로젝트 | 1~2분 |
+| 🟡 **Standard** | 다운그레이드 확인 질문에서 선택 | 일반적인 웹 서비스, Spring Boot + DB | 3~5분 |
+| 🔴 **Full** (기본값) | 아무것도 안 하거나 `"심층"`/`"마이그레이션"` 키워드 | 대형 레거시, 마이그레이션 대상 | ~10분 |
 
 ---
 
@@ -273,7 +268,7 @@ flowchart LR
         └── ...
 
 _workspace/                            ← 🔧 분석 산출물 (.gitignore 권장)
-├── 00_spec_report.md                  ← 명세 명확화 리포트 (Phase -1)
+├── 00_init_scope.md                   ← 구성 확인 리포트 (Phase -1)
 ├── 01_analyzer_report.md              ← 분석 리포트
 ├── 06_eval_report.md                  ← 품질 Eval 결과 (Phase 4)
 ├── index/                             ← ⚡ JSON 인덱스 (후속 작업 고속화)
@@ -398,12 +393,12 @@ Claude는 HOLD/STOP 상황에서도 자동 수정을 하지 않습니다. **판�
 
 | 에이전트 | 역할 | 모델 |
 |---------|------|------|
-| `spec-clarifier` | 소크라테스 인터뷰 + 모호성 점수 + 명세 리포트 (Phase -1) | sonnet |
+| `spec-clarifier` | 소크라테스 인터뷰 + 모호성 점수 + 명세 리포트 (spec-gate 스킬 전용) | sonnet |
 | `analyzer` | 코드베이스 분석 + 인덱스 생성 | opus (Full) / sonnet (Lite·Standard) |
 | `writer` | 하네스 파일 생성 | opus (Full) / sonnet (Lite·Standard) |
 | `pattern-extractor` | 코드 컨벤션 패턴 추출 (Legacy Static JS 포함) | sonnet |
 | `validator` | 하네스 구조 검증 | sonnet |
-| `qa` | 경계면 교차 비교 (Full만) | sonnet |
+| `qa` | 경계면 교차 비교 (온디맨드, Phase 3.6 선택 시) | sonnet |
 | `harness-evaluator` | 4차원 품질 평가 + 타겟 재생성 지시 (Phase 4) | sonnet |
 | `impact-analyzer` | 변경 영향도 분석 | opus |
 | `change-safety` | 안전성 평가 (GO/HOLD/STOP) | sonnet |

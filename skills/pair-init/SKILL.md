@@ -74,11 +74,11 @@ Agent(
   description="파트너 하네스 자동 생성 ([파트너 경로])",
   prompt="skills/harness-init/SKILL.md 파일을 읽고 그 지침을 그대로 따라 harness-init을 수행하라.
   프로젝트 루트: [파트너 절대경로] (cwd 아님 — 이 경로 기준으로 모든 파일 읽기/쓰기 수행).
-  repo_structure: 'multi' (멀티레포 확정 상태 — Phase -2 재질문 불필요).
+  init_layout: 'paired-roots' (멀티레포 확정 상태 — Phase -1 구성 확인 재질문 불필요, source: explicit-request로 기록).
   partner_info: { role: '[현재 프로젝트 역할과 반대]', path: '[현재 프로젝트 절대경로]', api_url: '[api_base_url]' }.
-  Phase -2는 위 partner_info로 이미 충족되었으므로 스킵하고 Phase -1로 직행.
-  Phase 3.5(pair-init)는 이미 호출 중인 pair-init 상위 흐름과 중복이므로 스킵하고 Phase 3.6(wiki 제안)부터 재개.
-  복잡도에 따라 Lite/Standard/Full 티어 자동 판단(기존 harness-init 로직 그대로).
+  Phase -1은 위 init_layout/partner_info로 이미 충족되었으므로 구성 확인 질문 없이 Phase 0으로 직행.
+  Phase 0 Step 2.5(Tier 확인) 질문도 이 호출에는 응답할 사용자가 없으므로 묻지 말고 override 키워드 '심층'과 동일하게 처리해 Full로 확정하고 진행(기존 harness-init 로직의 무응답 시 기본값과 동일).
+  Phase 3.5(pair-init)는 이미 호출 중인 pair-init 상위 흐름과 중복이므로 스킵하고 Phase 3.6(선택 작업 안내)부터 재개하되, 그 단계의 QA/wiki 선택 질문도 응답할 사용자가 없으므로 묻지 말고 '지금 안 함'으로 처리해 Phase 4로 진행.
   완료 후 결과를 [파트너 절대경로]/_workspace/06_eval_report.md 및 CLAUDE.md 존재 여부로 보고하라.",
   model="opus"
 )

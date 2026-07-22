@@ -2,11 +2,13 @@
 
 ## 1. 파이프라인 구성 (규모별 Tier)
 
-| Tier | 점수 기준 | 실행 에이전트 | 스킵 항목 |
+> Tier는 기본 **Full** 고정 + 1회 확인 질문(또는 `"빠르게"`/`"심층"` override 키워드)으로 결정된다. 아래 소규모/중규모/대규모 구분은 과거 자동 점수판정 기준(폐기됨)을 규모 감각을 위해 참고용으로 남긴 것이다.
+
+| Tier | 규모 감각 | 실행 에이전트 | 스킵 항목 |
 |------|---------|------------|---------|
-| **Lite** (소규모) | 0~50점 | spec-clarifier → analyzer(lite/sonnet) → writer(sonnet) → ito-guide → validator → harness-eval | pattern-extractor, QA |
-| **Standard** (중규모) | 51~120점 | + analyzer(init/sonnet) + pattern-extractor(병렬) | QA |
-| **Full** (대규모) | 121점+ | 전체 파이프라인, analyzer·writer 모두 **opus** | — |
+| **Lite** (소규모) | ~50파일 상당 | analyzer(lite/sonnet) → writer(sonnet) → ito-guide → validator → harness-eval | pattern-extractor, QA(온디맨드) |
+| **Standard** (중규모) | ~중형 서비스 상당 | + analyzer(init/sonnet) + pattern-extractor(병렬) | QA(온디맨드) |
+| **Full** (대규모, 기본값) | 레거시/마이그레이션 대상 | 전체 파이프라인, analyzer·writer 모두 **opus** | QA(온디맨드) |
 
 ---
 
@@ -16,13 +18,12 @@
 
 | 항목 | Lite (소규모) | Standard (중규모) | Full (대규모) |
 |------|-------------|----------------|------------|
-| spec-clarifier | ~2K | ~3K | ~3K |
 | analyzer | ~15K–30K | ~40K–80K | ~100K–200K (opus) |
 | writer | ~15K–25K | ~25K–45K | ~60K–120K (opus) |
 | pattern-extractor | — | ~10K–20K | ~20K–35K |
 | ito-guide | ~5K | ~5K | ~5K |
 | validator | ~5K–10K | ~8K–15K | ~12K–20K |
-| QA | — | — | ~20K–40K |
+| QA (온디맨드, 선택 시만) | — | ~10K–20K | ~20K–40K |
 | harness-evaluator | ~5K | ~8K | ~10K–15K |
 | **초기화 합계** | **~47K–77K** | **~99K–176K** | **~230K–438K** |
 | Phase 4 재생성 (PARTIAL/RETRY 시) | +20K–40K | +40K–80K | +60K–150K |
