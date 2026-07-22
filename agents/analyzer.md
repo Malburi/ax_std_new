@@ -26,7 +26,7 @@ model: opus
 | 모드 | 동작 | 사용 Tier |
 |------|------|---------|
 | `init` (기본) | Phase A + Phase B (tier에 따라 선택적). 최초 전체 분석. | Standard / Full |
-| `incremental` | 기존 `_workspace/index/*.json`을 로드해 git diff 또는 mtime 기반으로 변경 파일만 재분석 | 모든 Tier |
+| `incremental` | 기존 `_workspace/index/*.json`을 로드해 git diff 또는 mtime 기반으로 변경 파일만 재분석. **엣지 무효화 규칙**: 변경·삭제된 파일을 `from` 또는 `to` 노드의 파일로 갖는 call_graph 엣지는 재분석 전에 전부 제거한 뒤 재수집한다 — 변경 안 된 호출자 파일에서 rename된 심볼을 가리키는 stale 엣지가 살아남는 것을 방지. 완료 후 `_meta.git_commit`을 현재 HEAD로 갱신. | 모든 Tier |
 | `feature-scoped` | 사용자가 지정한 키워드/경로 범위만 분석 (특정 기능 분석 시 사용) | 모든 Tier |
 
 ---
@@ -350,7 +350,15 @@ api-bridge 에이전트 없이 analyzer가 직접 추출한다 (harness-init 파
 - 호출 그래프(Step 8)에서 in-degree = 0 인 public 메서드
 - 미사용 import (해당 언어 lint 결과 활용)
 - 미사용 SQL 쿼리 ID (Service에서 호출 안 됨 — qa의 ORPHAN QUERY와 같음)
-- 미사용 JSP (forward 안 됨)
+- 미사용 JSP (forward 안 됨 — 단, `jsp:include`·JS 네비게이션 경유 진입도 확인 후 판정)
+
+**진입점 화이트리스트 (in-degree = 0이어도 데드 후보에서 제외하거나 `entrypoint_suspect: true`로 표기):**
+- 컨트롤러 핸들러: `@Controller`/`@RestController`/`@RequestMapping`류, Struts action-mapping, 라우트 등록 함수
+- 프레임워크 트리거: `@Scheduled`/`@EventListener`/`@KafkaListener`/`@RabbitListener`/`@PostConstruct`
+- 실행 진입점: `main`, 서블릿 lifecycle 메서드, 테스트 메서드
+- 리플렉션/설정 파일에서 문자열로 참조되는 심볼 (XML 설정·잡 스케줄 정의 등)
+
+**신뢰도 표기:** call_graph가 샘플링 모드(`_meta.sampled: true`)로 생성되었으면 거기서 파생된 모든 데드 후보에 `confidence: "low"`를 강제한다 — 샘플 밖에서 호출되는 메서드가 구조적으로 오탐이 되기 때문.
 
 산출물: `_workspace/index/dead_code.json`
 
@@ -377,6 +385,20 @@ api-bridge 에이전트 없이 analyzer가 직접 추출한다 (harness-init 파
 | `_workspace/index/schema.json` | DB 스키마 스냅샷 (Step 16) | 5MB |
 
 용량 한도 초과 시: 핵심 패키지/모듈만 포함하고 나머지는 분리 파일로.
+
+**`_meta` 필수 기록 (모든 인덱스 파일 공통):** `docs/index-spec.md`의 공통 필드에 더해 다음을 반드시 채운다 — 후속 검증(validator check 7b)과 신선도 판단의 근거가 된다.
+
+```json
+"_meta": {
+  "generated_at": "...", "generator": "analyzer", "mode": "init|incremental|feature-scoped",
+  "git_commit": "[git rev-parse HEAD 결과 — git 저장소 아니면 null]",
+  "sampled": false,
+  "files_scanned": 0, "files_total": 0
+}
+```
+
+- `sampled`: Step 8의 샘플링 모드를 적용했으면 `true`.
+- `files_scanned`/`files_total`: 실제 분석한 소스 파일 수 / 대상 범위 전체 소스 파일 수. 커버리지 지표로 리포트에 기계 출력된다.
 
 상세 스키마는 `docs/index-spec.md`(별도 문서) 참조.
 

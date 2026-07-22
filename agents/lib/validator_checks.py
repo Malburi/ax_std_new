@@ -287,6 +287,149 @@ def check7_index_integrity(root, analyzer_report_text):
 
 
 # ---------------------------------------------------------------------------
+# Check 7b: 인덱스 내용 스팟체크 (엣지·SQL 실측 대조 — LLM이 만든 인덱스의 내용 정확성 게이트)
+# ---------------------------------------------------------------------------
+
+SPOTCHECK_EDGE_SAMPLES = 20
+SPOTCHECK_SQL_SAMPLES = 10
+SPOTCHECK_MIN_CHECKABLE = 5
+SPOTCHECK_PASS_RATE = 0.8
+
+
+def _evenly_spaced(items, n):
+    """결정론적 샘플링 — random 대신 정렬 후 균등 간격 추출 (재실행 시 같은 결과)."""
+    if len(items) <= n:
+        return list(items)
+    step = len(items) / n
+    return [items[int(i * step)] for i in range(n)]
+
+
+def _simple_name(symbol_id):
+    """'com.example.OrderService.cancel' / 'src/x.ts::cancelOrder' → 'cancel' / 'cancelOrder'."""
+    tail = symbol_id.rsplit("::", 1)[-1]
+    tail = tail.rsplit(".", 1)[-1]
+    return tail.split("(", 1)[0].strip()
+
+
+def check7b_spotcheck(root):
+    """call_graph 엣지·sql_usage 항목을 실제 소스와 대조한다.
+    qa Boundary 5(온디맨드)와 달리 기본 파이프라인에서 항상 도는 기계 게이트."""
+    index_dir = os.path.join(root, "_workspace", "index")
+    lines = []
+    fail = False
+
+    # --- call_graph 엣지: from 쪽 파일에 callee 단순명이 실제로 등장하는가 ---
+    cg_path = os.path.join(index_dir, "call_graph.json")
+    if os.path.isfile(cg_path):
+        try:
+            with open(cg_path, "r", encoding="utf-8-sig") as f:
+                cg = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            cg = None
+        if cg:
+            node_file = {n.get("id"): n.get("file") for n in (cg.get("nodes") or []) if isinstance(n, dict)}
+            edges = [e for e in (cg.get("edges") or []) if isinstance(e, dict) and e.get("from") and e.get("to")]
+            edges.sort(key=lambda e: (str(e.get("from")), str(e.get("to"))))
+            hits = checked = missing_files = 0
+            misses = []
+            for e in _evenly_spaced(edges, SPOTCHECK_EDGE_SAMPLES):
+                src_rel = e.get("file") or node_file.get(e.get("from"))
+                if not src_rel:
+                    continue
+                src_text = _read(os.path.join(root, src_rel))
+                if src_text is None:
+                    missing_files += 1
+                    continue
+                checked += 1
+                callee = _simple_name(str(e.get("to")))
+                if callee and re.search(rf"\b{re.escape(callee)}\b", src_text):
+                    hits += 1
+                else:
+                    misses.append(f"{e.get('from')} → {e.get('to')} ({src_rel})")
+            if checked >= SPOTCHECK_MIN_CHECKABLE:
+                rate = hits / checked
+                status = "PASS" if rate >= SPOTCHECK_PASS_RATE else "FAIL"
+                if status == "FAIL":
+                    fail = True
+                lines.append(f"- call_graph 엣지 스팟체크: {status} ({hits}/{checked} 일치, 기준 {int(SPOTCHECK_PASS_RATE*100)}%)")
+                for m in misses[:5]:
+                    lines.append(f"  - 불일치: {m}")
+            else:
+                lines.append(f"- call_graph 엣지 스팟체크: 판정 불가 (대조 가능 엣지 {checked}개 < {SPOTCHECK_MIN_CHECKABLE})")
+            if missing_files:
+                lines.append(f"  - 소스 파일 자체가 없는 엣지 {missing_files}개 (경로 오류 또는 stale 인덱스 의심)")
+
+    # --- sql_usage: 매퍼 파일에 SQL ID가, 사용처 파일에 참조가 실제로 있는가 ---
+    su_path = os.path.join(index_dir, "sql_usage.json")
+    if os.path.isfile(su_path):
+        try:
+            with open(su_path, "r", encoding="utf-8-sig") as f:
+                su = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            su = None
+        if su:
+            hits = checked = 0
+            misses = []
+            entries = sorted(
+                [s for s in (su.get("sqls") or []) if isinstance(s, dict) and s.get("id") and s.get("file")],
+                key=lambda s: str(s.get("id")),
+            )
+            for s in _evenly_spaced(entries, SPOTCHECK_SQL_SAMPLES):
+                text = _read(os.path.join(root, s["file"]))
+                if text is None:
+                    misses.append(f"{s['id']} (파일 없음: {s['file']})")
+                    checked += 1
+                    continue
+                checked += 1
+                if str(s["id"]) in text:
+                    hits += 1
+                else:
+                    misses.append(f"{s['id']} ({s['file']}에 미존재)")
+            if checked >= SPOTCHECK_MIN_CHECKABLE:
+                rate = hits / checked
+                status = "PASS" if rate >= SPOTCHECK_PASS_RATE else "FAIL"
+                if status == "FAIL":
+                    fail = True
+                lines.append(f"- sql_usage 스팟체크: {status} ({hits}/{checked} 일치)")
+                for m in misses[:5]:
+                    lines.append(f"  - 불일치: {m}")
+            elif checked:
+                lines.append(f"- sql_usage 스팟체크: 판정 불가 (대조 가능 항목 {checked}개 < {SPOTCHECK_MIN_CHECKABLE})")
+
+    return fail, lines
+
+
+def _index_meta_freshness(root):
+    """_meta.git_commit이 있으면 현재 HEAD와 대조해 드리프트를 알린다 (감점 없음, 정보성)."""
+    import subprocess
+    cg_path = os.path.join(root, "_workspace", "index", "call_graph.json")
+    if not os.path.isfile(cg_path):
+        return []
+    try:
+        with open(cg_path, "r", encoding="utf-8-sig") as f:
+            meta = (json.load(f) or {}).get("_meta") or {}
+    except (json.JSONDecodeError, OSError):
+        return []
+    lines = []
+    if meta.get("sampled"):
+        scanned, total = meta.get("files_scanned"), meta.get("files_total")
+        cov = f" (커버리지 {scanned}/{total})" if scanned and total else ""
+        lines.append(f"- 인덱스가 샘플링 모드로 생성됨{cov} — dead_code 등 파생 결과 신뢰도 낮음")
+    commit = meta.get("git_commit")
+    if commit:
+        try:
+            head = subprocess.run(
+                ["git", "-C", root, "rev-parse", "HEAD"],
+                capture_output=True, text=True, timeout=10,
+            ).stdout.strip()
+            if head and head != commit:
+                lines.append(f"- 인덱스 생성 시점 커밋({commit[:8]}) ≠ 현재 HEAD({head[:8]}) — 인덱스 리프레시 권장")
+        except Exception:
+            pass
+    return lines
+
+
+# ---------------------------------------------------------------------------
 # Check 8: harness-init 스킬 보존 확인
 # ---------------------------------------------------------------------------
 
@@ -372,6 +515,10 @@ def main():
     security_findings = check6_security_scan(root)
 
     index_fail, index_lines = check7_index_integrity(root, analyzer_report_text)
+    spotcheck_fail, spotcheck_lines = check7b_spotcheck(root)
+    freshness_lines = _index_meta_freshness(root)
+    if spotcheck_fail:
+        index_fail = True
     check8_status, check8_note = check8_harness_init_preserved(root)
     check9_status, check9_note = check9_changelog(claude_md_text)
     check10_lines, check10_undecided = check10_pattern_status(root)
@@ -405,6 +552,9 @@ def main():
     )
 
     md_7 = "## 7. 인덱스 무결성\n" + (index_lines or "(인덱스 없음)")
+    extra_7 = spotcheck_lines + freshness_lines
+    if extra_7:
+        md_7 += "\n\n### 7b. 내용 스팟체크 (실측 대조)\n" + "\n".join(extra_7)
     md_8 = f"## 8. harness-init 보존\n{check8_status}"
     md_9 = f"## 9. 변경 이력 기록\n{check9_status}"
     md_10 = "## 10. patterns/ 상태\n" + ("\n".join(check10_lines) if check10_lines else "(패턴 파일 없음)")
@@ -416,6 +566,7 @@ def main():
         "passes": passes,
         "security_findings": security_findings,
         "index_integrity_fail": index_fail,
+        "index_spotcheck_fail": spotcheck_fail,
         "check8_status": check8_status,
         "check9_status": check9_status,
         "check10_undecided": check10_undecided,

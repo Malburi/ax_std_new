@@ -40,6 +40,16 @@ def _load_json(path):
         return None
 
 
+def _coverage_line(meta):
+    """_meta의 files_scanned/files_total로 커버리지를 측정값으로 표기 (LLM 자기평가 보강)."""
+    scanned, total = meta.get("files_scanned"), meta.get("files_total")
+    if not (isinstance(scanned, int) and isinstance(total, int) and total > 0):
+        return None
+    pct = round(scanned * 100 / total)
+    sampled = " · 샘플링 모드" if meta.get("sampled") else ""
+    return f"- 분석 커버리지: {scanned}/{total} 파일 ({pct}%){sampled}"
+
+
 def _section_call_graph(data):
     if not data:
         return None
@@ -48,10 +58,12 @@ def _section_call_graph(data):
     in_degree = Counter(e.get("to") for e in edges if e.get("to"))
     top = in_degree.most_common(TOP_HUB_LIMIT)
     hub_lines = "\n".join(f"  - {node_id} (in-degree {count})" for node_id, count in top) or "  - (없음)"
+    coverage = _coverage_line(data.get("_meta") or {})
     return (
         "## B. 의존성 그래프 요약\n"
         f"- 노드 수: {len(nodes)}, 엣지 수: {len(edges)}\n"
-        f"- 핵심 허브 메서드 (in-degree 상위 {TOP_HUB_LIMIT}개):\n{hub_lines}\n"
+        + (coverage + "\n" if coverage else "")
+        + f"- 핵심 허브 메서드 (in-degree 상위 {TOP_HUB_LIMIT}개):\n{hub_lines}\n"
         "- 인덱스: _workspace/index/call_graph.json\n"
     )
 
@@ -108,9 +120,11 @@ def _section_dead_code(data):
         return None
     methods = data.get("unused_methods") or []
     sql_ids = data.get("unused_sql_ids") or []
+    low_conf = sum(1 for m in methods if isinstance(m, dict) and m.get("confidence") == "low")
+    low_note = f" (그중 confidence=low {low_conf}개 — 샘플링 그래프 파생)" if low_conf else ""
     return (
         "## B. 데드 코드 후보\n"
-        f"- 미사용 public 메서드 후보: {len(methods)}개 (확정 아님, 리플렉션/동적 호출 확인 필요)\n"
+        f"- 미사용 public 메서드 후보: {len(methods)}개{low_note} (확정 아님, 리플렉션/동적 호출 확인 필요)\n"
         f"- 미사용 SQL ID 후보: {len(sql_ids)}개\n"
         "- 인덱스: _workspace/index/dead_code.json\n"
     )

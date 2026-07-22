@@ -23,6 +23,10 @@ analyzer가 생성하고, 후속 에이전트(impact-analyzer, sql-reviewer, cha
     "version": "1.0",
     "source_root": "/path/to/project",
     "mode": "init|incremental|feature-scoped",
+    "git_commit": "abc1234... (git rev-parse HEAD, git 저장소 아니면 null)",
+    "sampled": false,
+    "files_scanned": 1180,
+    "files_total": 1234,
     "node_count": 1234,
     "edge_count": 5678
   },
