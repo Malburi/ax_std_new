@@ -20,7 +20,7 @@
 | analyzer | ~40K–80K | ~100K–200K (opus) |
 | writer | ~25K–45K | ~40K–80K (sonnet) |
 | pattern-extractor | ~10K–20K | ~20K–35K |
-| ito-guide | ~5K | ~5K |
+| ito-guide | 0 (기계 조립) | 0 (기계 조립) |
 | validator | ~8K–15K | ~12K–20K |
 | QA (온디맨드, 선택 시만) | ~10K–20K | ~20K–40K |
 | harness-evaluator | ~8K | ~10K–15K |

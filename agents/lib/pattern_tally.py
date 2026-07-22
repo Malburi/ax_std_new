@@ -22,7 +22,7 @@ FREQ_ITEM_RE = re.compile(r"### \[?항목[^\]\n]*\]?[^\n]*\n빈도:\s*(\d+)%")
 
 
 def _analyze_pattern_file(path):
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, "r", encoding="utf-8-sig") as f:
         text = f.read()
 
     name = os.path.basename(path)

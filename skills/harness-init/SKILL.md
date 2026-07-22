@@ -263,6 +263,7 @@ writer 완료 후 다음을 전부 처리한다 (LLM 호출 없음, 전부 결�
 - `_workspace/writer_decisions.json`의 생성 여부 판단을 읽어 정적 스킬 템플릿(`agents/lib/skills/*.template.md`)을 대상 프로젝트 `.claude/skills/`에 복사 (analyze-impact/safe-modify/scaffold-feature는 항상, plan-migration/review-sql은 조건 충족 시만)
 - `_workspace/01_analyzer_report.md`를 그대로 복사해 `.claude/agents/domain-expert.md` 생성
 - `writer_decisions.json`의 `pattern_files` 목록(+ "LegacyStaticJS" 탐지 시 client_pattern.md 자동 추가)으로 `.claude/patterns/*.md` 스켈레톤 생성 (이미 pattern-extractor가 채운 파일은 덮어쓰지 않음)
+- `agents/lib/ito_guide.template.md` + 배포된 스킬들의 frontmatter + `claude_md_fields.json`/`writer_decisions.json` 값으로 `.claude/ito-guide.md` 사용 설명서 조립 (시나리오는 배포 스킬 조합 규칙 기반)
 - 위 모든 결과 + `writer_decisions.json`을 조합해 `_workspace/02_writer_files.md` 조립
 
 > **스크립트 경로 규칙 (이 스킬의 모든 `agents/lib/*.py` 호출 공통)**: 스크립트는 대상 프로젝트가 아니라 *플러그인 설치 루트*에 있다. PowerShell은 `$env:CLAUDE_PLUGIN_ROOT`, bash는 `$CLAUDE_PLUGIN_ROOT`로 참조한다. 환경변수가 비어 있으면 이 SKILL.md가 위치한 플러그인 디렉터리(예: `~/.claude/plugins/cache/ax-std-harness/...`)의 절대경로로 대체한다. cwd 기준 상대경로 `agents/lib/...`는 개발 저장소에서만 동작하므로 금지. `--out`/`--summary` 인자는 생략한다 — 스크립트 기본값이 `--root` 기준 경로라, cwd ≠ root인 상황(파트너 하네스 자동 생성 등)에서 상대경로 인자를 넘기면 엉뚱한 프로젝트에 읽기/쓰기가 발생한다.
@@ -273,56 +274,9 @@ python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/skills_builder.py" --root "[절대경
 
 실패 시(python 미설치, claude_md_fields.json/writer_decisions.json 누락 등) 1회만 재시도하고, 그래도 실패하면 "CLAUDE.md/정적 스킬/domain-expert.md/패턴 스켈레톤/02_writer_files.md 배포 실패 — writer 재실행 또는 수동 작성 필요" WARN 후 계속 진행 (개별 항목은 부분적으로 성공할 수 있음 — 스크립트가 항목별로 독립 처리).
 
-### 2-2.5. ito-guide.md 생성 (writer 완료 직후, 모든 Tier)
+### 2-2.5. ito-guide.md (2-2.3에 통합 — 별도 Agent 호출 없음)
 
-writer 실행 직후, `.claude/ito-guide.md` 사용 가이드를 생성한다.
-
-```
-Agent(
-  subagent_type="general-purpose",
-  description="ito-guide · writer(보조) · 하네스 사용 설명서 생성",
-  prompt="프로젝트 루트 [절대경로]의 .claude/ito-guide.md 를 생성하라.
-
-  다음 정보를 Read 도구로 수집 후 작성:
-  - _workspace/01_analyzer_report.md (스택·파일 위치 파악)
-  - _workspace/02_writer_files.md (생성된 스킬/에이전트 목록)
-  - .claude/skills/*.md (각 스킬 트리거 조건)
-
-  파일 구조:
-  # ito-guide — [프로젝트명] 하네스 사용 설명서
-
-  ## 1. 스킬 사용법
-  생성된 각 스킬에 대해: 트리거 예시 문장 2~3개 + 어떤 상황에 쓰는지 한 줄 설명
-
-  ## 2. 에이전트 직접 호출
-  domain-expert / legacy-decoder / doc-syncer 사용 방법
-
-  ## 3. 패턴 파일 참조
-  .claude/patterns/*.md 각 파일의 용도 및 scaffold-feature와의 연계
-
-  ## 4. 인덱스 파일 설명
-  _workspace/index/*.json 각 파일 용도 (코드 수정 전 영향 확인 방법)
-
-  ## 5. 실전 시나리오
-  (분석 리포트에서 파악한 스택 기반으로) 가장 자주 쓰일 법한 시나리오 3~4개:
-  예: '신규 기능 추가', 'SQL 수정', '기존 코드 수정 전 영향 확인', '화면 오류 추적'
-  각 시나리오: 상황 설명 + 사용할 스킬/에이전트 + 예시 트리거 문장
-
-  ## 6. 주의사항
-  CLAUDE.md 의 '작업 시 주의사항' 핵심 항목 요약 (3~5개)
-
-  ## 7. 하네스 갱신
-  코드 변경 후 인덱스·패턴 갱신 방법 한 줄 안내
-
-  작성 원칙:
-  - 마크다운 서술형. 도표·코드블록 적극 활용.
-  - 실제 생성된 스킬/파일명만 참조 (없는 스킬 언급 금지).
-  - 한국어로 작성.",
-  model="sonnet"
-)
-```
-
-완료 후 `.claude/ito-guide.md` 존재 확인. 실패해도 파이프라인 계속 진행 ("ito-guide 미생성" WARN으로 처리).
+`.claude/ito-guide.md`는 2-2.3의 skills_builder.py가 `agents/lib/ito_guide.template.md`로 기계 조립한다(zero-LLM) — 전 항목이 이미 있는 산출물(스킬 frontmatter·claude_md_fields·writer_decisions·pair_config)의 재진술이라 LLM 작성이 불필요했다 (2026-07-23 전환, 이전에는 매 초기화마다 sonnet ~5K 토큰 소비). 2-2.3 실행 후 `.claude/ito-guide.md` 존재만 확인하고, 없으면 "ito-guide 미생성" WARN 후 계속 진행.
 
 ### 2-3. pattern-extractor 호출 (병렬 가능)
 

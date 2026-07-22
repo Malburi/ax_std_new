@@ -74,7 +74,7 @@ def deploy_pattern_skeletons(root, analyzer_report_text, pattern_files):
     for name in names:
         dst = os.path.join(patterns_dir, name)
         if os.path.isfile(dst):
-            with open(dst, "r", encoding="utf-8") as f:
+            with open(dst, "r", encoding="utf-8-sig") as f:
                 existing = f.read()
             if SKELETON_MARKER not in existing:
                 continue
@@ -167,7 +167,7 @@ def deploy_domain_expert(root):
         print(f"WARN: {report_path} 없음 — domain-expert.md 스킵 (writer가 analyzer_report를 먼저 생성해야 함)", file=sys.stderr)
         return False
 
-    with open(report_path, "r", encoding="utf-8") as f:
+    with open(report_path, "r", encoding="utf-8-sig") as f:
         report = f.read()
 
     project_name = os.path.basename(os.path.normpath(root)) or "프로젝트"
@@ -194,7 +194,7 @@ def parse_pair_config(root):
     path = os.path.join(root, "_workspace", "pair_config.md")
     if not os.path.isfile(path):
         return None
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, "r", encoding="utf-8-sig") as f:
         text = f.read()
     cfg = {}
     for key in ["project_type", "partner_type", "partner_root", "partner_workspace",
@@ -242,9 +242,9 @@ def deploy_claude_md(root):
         print(f"WARN: 템플릿 없음 — {template_path}", file=sys.stderr)
         return False
 
-    with open(fields_path, "r", encoding="utf-8") as f:
+    with open(fields_path, "r", encoding="utf-8-sig") as f:
         fields = json.load(f)
-    with open(template_path, "r", encoding="utf-8") as f:
+    with open(template_path, "r", encoding="utf-8-sig") as f:
         template = f.read()
 
     project_name = fields.get("project_name") or os.path.basename(os.path.normpath(root)) or "프로젝트"
@@ -267,8 +267,145 @@ def deploy_claude_md(root):
     return True
 
 
+ITO_TEMPLATE = os.path.join(LIB_DIR, "ito_guide.template.md")
+
+# ito-guide 스킬 섹션 나열 순서 (존재하는 스킬만 포함)
+ITO_SKILL_ORDER = [
+    "trace", "find-logic", "scaffolder",
+    "analyze-impact", "safe-modify", "scaffold-feature",
+    "plan-migration", "review-sql",
+    "cross-repo-scaffold", "cross-repo-modify",
+]
+# writer가 프로젝트별로 작성하는 스킬 — description에서 용도/트리거를 추출해 블록 플레이스홀더를 채운다
+ITO_DYNAMIC_PREFIX = {"trace": "TRACE", "find-logic": "FINDLOGIC", "scaffolder": "SCAFFOLDER"}
+
+
+def _skill_description(root, skill_name):
+    path = os.path.join(root, ".claude", "skills", f"{skill_name}.md")
+    if not os.path.isfile(path):
+        return None
+    with open(path, "r", encoding="utf-8-sig") as f:
+        text = f.read()
+    m = re.search(r"^description:\s*(.+)$", text, re.MULTILINE)
+    return m.group(1).strip() if m else ""
+
+
+def _usage_and_triggers(desc):
+    """스킬 frontmatter description에서 용도 한 줄과 따옴표 트리거 예시(최대 3개)를 뽑는다."""
+    if not desc:
+        return "(설명 없음 — 스킬 파일 참조)", '- (트리거 예시는 스킬 파일 참조)'
+    quoted = re.findall(r'"([^"]+)"', desc)
+    usage = desc.split('"')[0].strip().rstrip('.,;— ') or desc[:80]
+    triggers = "\n".join(f'- `"{q}"`' for q in quoted[:3]) or '- (트리거 예시는 스킬 파일 참조)'
+    return usage, triggers
+
+
+def _parse_ito_template(template_text):
+    """본문과 <!-- SKILL:name --> 블록들을 분리한다."""
+    body, _, blocks_part = template_text.partition("<!-- ===================== SKILL BLOCKS")
+    blocks = {}
+    for m in re.finditer(r"<!-- SKILL:([\w-]+) -->\n(.*?)(?=\n<!-- SKILL:|\Z)", blocks_part, re.DOTALL):
+        blocks[m.group(1)] = m.group(2).strip("\n")
+    return body.rstrip() + "\n", blocks
+
+
+def _build_scenarios(root, decisions, pair_cfg):
+    """규칙 기반 실전 시나리오 — 배포된 스킬 조합으로 결정 (LLM 판단 불필요)."""
+    scenarios = [
+        ("신규 기능 추가", "추출된 컨벤션(패턴 파일)을 따라 보일러플레이트와 테스트 골격까지 생성합니다.",
+         "scaffold-feature", '"[기능명] 패턴대로 만들어줘"'),
+        ("기존 코드 수정 전 영향 확인", "수정 대상의 호출처·트랜잭션·외부 통신 영향을 인덱스로 먼저 확인한 뒤 안전하게 적용합니다.",
+         "analyze-impact → safe-modify", '"이 함수 수정하면 어디 영향 있어?" → "이 변경 안전하게 적용해줘"'),
+    ]
+    if os.path.isfile(os.path.join(root, ".claude", "skills", "review-sql.md")):
+        scenarios.append(("SQL 수정·리뷰", "SQL 사용처 역추적, N+1, 인젝션, 트랜잭션 적정성을 한 번에 점검합니다.",
+                          "review-sql", '"이 쿼리 리뷰해줘"'))
+    pattern_files = (decisions or {}).get("pattern_files") or []
+    if "client_pattern.md" in pattern_files:
+        scenarios.append(("화면 오류 추적", "화면 이벤트에서 시작해 Controller → Service → DB까지 처리 흐름을 따라가며 원인 지점을 좁힙니다.",
+                          "trace / find-logic", '"이 화면 저장 버튼 누르면 뭐가 실행돼?"'))
+    if pair_cfg:
+        scenarios.append(("파트너 저장소 동시 수정", "API 계약을 건드리는 변경을 파트너 저장소까지 함께 반영해 드리프트를 막습니다.",
+                          "cross-repo-modify", '"이 API 바꾸는데 프론트 영향 있으면 같이 처리해줘"'))
+    md = []
+    for i, (title, desc, skills, trigger) in enumerate(scenarios, 1):
+        md.append(f"### 시나리오 {i} — {title}\n\n{desc}\n\n- 사용 스킬: `{skills}`\n- 예시: {trigger}\n")
+    return "\n".join(md)
+
+
+def deploy_ito_guide(root, decisions):
+    """ito_guide.template.md + 이미 배포된 스킬/필드 값만으로 .claude/ito-guide.md를 조립한다 (zero-LLM).
+    기존에는 sonnet Agent가 매 초기화마다 처음부터 작성하던 문서 — 전 항목이 이미 있는 산출물의 재진술이라 기계화."""
+    if not os.path.isfile(ITO_TEMPLATE):
+        print(f"WARN: 템플릿 없음 — {ITO_TEMPLATE} — ito-guide.md 스킵", file=sys.stderr)
+        return False
+    with open(ITO_TEMPLATE, "r", encoding="utf-8-sig") as f:
+        template = f.read()
+    body, blocks = _parse_ito_template(template)
+
+    fields = {}
+    fields_path = os.path.join(root, "_workspace", "claude_md_fields.json")
+    if os.path.isfile(fields_path):
+        try:
+            with open(fields_path, "r", encoding="utf-8-sig") as f:
+                fields = json.load(f)
+        except json.JSONDecodeError:
+            pass
+
+    pair_cfg = parse_pair_config(root)
+    project_name = fields.get("project_name") or os.path.basename(os.path.normpath(root)) or "프로젝트"
+
+    sections, n = [], 0
+    for name in ITO_SKILL_ORDER:
+        if name not in blocks:
+            continue
+        if not os.path.isfile(os.path.join(root, ".claude", "skills", f"{name}.md")):
+            continue
+        n += 1
+        block = blocks[name].replace("{{N}}", str(n))
+        prefix = ITO_DYNAMIC_PREFIX.get(name)
+        if prefix:
+            usage, triggers = _usage_and_triggers(_skill_description(root, name))
+            block = block.replace(f"{{{{{prefix}_USAGE}}}}", usage).replace(f"{{{{{prefix}_TRIGGERS}}}}", triggers)
+        if pair_cfg:
+            block = (block.replace("{{PARTNER_ROOT}}", pair_cfg.get("partner_root", "미상"))
+                          .replace("{{PARTNER_TYPE}}", pair_cfg.get("partner_type", "미상")))
+        sections.append(block)
+
+    pattern_files = (decisions or {}).get("pattern_files") or []
+    patterns_rows = "\n".join(
+        f"| `{name}` | {_layer_label(name)} 레이어 컨벤션 (올바른 패턴 + 안티패턴 + 코드 예시) | `scaffold-feature`, `safe-modify` |"
+        for name in pattern_files
+    ) or "| (없음) | — | — |"
+
+    api_row = ""
+    if os.path.isfile(os.path.join(root, "_workspace", "index", "api_contract.json")):
+        api_row = "| `api_contract.json` | REST API 계약 (경로·메서드·요청/응답 스키마) | `api-bridge`, `cross-repo-*` |"
+
+    cautions = (fields.get("cautions") or "").strip() or "(CLAUDE.md의 \"작업 시 주의사항\" 섹션을 참조하세요.)"
+
+    content = (
+        body
+        .replace("{{PROJECT_NAME}}", project_name)
+        .replace("{{HEADER_DESC}}", "harness-init이 생성한 하네스(스킬·에이전트·패턴·인덱스)의 사용 설명서입니다.")
+        .replace("{{STACK_LINE}}", (decisions or {}).get("detected_stack", "미상"))
+        .replace("{{PROJECT_ROOT}}", root.replace("\\", "/"))
+        .replace("{{SKILL_SECTIONS}}", "\n\n".join(sections) or "(생성된 스킬 없음)")
+        .replace("{{PATTERNS_TABLE_ROWS}}", patterns_rows)
+        .replace("{{API_CONTRACT_ROW}}", api_row)
+        .replace("{{SCENARIOS_MD}}", _build_scenarios(root, decisions, pair_cfg))
+        .replace("{{CAUTIONS_MD}}", cautions)
+    )
+
+    claude_dir = os.path.join(root, ".claude")
+    os.makedirs(claude_dir, exist_ok=True)
+    with open(os.path.join(claude_dir, "ito-guide.md"), "w", encoding="utf-8") as f:
+        f.write(content)
+    return True
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Harness 정적 워크플로우 스킬 + domain-expert.md + CLAUDE.md + 패턴 스켈레톤 + 02_writer_files.md 배포기")
+    parser = argparse.ArgumentParser(description="Harness 정적 워크플로우 스킬 + domain-expert.md + CLAUDE.md + 패턴 스켈레톤 + ito-guide.md + 02_writer_files.md 배포기")
     parser.add_argument("--root", required=True, help="프로젝트 루트 절대 경로")
     parser.add_argument("--summary", default=None,
                         help="writer_decisions.json 경로 (기본: [root]/_workspace/writer_decisions.json)")
@@ -281,7 +418,7 @@ def main():
 
     decisions = None
     if os.path.isfile(args.summary):
-        with open(args.summary, "r", encoding="utf-8") as f:
+        with open(args.summary, "r", encoding="utf-8-sig") as f:
             try:
                 decisions = json.load(f)
             except json.JSONDecodeError:
@@ -312,11 +449,13 @@ def main():
     if deploy_claude_md(args.root):
         print("배포 완료: CLAUDE.md (claude_md_fields.json + 템플릿 조립)")
 
+    ito_decisions = decisions
+
     if decisions:
         report_path = os.path.join(args.root, "_workspace", "01_analyzer_report.md")
         analyzer_report_text = ""
         if os.path.isfile(report_path):
-            with open(report_path, "r", encoding="utf-8") as f:
+            with open(report_path, "r", encoding="utf-8-sig") as f:
                 analyzer_report_text = f.read()
 
         deployed_patterns, final_pattern_list = deploy_pattern_skeletons(
@@ -327,8 +466,15 @@ def main():
 
         decisions_for_report = dict(decisions)
         decisions_for_report["pattern_files"] = final_pattern_list
+        ito_decisions = decisions_for_report
         out_path = render_writer_files_report(args.root, decisions_for_report)
         print(f"배포 완료: 02_writer_files.md ({out_path})")
+
+    try:
+        if deploy_ito_guide(args.root, ito_decisions):
+            print("배포 완료: .claude/ito-guide.md (템플릿 조립, zero-LLM)")
+    except Exception as e:
+        print(f"WARN: ito-guide.md 조립 실패 — {e}", file=sys.stderr)
 
 
 def _deploy(name, skills_dir):
@@ -336,7 +482,7 @@ def _deploy(name, skills_dir):
     if not os.path.isfile(src):
         print(f"WARN: 템플릿 없음 — {src}", file=sys.stderr)
         return
-    with open(src, "r", encoding="utf-8") as f:
+    with open(src, "r", encoding="utf-8-sig") as f:
         content = f.read()
     dst = os.path.join(skills_dir, f"{name}.md")
     with open(dst, "w", encoding="utf-8") as f:

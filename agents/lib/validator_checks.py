@@ -36,7 +36,7 @@ def _read(path):
     if not os.path.isfile(path):
         return None
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8-sig") as f:
             return f.read()
     except OSError:
         return None
@@ -260,7 +260,7 @@ def check7_index_integrity(root, analyzer_report_text):
             missing_core += 1
             continue
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8-sig") as f:
                 data = json.load(f)
         except (json.JSONDecodeError, OSError):
             lines.append(f"- {name}: FAIL (JSON 파싱 실패)")
@@ -358,7 +358,7 @@ def main():
     decisions_path = os.path.join(root, "_workspace", "writer_decisions.json")
     if os.path.isfile(decisions_path):
         try:
-            with open(decisions_path, "r", encoding="utf-8") as f:
+            with open(decisions_path, "r", encoding="utf-8-sig") as f:
                 decisions = json.load(f)
         except json.JSONDecodeError:
             pass

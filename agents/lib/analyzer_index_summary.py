@@ -33,7 +33,7 @@ def _load_json(path):
     if not os.path.isfile(path):
         return None
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8-sig") as f:
             return json.load(f)
     except (json.JSONDecodeError, OSError):
         print(f"WARN: {path} 파싱 실패 — 해당 섹션 스킵", file=sys.stderr)
