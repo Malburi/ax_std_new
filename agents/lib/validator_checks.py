@@ -150,7 +150,7 @@ def check2_skill_registration(root, decisions, claude_md_text):
 KOREAN_QUOTE_RE = re.compile(r'"([^"]*[가-힣][^"]*)"')
 ASCII_QUOTE_RE = re.compile(r'"([a-zA-Z][a-zA-Z \-]*)"')
 
-# 정적 배포 스킬(agents/lib/skills/*.template.md, 프로젝트별 변수 없음)과 harness-init.md(플러그인
+# 정적 배포 스킬(agents/lib/skills/*.md.template, 프로젝트별 변수 없음)과 harness-init.md(플러그인
 # 설치 시 배포된 파일, check 8이 보존만 확인)는 매 프로젝트마다 새로 판단할 트리거 품질이 없다 —
 # check 3은 writer가 실제로 새로 작성한 per-project 스킬(trace/scaffolder/find-logic/cross-repo-*)에만 적용.
 STATIC_OR_PREEXISTING_SKILLS = {

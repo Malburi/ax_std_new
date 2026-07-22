@@ -221,10 +221,11 @@ QA(`T-Q`)는 Tier와 무관하게 이 초기 작업 그래프에 포함하지 �
 부분 재실행 + `_workspace/01_analyzer_report.md` 존재 시 스킵.
 
 Tier별 mode/model 결정:
-| Tier | mode | model |
+| Tier / 상황 | mode | model |
 |------|------|-------|
 | Standard | `init` (A + 스택 해당 Phase B만) | sonnet |
 | Full | `init` (A + B 전체) | opus |
+| 업데이트·인덱스 리프레시 (Step 3 표) | `incremental` (변경 파일만 재분석 + stale 엣지 무효화) | sonnet (Tier 무관) |
 
 ```
 Agent(
@@ -259,11 +260,11 @@ Agent(
 ### 2-2.3. skills_builder.py 실행 (CLAUDE.md + 정적 워크플로우 스킬 + domain-expert.md + 패턴 스켈레톤 + 02_writer_files.md 배포)
 
 writer 완료 후 다음을 전부 처리한다 (LLM 호출 없음, 전부 결정론적 파일 조립/복사):
-- `_workspace/claude_md_fields.json` + `agents/lib/claude_md.template.md`(고정 골격) → `CLAUDE.md` 조립. `pair_config.md` 있으면 "파트너 프로젝트" 섹션도 그 필드값으로 자동 채움
-- `_workspace/writer_decisions.json`의 생성 여부 판단을 읽어 정적 스킬 템플릿(`agents/lib/skills/*.template.md`)을 대상 프로젝트 `.claude/skills/`에 복사 (analyze-impact/safe-modify/scaffold-feature는 항상, plan-migration/review-sql은 조건 충족 시만)
+- `_workspace/claude_md_fields.json` + `agents/lib/claude_md.md.template`(고정 골격) → `CLAUDE.md` 조립. `pair_config.md` 있으면 "파트너 프로젝트" 섹션도 그 필드값으로 자동 채움
+- `_workspace/writer_decisions.json`의 생성 여부 판단을 읽어 정적 스킬 템플릿(`agents/lib/skills/*.md.template`)을 대상 프로젝트 `.claude/skills/`에 복사 (analyze-impact/safe-modify/scaffold-feature는 항상, plan-migration/review-sql은 조건 충족 시만)
 - `_workspace/01_analyzer_report.md`를 그대로 복사해 `.claude/agents/domain-expert.md` 생성
 - `writer_decisions.json`의 `pattern_files` 목록(+ "LegacyStaticJS" 탐지 시 client_pattern.md 자동 추가)으로 `.claude/patterns/*.md` 스켈레톤 생성 (이미 pattern-extractor가 채운 파일은 덮어쓰지 않음)
-- `agents/lib/ito_guide.template.md` + 배포된 스킬들의 frontmatter + `claude_md_fields.json`/`writer_decisions.json` 값으로 `.claude/ito-guide.md` 사용 설명서 조립 (시나리오는 배포 스킬 조합 규칙 기반)
+- `agents/lib/ito_guide.md.template` + 배포된 스킬들의 frontmatter + `claude_md_fields.json`/`writer_decisions.json` 값으로 `.claude/ito-guide.md` 사용 설명서 조립 (시나리오는 배포 스킬 조합 규칙 기반)
 - 위 모든 결과 + `writer_decisions.json`을 조합해 `_workspace/02_writer_files.md` 조립
 
 > **스크립트 경로 규칙 (이 스킬의 모든 `agents/lib/*.py` 호출 공통)**: 스크립트는 대상 프로젝트가 아니라 *플러그인 설치 루트*에 있다. PowerShell은 `$env:CLAUDE_PLUGIN_ROOT`, bash는 `$CLAUDE_PLUGIN_ROOT`로 참조한다. 환경변수가 비어 있으면 이 SKILL.md가 위치한 플러그인 디렉터리(예: `~/.claude/plugins/cache/ax-std-harness/...`)의 절대경로로 대체한다. cwd 기준 상대경로 `agents/lib/...`는 개발 저장소에서만 동작하므로 금지. `--out`/`--summary` 인자는 생략한다 — 스크립트 기본값이 `--root` 기준 경로라, cwd ≠ root인 상황(파트너 하네스 자동 생성 등)에서 상대경로 인자를 넘기면 엉뚱한 프로젝트에 읽기/쓰기가 발생한다.
@@ -276,7 +277,7 @@ python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/skills_builder.py" --root "[절대경
 
 ### 2-2.5. ito-guide.md (2-2.3에 통합 — 별도 Agent 호출 없음)
 
-`.claude/ito-guide.md`는 2-2.3의 skills_builder.py가 `agents/lib/ito_guide.template.md`로 기계 조립한다(zero-LLM) — 전 항목이 이미 있는 산출물(스킬 frontmatter·claude_md_fields·writer_decisions·pair_config)의 재진술이라 LLM 작성이 불필요했다 (2026-07-23 전환, 이전에는 매 초기화마다 sonnet ~5K 토큰 소비). 2-2.3 실행 후 `.claude/ito-guide.md` 존재만 확인하고, 없으면 "ito-guide 미생성" WARN 후 계속 진행.
+`.claude/ito-guide.md`는 2-2.3의 skills_builder.py가 `agents/lib/ito_guide.md.template`로 기계 조립한다(zero-LLM) — 전 항목이 이미 있는 산출물(스킬 frontmatter·claude_md_fields·writer_decisions·pair_config)의 재진술이라 LLM 작성이 불필요했다 (2026-07-23 전환, 이전에는 매 초기화마다 sonnet ~5K 토큰 소비). 2-2.3 실행 후 `.claude/ito-guide.md` 존재만 확인하고, 없으면 "ito-guide 미생성" WARN 후 계속 진행.
 
 ### 2-3. pattern-extractor 호출 (병렬 가능)
 

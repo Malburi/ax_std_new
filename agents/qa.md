@@ -91,7 +91,7 @@ python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/qa_boundary6.py" --root "[프로젝�
 2. `review-sql.md`가 참조하는 `_workspace/index/sql_usage.json`, `_workspace/index/schema.json` 존재 확인
 3. `plan-migration.md`가 참조하는 `_workspace/index/external_io.json`, `_workspace/index/transactions.json` 존재 확인
 
-누락 시 → 스킬은 등록되었으나 실행 시 실패 가능. 권고: analyzer를 full 모드로 재실행하여 누락 인덱스 생성.
+누락 시 → 스킬은 등록되었으나 실행 시 실패 가능. 권고: analyzer를 init 모드로 재실행하여 누락 인덱스 생성.
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: pattern-extractor
-description: 프로젝트 코드에서 레이어별 컨벤션(네이밍·구조·예외 처리·로깅·트랜잭션·검증 등)을 실제 샘플 기반으로 추출해 `.claude/patterns/*.md` 본문을 채운다. writer가 만든 스켈레톤을 읽어 추출 대상을 파악한 뒤, 충분히 많은 샘플(레이어당 5~10개)을 분석해 "올바른 패턴 + 안티패턴 + 코드 예시"를 생성. scaffold-feature·safe-modify·change-safety가 이 결과를 활용.
+description: 프로젝트 코드에서 레이어별 컨벤션(네이밍·구조·예외 처리·로깅·트랜잭션·검증 등)을 실제 샘플 기반으로 추출해 `.claude/patterns/*.md` 본문을 채운다. skills_builder.py(harness-init 2-2.3)가 만든 스켈레톤을 읽어 추출 대상을 파악한 뒤, 충분히 많은 샘플(레이어당 5~10개)을 분석해 "올바른 패턴 + 안티패턴 + 코드 예시"를 생성. scaffold-feature·safe-modify·change-safety가 이 결과를 활용.
 model: sonnet
 ---
 
@@ -16,7 +16,7 @@ writer가 생성한 패턴 스켈레톤을 받아, 실제 코드 샘플로부터
 
 | 항목 | 내용 |
 |------|------|
-| **수신** | `.claude/patterns/*.md` (writer가 만든 스켈레톤), `_workspace/01_analyzer_report.md`, `_workspace/index/*.json`, 프로젝트 루트 |
+| **수신** | `.claude/patterns/*.md` (skills_builder.py가 만든 스켈레톤), `_workspace/01_analyzer_report.md`, `_workspace/index/*.json`, 프로젝트 루트 |
 | **발신** | `.claude/patterns/*.md` 파일 본문 채우기 + `_workspace/05_patterns_extracted.md` 요약 |
 | **작업 범위** | 패턴 추출·문서화만. 실제 코드 수정·삭제 금지 |
 | **공유 작업** | `TaskUpdate` |

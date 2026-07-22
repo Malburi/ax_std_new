@@ -81,7 +81,7 @@ CLAUDE.md의 자동 워크플로우 테이블에 모든 스킬이 등록되었�
 ### 5. 누락 레이어 탐지
 
 분석 리포트의 모든 레이어가 scaffolder.md/scaffold-feature.md/patterns/에 반영되었는지:
-- 클라이언트 자원이 탐지되었다면 `patterns/client_side_pattern.md` 필요
+- 클라이언트 자원이 탐지되었다면 `patterns/client_pattern.md` 필요
 - AJAX/비동기 → trace.md에 반영
 - 인증/인가 → scaffolder/scaffold-feature에 포함
 - 트랜잭션 경계 → patterns/service_pattern.md에 반영
@@ -125,7 +125,7 @@ CLAUDE.md의 "변경 이력" 테이블에 이번 실행의 항목이 추가되�
 
 ### 10. NEW — patterns/ 스켈레톤 vs 본문 구분
 
-writer가 만든 patterns/ 파일들이 *스켈레톤*인지 *본문*인지 구분 표시:
+patterns/ 파일들(skills_builder.py가 스켈레톤 배포)이 *스켈레톤*인지 *본문*인지 구분 표시:
 - 스켈레톤 (pattern-extractor 미실행): "pattern-extractor 호출 권장" 안내
 - 본문 (이미 추출 완료): 정상
 
@@ -151,8 +151,10 @@ writer가 만든 patterns/ 파일들이 *스켈레톤*인지 *본문*인지 구�
 해석:
 - **80~100**: 바로 커밋 가능
 - **60~79**: 경미한 보완 후 사용 권장
-- **40~59**: 주요 항목 보완 필요 (qa는 실행하되 결과 신뢰 주의)
-- **0~39**: qa 스킵 권고 (validator 권고 우선 처리 후 재실행)
+- **50~59**: 주요 항목 보완 필요
+- **0~49**: QA 미실행 대상 (harness-init Phase 3.6과 동일 기준 — 사용자가 QA를 선택해도 "구조 검증 실패로 미실행" 처리). validator 권고 우선 처리 후 재실행
+
+QA는 자동 후속 실행되지 않는다 — harness-init Phase 3.6 선택 작업 메뉴에서 사용자가 고를 때만 실행되며, 그 실행 가능 임계가 50이다.
 
 ---
 
@@ -212,8 +214,8 @@ writer가 만든 patterns/ 파일들이 *스켈레톤*인지 *본문*인지 구�
 
 해석: [등급별 권고]
 
-## qa 실행 권고
-[score ≥ 50: qa 진행 / score < 50: validator 권고 우선 처리]
+## qa 실행 가능 여부 (온디맨드 — 사용자가 Phase 3.6에서 선택 시)
+[score ≥ 50: 선택 시 실행 가능 / score < 50: 선택해도 "구조 검증 실패로 미실행" — validator 권고 우선 처리]
 
 === END REPORT ===
 ```

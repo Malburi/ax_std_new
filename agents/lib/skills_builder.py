@@ -12,7 +12,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 # 정적 워크플로우 스킬(analyze-impact/safe-modify/scaffold-feature/plan-migration/review-sql)은
 # 프로젝트별 변수가 없는 고정 텍스트다 (agents/writer.md 참조). LLM이 매번 손으로 옮겨 적을 필요 없이
-# 이 스크립트가 agents/lib/skills/*.template.md 를 그대로 대상 프로젝트에 복사한다.
+# 이 스크립트가 agents/lib/skills/*.md.template 를 그대로 대상 프로젝트에 복사한다.
 # CLAUDE.md는 골격(고정 워크플로우 표·변경이력 헤더)만 템플릿화하고 writer가 채운 소수 필드를
 # claude_md_fields.json으로 넘겨받아 조립한다. domain-expert.md는 analyzer_report 그대로 복사.
 # patterns/ 스켈레톤 헤더(레이어명/프로젝트명 외 고정 문구)와 02_writer_files.md 완료 보고서
@@ -164,7 +164,7 @@ def deploy_domain_expert(root):
     writer가 같은 내용을 다시 타이핑해 출력하는 건 100% 중복 낭비이므로, 여기서 파일 복사로 만든다."""
     report_path = os.path.join(root, "_workspace", "01_analyzer_report.md")
     if not os.path.isfile(report_path):
-        print(f"WARN: {report_path} 없음 — domain-expert.md 스킵 (writer가 analyzer_report를 먼저 생성해야 함)", file=sys.stderr)
+        print(f"WARN: {report_path} 없음 — domain-expert.md 스킵 (analyzer가 01_analyzer_report.md를 먼저 생성해야 함)", file=sys.stderr)
         return False
 
     with open(report_path, "r", encoding="utf-8-sig") as f:
@@ -229,7 +229,7 @@ def build_partner_section(root):
 
 
 def deploy_claude_md(root):
-    """writer가 낸 _workspace/claude_md_fields.json(소수 필드) + claude_md.template.md(고정 골격)를
+    """writer가 낸 _workspace/claude_md_fields.json(소수 필드) + claude_md.md.template(고정 골격)를
     조립해 CLAUDE.md를 만든다. 워크플로우 표·변경이력 헤더처럼 프로젝트 무관 고정 텍스트를
     writer가 매번 재작성하던 부분을 없앤 것 — 서술형 필드 값 자체는 여전히 writer(LLM)가 채운다."""
     fields_path = os.path.join(root, "_workspace", "claude_md_fields.json")
@@ -237,7 +237,7 @@ def deploy_claude_md(root):
         print(f"WARN: {fields_path} 없음 — CLAUDE.md 스킵 (writer가 claude_md_fields.json을 먼저 생성해야 함)", file=sys.stderr)
         return False
 
-    template_path = os.path.join(LIB_DIR, "claude_md.template.md")
+    template_path = os.path.join(LIB_DIR, "claude_md.md.template")
     if not os.path.isfile(template_path):
         print(f"WARN: 템플릿 없음 — {template_path}", file=sys.stderr)
         return False
@@ -267,7 +267,7 @@ def deploy_claude_md(root):
     return True
 
 
-ITO_TEMPLATE = os.path.join(LIB_DIR, "ito_guide.template.md")
+ITO_TEMPLATE = os.path.join(LIB_DIR, "ito_guide.md.template")
 
 # ito-guide 스킬 섹션 나열 순서 (존재하는 스킬만 포함)
 ITO_SKILL_ORDER = [
@@ -334,7 +334,7 @@ def _build_scenarios(root, decisions, pair_cfg):
 
 
 def deploy_ito_guide(root, decisions):
-    """ito_guide.template.md + 이미 배포된 스킬/필드 값만으로 .claude/ito-guide.md를 조립한다 (zero-LLM).
+    """ito_guide.md.template + 이미 배포된 스킬/필드 값만으로 .claude/ito-guide.md를 조립한다 (zero-LLM).
     기존에는 sonnet Agent가 매 초기화마다 처음부터 작성하던 문서 — 전 항목이 이미 있는 산출물의 재진술이라 기계화."""
     if not os.path.isfile(ITO_TEMPLATE):
         print(f"WARN: 템플릿 없음 — {ITO_TEMPLATE} — ito-guide.md 스킵", file=sys.stderr)
@@ -478,7 +478,7 @@ def main():
 
 
 def _deploy(name, skills_dir):
-    src = os.path.join(TEMPLATE_DIR, f"{name}.template.md")
+    src = os.path.join(TEMPLATE_DIR, f"{name}.md.template")
     if not os.path.isfile(src):
         print(f"WARN: 템플릿 없음 — {src}", file=sys.stderr)
         return

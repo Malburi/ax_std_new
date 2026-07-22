@@ -42,7 +42,7 @@ analyzer 산출물을 받아 프로젝트 전용 harness 파일들을 **실제�
 
 ### B. 작업용 스킬 (정적 배포 — writer는 작성하지 않음)
 
-`analyze-impact.md` / `safe-modify.md` / `scaffold-feature.md` / `plan-migration.md` / `review-sql.md`는 프로젝트별 변수가 없는 고정 텍스트다. writer가 매번 새로 작성하지 않고, `agents/lib/skills_builder.py`가 `agents/lib/skills/*.template.md`를 그대로 대상 프로젝트 `.claude/skills/`에 복사한다 (harness-init Phase 2-2.3).
+`analyze-impact.md` / `safe-modify.md` / `scaffold-feature.md` / `plan-migration.md` / `review-sql.md`는 프로젝트별 변수가 없는 고정 텍스트다. writer가 매번 새로 작성하지 않고, `agents/lib/skills_builder.py`가 `agents/lib/skills/*.md.template`를 그대로 대상 프로젝트 `.claude/skills/`에 복사한다 (harness-init Phase 2-2.3).
 
 writer의 역할은 **조건부 생성 2종의 생성 여부만 판단**하는 것:
 - `plan-migration.md` — 분석 리포트에서 마이그레이션 후보 스택(Struts 1.x, iBatis, EJB 2, Spring 3, .NET FW 2~3 등) 식별 시만 "생성"
@@ -71,7 +71,7 @@ writer는 패턴 파일 *스켈레톤*을 직접 작성하지 않는다 — 스�
 
 ## 1. CLAUDE.md 생성 규칙 (하이브리드 — writer는 필드만 채운다)
 
-CLAUDE.md 자체는 writer가 markdown으로 직접 쓰지 않는다. 골격(고정 워크플로우 표·변경이력 헤더·파트너 섹션 서식)은 `agents/lib/claude_md.template.md`에 이미 있고, `agents/lib/skills_builder.py`가 harness-init Phase 2-2.3에서 조립한다 (파트너 섹션은 `pair_config.md` 필드를 그대로 옮기는 것뿐이라 스크립트가 전담 — writer가 손댈 필요 없음).
+CLAUDE.md 자체는 writer가 markdown으로 직접 쓰지 않는다. 골격(고정 워크플로우 표·변경이력 헤더·파트너 섹션 서식)은 `agents/lib/claude_md.md.template`에 이미 있고, `agents/lib/skills_builder.py`가 harness-init Phase 2-2.3에서 조립한다 (파트너 섹션은 `pair_config.md` 필드를 그대로 옮기는 것뿐이라 스크립트가 전담 — writer가 손댈 필요 없음).
 
 writer가 할 일은 **`_workspace/claude_md_fields.json`에 다음 필드만 채워서 출력**하는 것:
 
@@ -106,7 +106,7 @@ writer가 할 일은 **`_workspace/claude_md_fields.json`에 다음 필드만 �
 
 ## 6~10. analyze-impact.md / safe-modify.md / scaffold-feature.md / plan-migration.md / review-sql.md
 
-writer는 이 5개 파일을 직접 작성하지 않는다. 정적 텍스트 원본은 `agents/lib/skills/*.template.md`에 있고, `agents/lib/skills_builder.py`가 배포한다 (analyze-impact/safe-modify/scaffold-feature는 항상, plan-migration/review-sql은 조건부). writer가 할 일은 위 "### B. 작업용 스킬" 섹션에 설명한 대로 조건부 2종의 생성 여부 판단 + `_workspace/writer_decisions.json` 기록뿐이다.
+writer는 이 5개 파일을 직접 작성하지 않는다. 정적 텍스트 원본은 `agents/lib/skills/*.md.template`에 있고, `agents/lib/skills_builder.py`가 배포한다 (analyze-impact/safe-modify/scaffold-feature는 항상, plan-migration/review-sql은 조건부). writer가 할 일은 위 "### B. 작업용 스킬" 섹션에 설명한 대로 조건부 2종의 생성 여부 판단 + `_workspace/writer_decisions.json` 기록뿐이다.
 
 ---
 
