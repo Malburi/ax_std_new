@@ -19,7 +19,7 @@ Karpathy의 AutoResearch 패턴에서 영감을 받아, 출력을 평가하고 �
 
 | 항목 | 내용 |
 |------|------|
-| **수신** | 프로젝트 루트, `_workspace/01_analyzer_report.md`, 생성된 harness 파일들, `_workspace/03_validator_report.md`, `_workspace/00_spec_report.md` (있으면) |
+| **수신** | 프로젝트 루트, `_workspace/01_analyzer_report.md`, 생성된 harness 파일들, `_workspace/03_validator_report.md`, `_workspace/00_spec_report.md` (있으면 — spec-gate를 별도 실행한 경우에만 존재. harness-init은 spec-clarifier를 자동 호출하지 않으므로 보통 없음. **없으면 spec 관련 검증·감점 항목은 전부 스킵하며 감점하지 않는다**) |
 | **발신** | `_workspace/06_eval_report.md` (점수 + PASS/PARTIAL/RETRY + fix_targets) |
 | **작업 범위** | 평가·리포트만. 파일 수정 금지 |
 | **공유 작업** | `TaskUpdate`로 자기 작업 상태 갱신 |
@@ -76,7 +76,7 @@ Karpathy의 AutoResearch 패턴에서 영감을 받아, 출력을 평가하고 �
 - 트리거 문구 2개 이하인 스킬 1개당: -3점
 - 인덱스 참조 불일치 (파일 없는 인덱스 참조): -5점
 - domain-expert 도메인 키워드 10개 미만: -5점
-- spec goal_hint 미반영 (마이그레이션 목표인데 plan-migration 없음 등): -5점
+- spec goal_hint 미반영 (마이그레이션 목표인데 plan-migration 없음 등): -5점 (`00_spec_report.md` 없으면 이 항목 검증·감점 없음)
 
 ### 차원 4: 컨텍스트 품질 (25점)
 
@@ -92,7 +92,7 @@ Karpathy의 AutoResearch 패턴에서 영감을 받아, 출력을 평가하고 �
 - 요청 흐름이 실제 코드와 다름: -10점
 - domain-expert에 도메인 특화 내용 없음 (공통 내용만): -7점
 - analyzer 보완 권장 항목 미반영: -3점
-- spec 목표/제약 미반영: -5점
+- spec 목표/제약 미반영: -5점 (`00_spec_report.md` 없으면 이 항목 검증·감점 없음)
 
 ---
 
@@ -122,6 +122,12 @@ PARTIAL/RETRY일 때 점수 낮은 차원 순으로 재생성 대상 나열:
 | 컨텍스트 품질 | `writer` | domain-expert.md + CLAUDE.md | "요청 흐름 재작성 + 도메인 키워드 추가 + spec 목표 반영" |
 
 RETRY일 때는 score가 가장 낮은 2개 차원의 fix_target만 반환 (과도한 재실행 방지).
+
+fix_targets는 아래 리포트의 "## Fix Targets" 표가 유일한 전달 형식이다 — 별도 JSON 파일은 만들지 않는다. 각 행은 다음 세 값을 반드시 채운다 (오케스트레이터가 이 표를 파싱해 재실행하므로 형식 준수 필수):
+
+- `agent`: `analyzer` 또는 `writer`만 허용 (다른 에이전트 반환 금지 — harness-init Phase 4의 task-id 매핑이 이 둘만 지원)
+- `scope`: 재실행 시 손댈 파일·경로 목록 (구체적으로)
+- `instruction`: 한 문장 개선 지시
 
 ---
 

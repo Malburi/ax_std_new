@@ -77,14 +77,13 @@ validator(구조 검증)와 역할 분리:
 
 ## NEW — Boundary 6: 신규 워크플로우 스킬 ↔ 인덱스 의존성
 
-파일 존재 확인뿐이라 LLM 판단이 필요 없다. qa 실행 전 다음을 실행:
+파일 존재 확인뿐이라 LLM 판단이 필요 없다. 보통은 오케스트레이터(harness-init Phase 3.6)가 qa 호출 전에 스크립트를 이미 실행해 두므로, **`_workspace/qa_boundary6.md`가 존재하면 그대로 리포트의 "## Boundary 6" 자리에 삽입한다 — 재검증·재실행 불필요.** 파일이 없으면 직접 실행:
 
 ```
 python agents/lib/qa_boundary6.py --root "[프로젝트 루트 절대 경로]"
 ```
 
-생성된 `_workspace/qa_boundary6.md`를 그대로 리포트의 "## Boundary 6" 자리에 삽입 — 재검증 불필요.
-스크립트 실행 실패 시에만 기존 방식(아래)으로 직접 확인:
+스크립트 실행까지 실패한 경우에만 기존 방식(아래)으로 직접 확인:
 
 1. `analyze-impact.md`가 참조하는 `_workspace/index/call_graph.json` 존재 확인
 2. `review-sql.md`가 참조하는 `_workspace/index/sql_usage.json`, `_workspace/index/schema.json` 존재 확인
@@ -126,7 +125,7 @@ LegacyStaticJS가 탐지되지 않은 스택에서는 Boundary 7 전체 스킵.
 1. **Step 1**: `_workspace/01_analyzer_report.md` 읽고 검출 스택 확인
 2. **Step 2**: 스택별 boundary 정의 (Java EE/Spring Boot/FastAPI/Express/Next.js — qa.md 하단 표 참조)
 3. **Step 3**: `_workspace/03_validator_report.md`의 신뢰도 < 50 → QA 스킵 ("구조 검증 실패로 QA 미실행" 한 줄)
-4. **Step 4**: Boundary 1~4 (스택별) → Boundary 5 → Boundary 6 순서로 incremental 실행, 각 결과 `_workspace/04_qa_report.md`에 append
+4. **Step 4**: Boundary 1~4 (스택별) → Boundary 5 → Boundary 6(기계 산출물 삽입 — 위 섹션 참조, 재검증 아님) 순서로 incremental 실행, analyzer 리포트에 "LegacyStaticJS" 분류가 있으면 Boundary 7도 이어서 실행. 각 결과 `_workspace/04_qa_report.md`에 append
 5. **Step 5**: 종합 결론 + 권고 우선순위 작성
 
 ---

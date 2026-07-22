@@ -96,6 +96,7 @@ description: 프로젝트를 심층 분석해 맞춤형 하네스(CLAUDE.md, 5+ 
 - init_layout: single-root | monorepo | paired-roots | selected-paths
 - paths: [검증된 상대경로]
 - source: user-selection | explicit-request | reused
+- tier: [Phase 0 Step 2.5에서 결정 후 추가 기록 — Phase -1 시점에는 비워 둠]
 ```
 
 `monorepo`/`selected-paths`의 포함 경로는 root 내부 실제 디렉터리만 허용한다 (`..`, root 밖 절대경로 거부).
@@ -134,12 +135,12 @@ description: 프로젝트를 심층 분석해 맞춤형 하네스(CLAUDE.md, 5+ 
 
 ```
 기본적으로 Full Tier로 초기화합니다.
-- 비용: analyzer(opus) 1회 + writer(opus) 1회 (전체 심층 분석 포함)
+- 비용: analyzer(opus) 1회 + writer(sonnet) 1회 (전체 심층 분석 포함)
 
 더 빠르고 저렴한 Standard로 낮출까요? (기본값: Full 유지)
 ```
 
-응답이 Standard 확인이면 Standard로, 그 외(N·무응답 등)면 Full 그대로 진행. 이 질문은 초기 실행/재초기화당 1회만 하며, 부분 재실행·인덱스 리프레시는 기존 결정을 재사용해 다시 묻지 않는다.
+응답이 Standard 확인이면 Standard로, 그 외(N·무응답 등)면 Full 그대로 진행. 결정된 Tier는 `_workspace/00_init_scope.md`의 "기계 실행 값" 섹션에 `- tier: Lite | Standard | Full` 행으로 추가 기록한다(Phase -1에서 만든 파일에 이어 씀). 이 질문은 초기 실행/재초기화당 1회만 하며, 부분 재실행·인덱스 리프레시는 `00_init_scope.md`의 `tier:` 값을 재사용해 다시 묻지 않는다(값이 없으면 그때만 다시 묻는다).
 
 **③ Tier별 실행 구성:**
 
@@ -147,7 +148,7 @@ description: 프로젝트를 심층 분석해 맞춤형 하네스(CLAUDE.md, 5+ 
 |------|---------|---------|
 | **Lite** | analyzer(lite/sonnet) → writer(sonnet) → validator | pattern-extractor 스킵 |
 | **Standard** | analyzer(init/sonnet, 스택 해당 Phase B만) → writer(sonnet) → pattern(병렬) → validator | — |
-| **Full** | 전체 파이프라인 (기존 동일) | — |
+| **Full** | 전체 파이프라인 (analyzer만 opus, writer 포함 나머지는 sonnet) | — |
 
 QA는 Tier와 무관하게 세 Tier 모두 자동 실행에서 스킵되며, Phase 3.6 선택 작업 메뉴에서 사용자가 고를 때만 실행된다(위 표에는 포함하지 않음).
 
@@ -159,7 +160,7 @@ QA는 Tier와 무관하게 세 Tier 모두 자동 실행에서 스킵되며, Pha
 | 기존 + "다시"·"새로" | **재초기화** | `.claude/backup/[YYYYMMDD-HHMMSS]/`로 백업 후 전체 실행 (analyzer init 모드) |
 | 기존 + "스킬만"·"에이전트만"·"validator만"·"qa만"·"패턴만" | **부분 재실행** | 해당 단계만, 이전 `_workspace/` 산출물 재사용 |
 | 기존 + 일반 보완 | **업데이트** | 백업 후 analyzer incremental + 재실행 |
-| 코드 변경 후 인덱스만 갱신 | **인덱스 리프레시** | analyzer incremental만 |
+| 기존 + "인덱스만 갱신해줘"·"인덱스만 다시"·"인덱스 리프레시" (코드 변경 후) | **인덱스 리프레시** | analyzer incremental만 (writer/validator/eval 스킵) |
 
 백업 절차:
 - PowerShell: `Get-Date -Format "yyyyMMdd-HHmmss"`
@@ -260,18 +261,14 @@ Agent(
 
 `_workspace/01_analyzer_report.md` 존재 확인 후.
 
-Tier별 model:
-| Tier | model |
-|------|-------|
-| Lite / Standard | sonnet |
-| Full | opus |
+model: 모든 Tier에서 sonnet (2026-07-14 하이브리드 빌더 도입으로 writer 작업이 스킬 3종 + JSON 2개로 줄어 opus 불필요 — 2026-07-23 변경).
 
 ```
 Agent(
   subagent_type="general-purpose",
   description="T-W · writer · 하네스 파일과 프로젝트 가이드 생성",
   prompt="<writer 에이전트 지침에 따라 하네스 파일 작성. 프로젝트 루트: [절대경로]. tier: [Lite/Standard/Full]. 입력: _workspace/01_analyzer_report.md. 출력: 하네스 파일들(trace/scaffolder/find-logic, cross-repo-* 있는 경우) + _workspace/claude_md_fields.json + _workspace/writer_decisions.json>",
-  model="[sonnet/opus]"
+  model="sonnet"
 )
 ```
 
@@ -523,6 +520,7 @@ pair-init으로 연동하면 아래가 가능합니다:
 |------|------|
 | Y / 예 / yes / 연동 | `pair-init` 스킬 실행 → 연동 완료 후 Phase 3.6으로 |
 | N / 아니오 / no / 나중에 | "나중에 필요하면 `페어 설정해줘`라고 하세요" 안내 후 Phase 3.6으로 |
+| 무응답·다른 주제로 전환 | N과 동일 처리 (기본값: 연동 안 함) → Phase 3.6으로 |
 
 ---
 
@@ -594,7 +592,7 @@ Agent(
 
 ## Phase 4: Eval Loop — Karpathy AutoResearch 영감
 
-Phase 2-5에서 harness-evaluator가 실행되었다면 `_workspace/06_eval_report.md`에서 총점 확인.
+1차 평가(harness-evaluator)는 Phase 2-5에서 모든 Tier가 항상 실행한다 — 이 Phase는 그 결과(`_workspace/06_eval_report.md`)의 총점을 읽어 **점수 기반 재생성 루프만** 담당한다(evaluator 실패로 파일이 없으면 에러 핸들링 표에 따라 eval 없이 Phase 3 보고로 종료). Phase 3.5에서 파트너 하네스 자동 생성 subagent와 evaluator를 병렬 발행한 경우, 이 Phase의 재생성·재평가는 두 호출이 모두 join된 뒤 시작한다.
 
 ### 점수별 동작
 

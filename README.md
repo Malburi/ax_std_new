@@ -395,7 +395,7 @@ Claude는 HOLD/STOP 상황에서도 자동 수정을 하지 않습니다. **판�
 |---------|------|------|
 | `spec-clarifier` | 소크라테스 인터뷰 + 모호성 점수 + 명세 리포트 (spec-gate 스킬 전용) | sonnet |
 | `analyzer` | 코드베이스 분석 + 인덱스 생성 | opus (Full) / sonnet (Lite·Standard) |
-| `writer` | 하네스 파일 생성 | opus (Full) / sonnet (Lite·Standard) |
+| `writer` | 하네스 파일 생성 | sonnet (모든 Tier) |
 | `pattern-extractor` | 코드 컨벤션 패턴 추출 (Legacy Static JS 포함) | sonnet |
 | `validator` | 하네스 구조 검증 | sonnet |
 | `qa` | 경계면 교차 비교 (온디맨드, Phase 3.6 선택 시) | sonnet |

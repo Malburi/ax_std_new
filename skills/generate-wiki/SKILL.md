@@ -79,7 +79,8 @@ description: harness 산출물(_workspace + .claude)을 기반으로 프로젝�
 ```
 
 응답을 `.env`에 `WIKI_SYSTEM_KEY=[값]`으로 저장(이미 있으면 덮어쓰지 않음 — 기존 시스템 키가 실수로
-바뀌는 사고 방지). 이후 `wiki_generator.py`는 `.env`를 다시 읽으므로 별도 인자 전달 불필요.
+바뀌는 사고 방지). 이후 별도 인자 전달 불필요 — `--storage db`일 때 `wiki_generator.py`가 import하는
+`wiki_db.py`가 프로젝트 루트 `.env`에서 `MSSQL_*` 접속 정보와 `WIKI_SYSTEM_KEY`를 직접 읽는다.
 
 ---
 

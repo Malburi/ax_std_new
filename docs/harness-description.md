@@ -8,7 +8,7 @@
 |------|---------|------------|---------|
 | **Lite** (소규모) | ~50파일 상당 | analyzer(lite/sonnet) → writer(sonnet) → ito-guide → validator → harness-eval | pattern-extractor, QA(온디맨드) |
 | **Standard** (중규모) | ~중형 서비스 상당 | + analyzer(init/sonnet) + pattern-extractor(병렬) | QA(온디맨드) |
-| **Full** (대규모, 기본값) | 레거시/마이그레이션 대상 | 전체 파이프라인, analyzer·writer 모두 **opus** | QA(온디맨드) |
+| **Full** (대규모, 기본값) | 레거시/마이그레이션 대상 | 전체 파이프라인, analyzer만 **opus** (writer 포함 나머지는 sonnet) | QA(온디맨드) |
 
 ---
 
@@ -19,7 +19,7 @@
 | 항목 | Lite (소규모) | Standard (중규모) | Full (대규모) |
 |------|-------------|----------------|------------|
 | analyzer | ~15K–30K | ~40K–80K | ~100K–200K (opus) |
-| writer | ~15K–25K | ~25K–45K | ~60K–120K (opus) |
+| writer | ~15K–25K | ~25K–45K | ~40K–80K (sonnet) |
 | pattern-extractor | — | ~10K–20K | ~20K–35K |
 | ito-guide | ~5K | ~5K | ~5K |
 | validator | ~5K–10K | ~8K–15K | ~12K–20K |

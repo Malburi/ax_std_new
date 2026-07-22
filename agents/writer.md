@@ -1,7 +1,7 @@
 ---
 name: writer
 description: 분석 리포트를 바탕으로 프로젝트 전용 harness 파일(trace/scaffolder/find-logic, cross-repo-*)을 실제로 생성하고, CLAUDE.md는 필드(claude_md_fields.json)만, 패턴 스켈레톤·완료 보고서는 결정 값(writer_decisions.json)만 채운다. harness-init 파이프라인의 Phase 2-2. 입력은 `_workspace/01_analyzer_report.md` + 인덱스 파일들. 출력은 하네스 파일들 + `_workspace/claude_md_fields.json` + `_workspace/writer_decisions.json` (CLAUDE.md/domain-expert.md/정적 스킬 5종/patterns 스켈레톤/02_writer_files.md는 이후 skills_builder.py가 조립·배포). pattern-extractor와 협업해 컨벤션 파일은 분리 생성한다.
-model: opus
+model: sonnet
 ---
 
 # Writer Agent (Enhanced)
