@@ -150,12 +150,16 @@ def check2_skill_registration(root, decisions, claude_md_text):
 KOREAN_QUOTE_RE = re.compile(r'"([^"]*[가-힣][^"]*)"')
 ASCII_QUOTE_RE = re.compile(r'"([a-zA-Z][a-zA-Z \-]*)"')
 
-# 정적 배포 스킬(agents/lib/skills/*.md.template, 프로젝트별 변수 없음)과 harness-init.md(플러그인
-# 설치 시 배포된 파일, check 8이 보존만 확인)는 매 프로젝트마다 새로 판단할 트리거 품질이 없다 —
-# check 3은 writer가 실제로 새로 작성한 per-project 스킬(trace/scaffolder/find-logic/cross-repo-*)에만 적용.
+# 정적 배포 스킬(agents/lib/skills/*.md.template, 프로젝트별 변수 없음)은 매 프로젝트마다 새로
+# 판단할 트리거 품질이 없다 — check 3은 writer가 실제로 새로 작성한 per-project 스킬
+# (trace/scaffolder/find-logic/cross-repo-*)에만 적용. harness-init.md는 2026-07-23부터
+# 프로젝트에 배포하지 않으므로(메타/툴링 스킬 — 하네스 재초기화용이지 개발 워크플로우가 아님)
+# 이 목록에서 제외했다. 혹시 과거 세션에서 수동 배포된 사본이 남아있어도 이 목록에 없으면
+# check3이 일반 per-project 스킬과 동일하게 트리거 품질을 검사하게 되는데, 이는 의도된
+# 부작용이다 — 남아있는 사본은 트리거 부실 WARN으로 존재가 드러나 정리 대상임을 알 수 있다.
 STATIC_OR_PREEXISTING_SKILLS = {
     "analyze-impact.md", "safe-modify.md", "scaffold-feature.md",
-    "plan-migration.md", "review-sql.md", "harness-init.md",
+    "plan-migration.md", "review-sql.md",
 }
 
 
@@ -198,6 +202,16 @@ def check3_trigger_quality(root, decisions):
 PATH_RE = re.compile(r"`([\w./\-]+/[\w./\-]+)`")
 
 
+def _partner_root(root):
+    """pair_config.md의 partner_root: 값을 읽는다 — cross-repo 스킬이 파트너 저장소
+    경로를 예시로 인용할 때 이를 '없는 경로'로 오탐하지 않기 위해 필요."""
+    text = _read(os.path.join(root, "_workspace", "pair_config.md"))
+    if not text:
+        return None
+    m = re.search(r"^partner_root:\s*(.+)$", text, re.MULTILINE)
+    return m.group(1).strip() if m else None
+
+
 def check4_path_crosscheck(root):
     results = []
     candidates = set()
@@ -208,7 +222,20 @@ def check4_path_crosscheck(root):
                 if m.startswith(PROJECT_PATH_PREFIXES):
                     candidates.add(m)
 
-    missing = [p for p in sorted(candidates) if not os.path.isfile(os.path.join(root, p))]
+    partner_root = _partner_root(root)
+
+    def _exists(rel_path):
+        stripped = rel_path.rstrip("/\\")
+        full = os.path.join(root, stripped)
+        if os.path.isfile(full) or os.path.isdir(full):
+            return True
+        if partner_root:
+            partner_full = os.path.join(partner_root, stripped)
+            if os.path.isfile(partner_full) or os.path.isdir(partner_full):
+                return True
+        return False
+
+    missing = [p for p in sorted(candidates) if not _exists(p)]
     if missing:
         for p in missing:
             results.append(("FAIL", f"참조 경로 없음: {p}"))
@@ -304,8 +331,14 @@ def _evenly_spaced(items, n):
     return [items[int(i * step)] for i in range(n)]
 
 
+NODE_TYPE_PREFIX_RE = re.compile(r"^[a-z][a-z_-]*:(?!//)")
+
+
 def _simple_name(symbol_id):
-    """'com.example.OrderService.cancel' / 'src/x.ts::cancelOrder' → 'cancel' / 'cancelOrder'."""
+    """'com.example.OrderService.cancel' / 'src/x.ts::cancelOrder' → 'cancel' / 'cancelOrder'.
+    일부 analyzer는 노드 id를 'sql:PKG_X' / 'page:Menu.vue' / 'route:/lo'처럼 type: 접두사로
+    낸다 — 이 접두사를 벗기지 않으면 실제 소스에 없는 문자열을 찾아 스팟체크가 오탐(FAIL)한다."""
+    symbol_id = NODE_TYPE_PREFIX_RE.sub("", symbol_id, count=1)
     tail = symbol_id.rsplit("::", 1)[-1]
     tail = tail.rsplit(".", 1)[-1]
     return tail.split("(", 1)[0].strip()
@@ -430,18 +463,25 @@ def _index_meta_freshness(root):
 
 
 # ---------------------------------------------------------------------------
-# Check 8: harness-init 스킬 보존 확인
+# Check 8: harness-init 스킬 보존 확인 (2026-07-23 완화)
 # ---------------------------------------------------------------------------
+# harness-init.md는 더 이상 프로젝트 .claude/skills/에 배포하지 않는다 — 그건 하네스
+# 재초기화용 메타/툴링 스킬이지 프로젝트 개발(바이브 코딩) 워크플로우 스킬이 아니라서,
+# 배포해두면 wiki workflows.md·domain 참조 등 LLM이 실제 참조하는 목록에 함께 노출돼
+# "기능 개발 중 하네스를 재초기화하라"는 엉뚱한 참조를 유발한다. 플러그인이 설치된
+# 세션에서는 harness-init이 이미 전역적으로 호출 가능하므로 프로젝트 로컬 사본이
+# 애초에 불필요하다. 이 체크는 과거 호환을 위해 남기되 항상 정보성 PASS만 반환한다
+# (감점 없음) — 프로젝트에 사본이 남아있어도 무방하나 강제하지 않는다.
 
 def check8_harness_init_preserved(root):
     path = os.path.join(root, ".claude", "skills", "harness-init.md")
     text = _read(path)
     if text is None:
-        return "FAIL", "harness-init.md 없음 (삭제/미배포)"
+        return "PASS", "harness-init.md 미배포 (정상 — 플러그인이 전역 제공, 프로젝트 로컬 사본 불필요)"
     fm = _frontmatter_fields(text)
     if fm.get("name") != "harness-init":
-        return "FAIL", "harness-init.md frontmatter name 불일치 — 덮어쓰기 의심"
-    return "PASS", "harness-init.md 보존 확인"
+        return "PASS", "harness-init.md frontmatter name 불일치(정보성, 감점 없음)"
+    return "PASS", "harness-init.md 존재 확인(선택 사항, 감점 대상 아님)"
 
 
 # ---------------------------------------------------------------------------

@@ -20,10 +20,13 @@ import re
 import sys
 
 # 페이지 slug → (사이드바 레이블, 섹션)
+# "workflows"는 업무 워크플로우(예: 예약 취소 처리 흐름)가 아니라 이 프로젝트에서 쓸 수 있는
+# AI 개발 워크플로우 스킬(analyze-impact/safe-modify/scaffold-feature 등) 목록이다 — "시스템
+# 개요"에 묶으면 실제 아키텍처와 혼동되므로 별도 "AI 도구" 섹션으로 분리한다.
 PAGE_META = {
     "Home":             ("홈", None),
     "architecture":     ("아키텍처", "시스템 개요"),
-    "workflows":        ("워크플로우 스킬", "시스템 개요"),
+    "workflows":        ("AI 워크플로우 스킬", "AI 도구"),
     "database":         ("데이터베이스", "데이터"),
     "external-systems": ("외부 시스템", "데이터"),
     "api-endpoints":    ("전체 API 엔드포인트", "API 레퍼런스"),
@@ -31,7 +34,7 @@ PAGE_META = {
     "issues":           ("이슈 & 보안", "분석 리포트"),
 }
 
-SECTION_ORDER = ["시스템 개요", "데이터", "API 레퍼런스", "코드 컨벤션", "분석 리포트"]
+SECTION_ORDER = ["시스템 개요", "AI 도구", "데이터", "API 레퍼런스", "코드 컨벤션", "분석 리포트"]
 
 
 def render_index(project_name: str) -> str:

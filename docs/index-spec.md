@@ -324,6 +324,43 @@ DB 스키마 스냅샷.
 
 ---
 
+## owasp_top10.json
+
+OWASP Top 10 (2021) 카테고리별 매핑. 정적 분석 증거 기반 — 증거 없는 카테고리는 `미탐지`로 남기며, 이는 "취약점 없음"의 보증이 아니다.
+
+```json
+{
+  "_meta": {"generated_at": "2026-06-02T15:30:00Z", "sampled": false},
+  "categories": [
+    {
+      "id": "A01:2021",
+      "name": "Broken Access Control",
+      "status": "발견",
+      "findings": [
+        {
+          "file": "src/main/java/com/example/OrderController.java",
+          "line": 56,
+          "evidence": "cancel(Long orderId) — 소유자 검증 없이 orderId로 직접 조회",
+          "severity": "high",
+          "confidence": "medium"
+        }
+      ]
+    }
+  ]
+}
+```
+
+`id` 값: `A01:2021` ~ `A10:2021` (OWASP Top 10 2021 edition), 10개 카테고리 고정.
+
+`status` 값:
+- `발견` — 코드에서 구체적 증거를 찾음
+- `확인필요` — 정적 분석 한계로 사람 검토 필요 (예: A06 의존성 CVE 대조, A04 비즈니스 로직 설계)
+- `미탐지` — 해당 패턴 자체를 코드에서 못 찾음
+
+`severity` 값: `high`/`medium`/`low`/`unknown`. `confidence` 값: `high`/`medium`/`low`/`n/a` (샘플링 모드면 low로 낮춘다).
+
+---
+
 ## dead_code.json
 
 데드 코드 후보 (확정 아님 — 리플렉션 등 동적 호출 가능성).

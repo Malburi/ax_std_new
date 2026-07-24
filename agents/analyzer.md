@@ -179,6 +179,7 @@ pair_linked = true이면 분석 리포트 헤더에 "파트너 연동: [partner_
 > | 12 (비동기/스케줄) | `@Scheduled`·`@Async`·cron 탐지 시 | 항상 |
 > | 13 (환경 분기) | 프로파일 설정 파일 2개+ 탐지 시 | 항상 |
 > | 14 (인증/인가) | Security 설정 탐지 시 | 항상 |
+> | 14.5 (OWASP Top 10) | Security 설정 탐지 시 | 항상 |
 > | 15 (데드 코드) | 스킵 | 항상 |
 
 ### Step 8: 의존성 그래프 추출
@@ -299,6 +300,69 @@ pair_linked = true이면 분석 리포트 헤더에 "파트너 연동: [partner_
 
 산출물: 분석 리포트의 "인증/인가 경로" 섹션
 
+### Step 14.5: OWASP Top 10 매핑
+
+**목적:** 코드에서 실제로 발견된 증거를 OWASP Top 10 (2021) 10개 카테고리에 매핑. 카테고리를 채우기 위한 추측·창작 금지 — 증거 없으면 `상태: 미탐지`로 남긴다 (증거 없음 ≠ 취약점 없음, 리포트에도 이 구분을 명시).
+
+**시크릿 원문 인용 금지 (필수):** `findings[].evidence`는 `_workspace/index/owasp_top10.json`에 영구 저장되고 이후 CLAUDE.md·domain-expert.md로 그대로 복사될 수 있다. A02(암호화 실패)·A05(설정 오류) 등에서 실제 비밀번호·API 키·토큰·시크릿 값을 발견해도 그 **원문 값을 evidence에 그대로 인용하지 않는다** — 위치와 패턴만 서술한다. (`"DB 비밀번호 평문 하드코딩 (config/db.config.js:4)"` O / `"password: 'SuperSecret123!'"` X). 이 규칙을 지키지 않으면 validator check6(보안 위험 확인)이 harness 산출물 자체에서 그 시크릿을 재검출해 감점되는데, 이는 원인이 아니라 증상이다 — 값 자체를 옮기지 않는 것이 근본 대책이다.
+
+각 카테고리, 탐지 방법, 산출:
+
+| 카테고리 | 탐지 대상 |
+|------|---------|
+| A01 Broken Access Control | Step 14 인증/인가 트레이스 결과 재사용 — `@PreAuthorize`/`@Secured`/역할 검사 없이 ID 기반 리소스 접근하는 엔드포인트 (IDOR), 관리자 전용 경로의 인가 어노테이션 누락 |
+| A02 Cryptographic Failures | 평문 저장 흔적(비밀번호 컬럼명에 `MD5`/`SHA1` 언급, `password` 컬럼에 암호화 표시 없음), HTTP(비-TLS) 하드코딩 URL, 커스텀 암호화 구현 |
+| A03 Injection | SQL 문자열 결합(`+`/f-string/템플릿 삽입으로 조립된 쿼리, PreparedStatement/파라미터 바인딩 미사용), OS 커맨드 실행에 사용자 입력 직결(`exec`/`Runtime.exec`/`subprocess` + 미검증 변수) |
+| A04 Insecure Design | 비즈니스 로직 상 인가 우회 가능 흐름(가격/수량 클라이언트 신뢰, 재시도 제한 없는 인증 시도) — 코드 패턴으로 판단 어려우면 "수동 검토 권장"으로 표시 |
+| A05 Security Misconfiguration | 기본 계정/기본 비밀번호 문자열, CORS `*` 허용, 디버그/스택트레이스 노출 설정(`debug: true`, `DEBUG = True`), 불필요하게 열린 관리자 엔드포인트 |
+| A06 Vulnerable and Outdated Components | `package.json`/`pom.xml`/`requirements.txt`의 의존성 버전 — CVE 대조는 하지 않음(오프라인 정적 분석 한계), 버전 목록만 추출하고 "실제 취약점 여부는 `npm audit`/`OWASP Dependency-Check` 등으로 별도 확인 필요"라고 명시 |
+| A07 Identification and Authentication Failures | Step 14 결과 재사용 — 세션 고정 가능성(로그인 후 세션 ID 재발급 없음), 비밀번호 정책 부재, JWT 서명 알고리즘 `none` 허용·만료 미검증 |
+| A08 Software and Data Integrity Failures | 역직렬화(`ObjectInputStream`, `pickle.loads`, `yaml.load` 안전모드 미사용)에 외부 입력 직결, 무결성 검증 없는 CI/CD 스크립트·서드파티 스크립트 로드 |
+| A09 Security Logging and Monitoring Failures | 인증 실패·인가 거부 이벤트의 로깅 여부(로그 프레임워크 사용 패턴 확인), 민감정보(비밀번호·토큰) 평문 로깅 흔적 |
+| A10 Server-Side Request Forgery (SSRF) | Step 11(외부 통신) 결과 재사용 — 사용자 입력이 outbound HTTP 요청의 URL/호스트에 직접 반영되는 지점(화이트리스트 검증 없음) |
+
+**샘플링 시:** 전수 스캔 아니고 샘플 기반이면 해당 카테고리 항목마다 `confidence: low` + `_meta.sampled: true` 표기(Step 0의 인덱스 `_meta` 규칙과 동일).
+
+**산출물:** `_workspace/index/owasp_top10.json` (리포트 Section B 표는 재진술이므로 직접 쓰지 않는다 — Phase C 이후 `analyzer_index_summary.py`가 생성, 아래 "출력: 분석 리포트" 참조)
+
+```json
+{
+  "_meta": {"generated_at": "[ISO-8601]", "sampled": false},
+  "categories": [
+    {
+      "id": "A01:2021",
+      "name": "Broken Access Control",
+      "status": "발견",
+      "findings": [
+        {
+          "file": "src/main/java/com/example/OrderController.java",
+          "line": 56,
+          "evidence": "cancel(Long orderId) — 소유자 검증 없이 orderId로 직접 조회",
+          "severity": "high",
+          "confidence": "medium"
+        }
+      ]
+    },
+    {
+      "id": "A06:2021",
+      "name": "Vulnerable and Outdated Components",
+      "status": "확인필요",
+      "findings": [
+        {"file": "package.json", "line": null, "evidence": "lodash 4.17.15 (버전만 확인, CVE 대조 미실시)", "severity": "unknown", "confidence": "n/a"}
+      ]
+    },
+    {
+      "id": "A10:2021",
+      "name": "Server-Side Request Forgery (SSRF)",
+      "status": "미탐지",
+      "findings": []
+    }
+  ]
+}
+```
+
+`status` 값: `발견`(구체적 증거 있음) / `확인필요`(정적 분석 한계로 사람 검토 필요, 예: A06/A04) / `미탐지`(코드에서 해당 패턴 자체를 못 찾음 — 안전하다는 의미 아님).
+
 ### Step 15.5: REST API 계약 추출 (백엔드 탐지 시, Standard/Full)
 
 **실행 조건** (둘 중 하나):
@@ -380,6 +444,7 @@ api-bridge 에이전트 없이 analyzer가 직접 추출한다 (harness-init 파
 | `_workspace/index/external_io.json` | 외부 통신 (Step 11) | 1MB |
 | `_workspace/index/env_branches.json` | 환경 분기 (Step 13) | 500KB |
 | `_workspace/index/dead_code.json` | 데드 코드 후보 (Step 15) | 1MB |
+| `_workspace/index/owasp_top10.json` | OWASP Top 10 매핑 (Step 14.5) | 500KB |
 | `_workspace/index/api_contract.json` | REST API 계약 (Step 15.5, 백엔드 탐지 시) | 2MB |
 | `_workspace/index/sql_usage.json` | SQL ID ↔ 호출 위치 (Java/Python 등) | 5MB |
 | `_workspace/index/schema.json` | DB 스키마 스냅샷 (Step 16) | 5MB |
@@ -428,7 +493,7 @@ DB 접속 불가 시:
 **파일 경로:** `_workspace/01_analyzer_report.md`
 
 Section B/D 중 "의존성 그래프 요약"·"트랜잭션 경계"·"외부 통신"·"환경 분기"·"데드 코드 후보"·
-"DB 스키마"는 이미 `_workspace/index/*.json`에 있는 카운트를 재진술하는 것뿐이므로 직접 쓰지 않는다.
+"OWASP Top 10 매핑"·"DB 스키마"는 이미 `_workspace/index/*.json`에 있는 카운트를 재진술하는 것뿐이므로 직접 쓰지 않는다.
 Phase C에서 인덱스 JSON을 다 쓴 뒤 다음을 실행:
 
 ```

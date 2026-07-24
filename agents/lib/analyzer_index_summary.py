@@ -9,7 +9,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
-# analyzer.md의 "01_analyzer_report.md" Section B(의존성 그래프/트랜잭션/외부통신/환경분기/데드코드)
+# analyzer.md의 "01_analyzer_report.md" Section B(의존성 그래프/트랜잭션/외부통신/환경분기/데드코드/OWASP Top 10)
 # + Section D(DB 스키마)는 _workspace/index/*.json에 이미 있는 카운트·표를 프로즈로 재진술한 것뿐이다.
 # 이 스크립트가 그 재진술을 대신하고, analyzer(LLM)는 Section A(아키텍처 해석)와
 # "비동기/스케줄/이벤트"·"인증/인가 경로"(대응하는 JSON 인덱스가 없어 기계화 불가)·
@@ -130,6 +130,32 @@ def _section_dead_code(data):
     )
 
 
+def _section_owasp(data):
+    if not data:
+        return None
+    categories = data.get("categories") or []
+    if not categories:
+        return None
+    found = [c for c in categories if c.get("status") == "발견"]
+    review = [c for c in categories if c.get("status") == "확인필요"]
+    high_sev = sum(
+        1 for c in found for f in (c.get("findings") or []) if f.get("severity") == "high"
+    )
+    lines = []
+    for c in categories:
+        cnt = len(c.get("findings") or [])
+        suffix = f" ({cnt}건)" if cnt else ""
+        lines.append(f"  - {c.get('id', '?')} {c.get('name', '')}: {c.get('status', '미상')}{suffix}")
+    sampled = " · 샘플링 모드" if (data.get("_meta") or {}).get("sampled") else ""
+    return (
+        "## B. OWASP Top 10 매핑\n"
+        f"- 발견: {len(found)}개 카테고리 (severity=high {high_sev}건), 확인필요: {len(review)}개{sampled}\n"
+        + "\n".join(lines) + "\n"
+        "- 인덱스: _workspace/index/owasp_top10.json\n"
+        "- 주의: '미탐지'는 코드에서 해당 패턴을 못 찾았다는 뜻이지 취약점이 없다는 보증이 아니다.\n"
+    )
+
+
 def _section_schema(data):
     if not data:
         return None
@@ -156,6 +182,7 @@ def build_summary(root):
         ("external_io.json", _section_external_io),
         ("env_branches.json", _section_env_branches),
         ("dead_code.json", _section_dead_code),
+        ("owasp_top10.json", _section_owasp),
         ("schema.json", _section_schema),
     ]
     sections = []

@@ -263,6 +263,7 @@ def main():
     validator_report_text = read_file(os.path.join(project_root, "_workspace", "03_validator_report.md"))
     qa_report_text = read_file(os.path.join(project_root, "_workspace", "04_qa_report.md"))
     dead_code_json = load_json(os.path.join(project_root, "_workspace", "index", "dead_code.json"))
+    owasp_json = load_json(os.path.join(project_root, "_workspace", "index", "owasp_top10.json"))
     own_api_contract_json = load_json(os.path.join(project_root, "_workspace", "index", "api_contract.json"))
     own_schema_json = load_json(os.path.join(project_root, "_workspace", "index", "schema.json"))
     own_sql_usage_json = load_json(os.path.join(project_root, "_workspace", "index", "sql_usage.json"))
@@ -283,7 +284,7 @@ def main():
     db_exists = wiki_content.has_schema_data(own_schema_json) or wiki_content.has_schema_data(partner_schema_json)
     patterns_exists = os.path.isdir(patterns_dir) and any(f.endswith(".md") for f in os.listdir(patterns_dir))
     external_exists = wiki_content.has_external_data(own_external_io_json) or wiki_content.has_external_data(partner_external_io_json)
-    issues_exists = bool(validator_report_text or qa_report_text or dead_code_json)
+    issues_exists = bool(validator_report_text or qa_report_text or dead_code_json or owasp_json)
 
     # 1. Home.md ← CLAUDE.md 그대로
     home_content = wiki_content.build_home(claude_md_text)
@@ -301,7 +302,7 @@ def main():
     # 3. workflows.md ← .claude/skills/*.md 그대로 연결 (병합 대상 아님)
     workflows_content = wiki_content.build_workflows(skills_dir)
     write_file(os.path.join(wiki_dir, "workflows.md"), workflows_content)
-    render_and_track(wiki_dir, page_entries, project_name, "workflows.md", workflows_content, "Workflows (워크플로우 스킬)")
+    render_and_track(wiki_dir, page_entries, project_name, "workflows.md", workflows_content, "Workflows (AI 워크플로우 스킬)")
     print("Generated workflows.md")
 
     # 4. patterns.md ← .claude/patterns/*.md 그대로 연결 (병합 대상 아님)
@@ -336,9 +337,9 @@ def main():
         render_and_track(wiki_dir, page_entries, project_name, "external-systems.md", ext_content, "External Systems")
         print("Generated external-systems.md")
 
-    # 8. issues.md ← 03_validator_report.md + 04_qa_report.md + dead_code.json (병합 대상 아님)
+    # 8. issues.md ← 03_validator_report.md + 04_qa_report.md + dead_code.json + owasp_top10.json (병합 대상 아님)
     if issues_exists:
-        issues_content = wiki_content.build_issues(validator_report_text, qa_report_text, dead_code_json)
+        issues_content = wiki_content.build_issues(validator_report_text, qa_report_text, dead_code_json, owasp_json)
         write_file(os.path.join(wiki_dir, "issues.md"), issues_content)
         render_and_track(wiki_dir, page_entries, project_name, "issues.md", issues_content, "Issues (이슈 & 보안)")
         print("Generated issues.md")
@@ -418,6 +419,18 @@ def main():
                     if raw_type in v:
                         vis_type = k
                         break
+                else:
+                    # raw_type이 "method"/"external-method"처럼 레이어 정보 없는 범용값이면
+                    # 패키지·클래스명(id/file)에서 레이어를 추론한다 (Controller/Service/Dao 관행 기반).
+                    haystack = f"{nid or ''} {node.get('file', '')}".lower()
+                    if raw_type == "external-method" or "external" in haystack:
+                        vis_type = "external"
+                    elif ".web." in haystack or "controller" in haystack:
+                        vis_type = "endpoint"
+                    elif ".dao." in haystack or "dao" in haystack or "mapper" in haystack:
+                        vis_type = "dao"
+                    elif ".service." in haystack or "service" in haystack:
+                        vis_type = "function"
 
             detected_types.add(vis_type)
 
@@ -565,7 +578,7 @@ def main():
 - wiki/api-endpoints.md     {"✅ (원본: _workspace/index/api_contract.json)" if api_exists else "⏭ (미대상)"}
 - wiki/database.md          {"✅ (원본: _workspace/index/schema.json + sql_usage.json)" if db_exists else "⏭ (미대상)"}
 - wiki/external-systems.md  {"✅ (원본: _workspace/index/external_io.json)" if external_exists else "⏭ (미대상)"}
-- wiki/issues.md            {"✅ (원본: 03_validator_report.md + 04_qa_report.md + dead_code.json)" if issues_exists else "⏭ (미대상)"}
+- wiki/issues.md            {"✅ (원본: 03_validator_report.md + 04_qa_report.md + dead_code.json + owasp_top10.json)" if issues_exists else "⏭ (미대상)"}
 """
     if merge_info.get("merged"):
         report_content += (

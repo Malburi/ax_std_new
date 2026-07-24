@@ -15,6 +15,7 @@ LIB_DIR = os.path.dirname(os.path.abspath(__file__))
 if LIB_DIR not in sys.path:
     sys.path.insert(0, LIB_DIR)
 import wiki_render  # noqa: E402
+import docsify_convert  # noqa: E402
 
 TABLE_NAME = "harness_wiki_pages"
 
@@ -241,13 +242,29 @@ def load_db_to_folder(project_root, wiki_dir, env=None, system_key=None):
             with open(src_file, "rb") as sf, open(os.path.join(dest_lib_dir, filename), "wb") as df:
                 df.write(sf.read())
 
-    index_html = wiki_render.render_index(
-        title=f"{project_name} Wiki",
-        heading=f"{project_name} — System Wiki (DB에서 복원)",
-        entries=[(href, label, "") for href, label, _ in page_entries],
-    )
+    present_slugs = {
+        os.path.splitext(page_path)[0]
+        for page_path, _content, _ct in rows
+        if page_path.endswith(".md") and "/" not in page_path and not page_path.startswith("_")
+    }
+    has_call_graph_file = os.path.exists(os.path.join(wiki_dir, "call-graph.html"))
+
+    index_html = wiki_render.render_index(title=f"{project_name} Wiki")
     with open(os.path.join(wiki_dir, "index.html"), "w", encoding="utf-8") as f:
         f.write(index_html)
+
+    offline_html = wiki_render.render_static_index(project_name, page_entries)
+    with open(os.path.join(wiki_dir, "offline.html"), "w", encoding="utf-8") as f:
+        f.write(offline_html)
+
+    with open(os.path.join(wiki_dir, "_sidebar.md"), "w", encoding="utf-8") as f:
+        f.write(docsify_convert.build_sidebar(project_name, present_slugs, has_call_graph_file))
+
+    with open(os.path.join(wiki_dir, "_navbar.md"), "w", encoding="utf-8") as f:
+        f.write(docsify_convert.build_navbar(present_slugs, has_call_graph_file))
+
+    with open(os.path.join(wiki_dir, "serve.bat"), "w", encoding="utf-8") as f:
+        f.write(docsify_convert.serve_bat_content())
 
     print(f"폴더 복원 완료: {wiki_dir} — {len(rows)}개 페이지 (project={project_name})")
     return {"restored": len(rows), "project_name": project_name}

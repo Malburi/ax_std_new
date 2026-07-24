@@ -56,12 +56,20 @@ def _frontmatter_field(text, field):
     return m.group(1).strip() if m else ""
 
 
-def build_workflows(skills_dir):
-    pages = _read_dir_pages(skills_dir)
-    if not pages:
-        return "# 워크플로우 스킬\n\n등록된 스킬이 없습니다.\n"
+# 하네스 재초기화/관리용 메타·툴링 스킬 — 프로젝트 개발(바이브 코딩) 워크플로우가 아니므로
+# wiki의 "워크플로우 스킬" 목록(LLM이 기능 개발 중 참조하는 페이지)에서 제외한다. 2026-07-23
+# 이후 harness-init.md는 애초에 프로젝트에 배포하지 않지만, 과거 세션에서 수동으로 남은
+# 사본이 있어도 여기서는 걸러진다.
+META_SKILL_FILES = {"harness-init.md"}
 
-    toc = ["# 워크플로우 스킬\n", "| 스킬 | 설명 |", "|------|------|"]
+
+def build_workflows(skills_dir):
+    pages = [(f, t) for f, t in _read_dir_pages(skills_dir) if f not in META_SKILL_FILES]
+    if not pages:
+        return "# AI 워크플로우 스킬\n\n등록된 스킬이 없습니다.\n"
+
+    toc = ["# AI 워크플로우 스킬\n", "이 프로젝트에서 개발 작업 중 호출할 수 있는 AI 워크플로우 스킬 목록이다 (업무 워크플로우 아님).\n",
+           "| 스킬 | 설명 |", "|------|------|"]
     body = []
     for filename, text in pages:
         name = _frontmatter_field(text, "name") or os.path.splitext(filename)[0]
@@ -88,8 +96,38 @@ def build_patterns(patterns_dir):
     return "\n".join(toc) + "\n\n" + "\n".join(body)
 
 
-def build_issues(validator_report_text, qa_report_text, dead_code_json):
+_OWASP_STATUS_ICON = {"발견": "🔴", "확인필요": "🟡", "미탐지": "⚪"}
+
+
+def _owasp_table(owasp_json):
+    if not owasp_json:
+        return ""
+    categories = owasp_json.get("categories") or []
+    if not categories:
+        return ""
+    rows = ["| 카테고리 | 상태 | 발견 건수 | 대표 사례 |", "|------|------|------|------|"]
+    for c in categories:
+        findings = c.get("findings") or []
+        icon = _OWASP_STATUS_ICON.get(c.get("status"), "")
+        sample = ""
+        if findings:
+            f0 = findings[0]
+            line = f0.get("line")
+            loc = f"{f0.get('file', '')}:{line}" if line is not None else f0.get("file", "")
+            sample = f"{loc} — {f0.get('evidence', '')}".strip(" —")
+        rows.append(f"| {c.get('id', '')} {c.get('name', '')} | {icon} {c.get('status', '')} | {len(findings)} | {sample} |")
+    return (
+        "\n".join(rows)
+        + "\n\n> '미탐지'는 코드에서 해당 패턴을 못 찾았다는 뜻이며, 취약점이 없다는 보증이 아니다."
+        " '확인필요'는 정적 분석 한계로 사람 검토가 필요한 카테고리다(예: 의존성 CVE 대조).\n"
+    )
+
+
+def build_issues(validator_report_text, qa_report_text, dead_code_json, owasp_json=None):
     parts = ["# 이슈 & 보안\n"]
+    owasp_table = _owasp_table(owasp_json)
+    if owasp_table:
+        parts.append(_section("OWASP Top 10 매핑", owasp_table))
     if validator_report_text:
         parts.append(_section("검증 리포트 (validator)", validator_report_text))
     if qa_report_text:
@@ -97,12 +135,14 @@ def build_issues(validator_report_text, qa_report_text, dead_code_json):
 
     if dead_code_json:
         rows = ["## 데드 코드 후보", "", "| 종류 | ID/파일 | 사유 |", "|------|------|------|"]
-        for item in dead_code_json.get("unused_methods", []):
-            rows.append(f"| method | {item.get('id', '')} | {item.get('reason', '')} |")
-        for item in dead_code_json.get("unused_sql_ids", []):
-            rows.append(f"| sql | {item.get('id', '')} | {item.get('reason', '')} |")
-        for item in dead_code_json.get("unused_jsps", []):
-            rows.append(f"| jsp | {item.get('file', '')} | {item.get('reason', '')} |")
+        for kind, key in (("method", "unused_methods"), ("sql", "unused_sql_ids"), ("jsp", "unused_jsps")):
+            for item in dead_code_json.get(key, []):
+                if isinstance(item, dict):
+                    label = item.get("id") or item.get("symbol") or item.get("file", "")
+                    reason = item.get("reason") or item.get("confidence", "")
+                else:
+                    label, reason = str(item), ""
+                rows.append(f"| {kind} | {label} | {reason} |")
         if len(rows) > 4:
             parts.append("\n".join(rows) + "\n")
 
@@ -225,20 +265,32 @@ def _stored_procedures_md(sp):
     if note:
         out.append(f"> {note}\n")
     for category, items in sp.items():
-        if category == "note" or not isinstance(items, list) or not items:
+        if category == "note":
             continue
-        out.append(f"#### {category}")
-        out.append("| Proc | IN | OUT | Note |")
-        out.append("|------|----|----|------|")
-        for it in items:
-            if not isinstance(it, dict):
-                continue
-            in_val = it.get("in", "")
-            out_val = it.get("out", "")
-            in_val = ", ".join(in_val) if isinstance(in_val, list) else in_val
-            out_val = ", ".join(out_val) if isinstance(out_val, list) else out_val
-            out.append(f"| {it.get('proc', '')} | {in_val} | {out_val} | {it.get('note', '')} |")
-        out.append("")
+        if isinstance(items, list) and items and isinstance(items[0], dict):
+            out.append(f"#### {category}")
+            out.append("| Proc | IN | OUT | Note |")
+            out.append("|------|----|----|------|")
+            for it in items:
+                if not isinstance(it, dict):
+                    continue
+                in_val = it.get("in", "")
+                out_val = it.get("out", "")
+                in_val = ", ".join(in_val) if isinstance(in_val, list) else in_val
+                out_val = ", ".join(out_val) if isinstance(out_val, list) else out_val
+                out.append(f"| {it.get('proc', '')} | {in_val} | {out_val} | {it.get('note', '')} |")
+            out.append("")
+        elif isinstance(items, list) and items:
+            # proc/in/out으로 구조화되지 않은, 이름·시그니처 문자열 나열 스키마
+            out.append(f"#### {category}")
+            for it in items:
+                out.append(f"- {it}")
+            out.append("")
+        elif isinstance(items, dict) and items:
+            out.append(f"#### {category}")
+            for k, v in items.items():
+                out.append(f"- **{k}**: {v}")
+            out.append("")
     return "\n".join(out)
 
 
@@ -256,55 +308,102 @@ def _tables_directly_referenced_md(refs):
 def _database_tables_md(schema_json):
     if not schema_json:
         return ""
+    parts = []
+
     tables = schema_json.get("tables", [])
-    if not tables:
-        # index-spec 표준 스키마가 아닌 프로시저 중심 프로젝트(tables_directly_referenced/stored_procedures)
-        parts = []
-        refs_md = _tables_directly_referenced_md(schema_json.get("tables_directly_referenced"))
-        if refs_md:
-            parts.append("### 직접 참조 테이블\n\n" + refs_md)
-        sp_md = _stored_procedures_md(schema_json.get("stored_procedures"))
-        if sp_md:
-            parts.append("### 저장 프로시저\n\n" + sp_md)
-        return "\n\n".join(parts)
-    out = []
-    for t in tables:
-        out.append(f"### {t.get('name', '')}")
-        cols = t.get("columns", [])
-        if cols:
-            out.append("| 컬럼 | 타입 | Null | 기본값 | PK |")
-            out.append("|------|------|------|--------|----|")
-            pk_cols = set(t.get("primary_key", []))
-            for c in cols:
-                is_pk = "✅" if c.get("name") in pk_cols or c.get("primary_key") else ""
+    if tables:
+        out = []
+        for t in tables:
+            out.append(f"### {t.get('name', '')}")
+            cols = t.get("columns") or t.get("columns_seen", [])
+            if cols:
+                out.append("| 컬럼 | 타입 | Null | 기본값 | PK |")
+                out.append("|------|------|------|--------|----|")
+                pk_cols = set(t.get("primary_key", []))
+                for c in cols:
+                    is_pk = "✅" if c.get("name") in pk_cols or c.get("primary_key") else ""
+                    out.append(
+                        f"| {c.get('name', '')} | {c.get('type', '')} | "
+                        f"{'NULL' if c.get('nullable') else 'NOT NULL'} | "
+                        f"{c.get('default', '')} | {is_pk} |"
+                    )
+            fks = t.get("foreign_keys", [])
+            for fk in fks:
                 out.append(
-                    f"| {c.get('name', '')} | {c.get('type', '')} | "
-                    f"{'NULL' if c.get('nullable') else 'NOT NULL'} | "
-                    f"{c.get('default', '')} | {is_pk} |"
+                    f"- FK `{fk.get('name', '')}`: {', '.join(fk.get('columns', []))} → "
+                    f"{fk.get('references_table', '')}({', '.join(fk.get('references_columns', []))})"
                 )
-        fks = t.get("foreign_keys", [])
-        for fk in fks:
-            out.append(
-                f"- FK `{fk.get('name', '')}`: {', '.join(fk.get('columns', []))} → "
-                f"{fk.get('references_table', '')}({', '.join(fk.get('references_columns', []))})"
-            )
-        idxs = t.get("indexes", [])
-        for idx in idxs:
-            out.append(f"- INDEX `{idx.get('name', '')}`: {', '.join(idx.get('columns', []))}")
-        out.append("")
-    return "\n".join(out)
+            idxs = t.get("indexes", [])
+            for idx in idxs:
+                out.append(f"- INDEX `{idx.get('name', '')}`: {', '.join(idx.get('columns', []))}")
+            source = t.get("source")
+            if source:
+                out.append(f"- 출처: {source}")
+            keys_note = t.get("keys")
+            if keys_note:
+                out.append(f"- 키: {keys_note}")
+            out.append("")
+        parts.append("\n".join(out))
+
+    # index-spec 표준 스키마와 별개로 tables_directly_referenced/stored_procedures가
+    # 함께 있을 수 있다(프로시저 중심 프로젝트) — tables 존재 여부와 무관하게 항상 확인한다.
+    refs_md = _tables_directly_referenced_md(schema_json.get("tables_directly_referenced"))
+    if refs_md:
+        parts.append("### 직접 참조 테이블\n\n" + refs_md)
+    sp_md = _stored_procedures_md(schema_json.get("stored_procedures"))
+    if sp_md:
+        parts.append("### 저장 프로시저\n\n" + sp_md)
+    domain = schema_json.get("domain_inference")
+    if domain:
+        parts.append(f"### 도메인 추정\n\n{domain}")
+
+    return "\n\n".join(parts)
 
 
 def _sql_usage_table(sql_usage_json):
     if not sql_usage_json:
         return ""
     sqls = sql_usage_json.get("sqls", [])
-    if not sqls:
-        return ""
-    rows = ["| SQL ID | 타입 | 대상 테이블 |", "|--------|------|------------|"]
-    for s in sqls:
-        rows.append(f"| {s.get('id', '')} | {s.get('type', '')} | {', '.join(s.get('tables', []))} |")
-    return "\n".join(rows)
+    if sqls:
+        rows = ["| SQL ID | 타입 | 대상 테이블 |", "|--------|------|------------|"]
+        for s in sqls:
+            rows.append(f"| {s.get('id', '')} | {s.get('type', '')} | {', '.join(s.get('tables', []))} |")
+        return "\n".join(rows)
+
+    # index-spec 표준(sqls 평면 리스트)이 아닌 mapper XML 중심 스키마
+    mappers = sql_usage_json.get("mappers", [])
+    if mappers:
+        parts = []
+        note = sql_usage_json.get("note")
+        if note:
+            parts.append(f"> {note}\n")
+        rows = ["| Mapper XML | Namespace | Statement | Type | Proc/Table | Used By | Note |",
+                "|------------|-----------|-----------|------|------------|---------|------|"]
+        for m in mappers:
+            xml = m.get("xml", "")
+            ns = m.get("namespace", "")
+            for st in m.get("statements", []):
+                used_by = st.get("used_by", [])
+                used_by = ", ".join(used_by) if isinstance(used_by, list) else used_by
+                target = st.get("proc") or st.get("result") or ""
+                rows.append(
+                    f"| {xml} | {ns} | {st.get('id', '')} | {st.get('type', '')} | "
+                    f"{target} | {used_by or '-'} | {st.get('note', '')} |"
+                )
+        parts.append("\n".join(rows))
+        summary = sql_usage_json.get("summary")
+        if isinstance(summary, dict):
+            s_lines = ["#### 요약"]
+            for k, v in summary.items():
+                if isinstance(v, dict):
+                    s_lines.append(f"- **{k}**:")
+                    for k2, v2 in v.items():
+                        s_lines.append(f"  - {k2}: {v2}")
+                else:
+                    s_lines.append(f"- **{k}**: {v}")
+            parts.append("\n".join(s_lines))
+        return "\n\n".join(parts)
+    return ""
 
 
 def build_database(own_schema_json, own_sql_usage_json,
@@ -369,7 +468,12 @@ def _generic_value_md(v, indent=0):
     if isinstance(v, list):
         lines = []
         for item in v:
-            if isinstance(item, (dict, list)):
+            if isinstance(item, dict):
+                # 리스트 안의 dict는 항목 경계가 보이도록 별도 bullet으로 묶고 한 단계 들여쓴다
+                # (안 그러면 여러 항목의 키가 한 덩어리로 이어붙어 어디까지가 한 항목인지 안 보임).
+                lines.append(f"{pad}-")
+                lines.append(_generic_value_md(item, indent + 1))
+            elif isinstance(item, list):
                 lines.append(_generic_value_md(item, indent))
             else:
                 lines.append(f"{pad}- {item}")
@@ -413,11 +517,28 @@ def _external_io_table(io_json):
         return ""
     comms = io_json.get("communications", [])
     if comms:
+        parts = []
         rows = ["| Type | Target | File:Line |", "|------|--------|-----------|"]
         for c in comms:
-            target = c.get("target") or c.get("topic") or c.get("path_pattern") or ""
-            rows.append(f"| {c.get('type', '')} | {target} | {c.get('file', '')}:{c.get('line', '')} |")
-        return "\n".join(rows)
+            target = c.get("target") or c.get("topic") or c.get("path_pattern") or c.get("system") or ""
+            loc = f"{c.get('file', '')}:{c.get('line', '')}" if (c.get("file") or c.get("line")) else "-"
+            rows.append(f"| {c.get('type', '')} | {target} | {loc} |")
+        parts.append("\n".join(rows))
+
+        # communications는 요약이고, external_io에 시스템별 세부 정보(URL/자격증명/호출 위치 등)가
+        # 별도 배열로 딸려 오는 스키마 — 있으면 이어붙인다.
+        details = io_json.get("external_io")
+        if isinstance(details, list) and details:
+            det_parts = ["### 상세"]
+            for item in details:
+                if not isinstance(item, dict):
+                    det_parts.append(f"- {item}")
+                    continue
+                title = item.get("system") or item.get("kind") or ""
+                det_parts.append(f"#### {title}")
+                det_parts.append(_generic_value_md({k: v for k, v in item.items() if k != "system"}))
+            parts.append("\n\n".join(det_parts))
+        return "\n\n".join(parts)
     # index-spec 표준(communications)이 아닌 backend(outbound/datastores) 스키마
     ob_md = _outbound_md(io_json.get("outbound"))
     ds_md = _datastores_md(io_json.get("datastores"))

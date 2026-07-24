@@ -1,6 +1,6 @@
 {
   "name": "ax-std-harness",
-  "version": "0.6.0",
+  "version": "0.6.2",
   "description": "ITO/SI 조직을 위한 확장 메타 하네스 — 17 agents + 13 workflow skills (Spec Gate + Eval Loop + Clean + Wiki Generator + Pair Init + Cross Repo Scaffold)",
   "author": {
     "name": "neoruler001",

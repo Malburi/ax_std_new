@@ -165,7 +165,7 @@ QA는 Tier와 무관하게 두 Tier 모두 자동 실행에서 스킵되며, Pha
 
 백업 절차:
 - PowerShell: `Get-Date -Format "yyyyMMdd-HHmmss"`
-- 백업 대상: `CLAUDE.md`, `.claude/skills/*.md` (harness-init.md 제외), `.claude/agents/*.md` (공통 에이전트는 제외, 프로젝트 전용만), `.claude/patterns/`
+- 백업 대상: `CLAUDE.md`, `.claude/skills/*.md`, `.claude/agents/*.md` (공통 에이전트는 제외, 프로젝트 전용만), `.claude/patterns/`
 - 백업 위치: `.claude/backup/[YYYYMMDD-HHMMSS]/`
 
 ### Step 4: 작업공간 준비
@@ -367,6 +367,7 @@ Agent(
 - _workspace/index/schema.json              (DB 접속 가능 시)
 - _workspace/index/dead_code.json
 - _workspace/index/env_branches.json
+- _workspace/index/owasp_top10.json         (Security 설정 탐지 시)
 
 구조 검증 (validator):
 [신뢰도 점수 + 보완 권장 항목]

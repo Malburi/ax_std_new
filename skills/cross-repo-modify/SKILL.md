@@ -141,7 +141,7 @@ Agent(
   subagent_type="general-purpose",
   description="변경 안전성 평가 (시작 측)",
   prompt="<change-safety 에이전트 지침. 변경 파일: [Phase 4 목록]. mode: [Phase 0 감지 모드]. impact 리포트: _workspace/impact_<slug>.md. 출력: _workspace/safety_<slug>.md>",
-  model="opus"
+  model="sonnet"
 )
 ```
 
@@ -151,7 +151,7 @@ Agent(
   subagent_type="general-purpose",
   description="변경 안전성 평가 (파트너 측)",
   prompt="<change-safety 에이전트 지침. 프로젝트 루트: [partner_root]. 변경 파일: [partner_root]/_workspace/cross_modify_partner.md 목록. mode: [Phase 0 감지 모드]. 출력: [partner_root]/_workspace/safety_<slug>.md>",
-  model="opus"
+  model="sonnet"
 )
 ```
 
