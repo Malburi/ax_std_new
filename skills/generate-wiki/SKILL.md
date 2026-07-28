@@ -1,6 +1,6 @@
 ---
 name: generate-wiki
-description: harness 산출물(_workspace + .claude)을 기반으로 프로젝트 wiki 페이지 세트를 생성한다. call_graph.json을 vis-network 기반 인터랙티브 HTML(call-graph.html)로 변환하는 것을 포함. "wiki 만들어줘", "wiki 생성", "문서 wiki", "프로젝트 wiki 생성", "위키 만들어줘", "generate wiki", "위키 업데이트", "call graph 시각화", "호출 그래프 wiki" 요청 시 트리거. harness-init 완료 후 자동 제안.
+description: harness 산출물(_workspace + .claude)을 기반으로 프로젝트 wiki 페이지 세트를 생성한다. call_graph.json을 vis-network 기반 인터랙티브 HTML(call-graph.html)로 변환하는 것을 포함. 생성 후 원하면 별도 프로젝트 wiki-hub(여러 시스템 통합·버전관리 중앙 허브)로 이어서 발행할 수 있다. "wiki 만들어줘", "wiki 생성", "문서 wiki", "프로젝트 wiki 생성", "위키 만들어줘", "generate wiki", "위키 업데이트", "call graph 시각화", "호출 그래프 wiki" 요청 시 트리거. harness-init 완료 후 자동 제안.
 ---
 
 # Generate Wiki (오케스트레이터)
@@ -118,8 +118,37 @@ DB 저장을 선택한 경우, `07_wiki_build.md`의 "저장 위치" 줄(페이�
 
 ---
 
+## Phase 3.5: 중앙 허브(wiki-hub) 발행 여부 확인 (선택)
+
+Phase 1.5에서 어떤 저장 위치를 골랐든(폴더든 v1 DB든) 이 질문은 별도로 한다 — 여러 시스템을
+버전 관리와 함께 한 곳에서 보고 싶을 때만 켜는 별도 프로젝트 `wiki-hub` 발행이기 때문이다.
+
+```
+생성된 wiki를 중앙 허브(wiki-hub)에도 발행할까요? (Y/N)
+
+발행하면
+  - 다른 시스템들과 함께 한 사이트에서 조회되고
+  - 백엔드/프론트엔드가 레이어(컴포넌트)로 구분되고
+  - 페이지 버전 이력(내용이 바뀐 페이지만 새 버전)이 쌓입니다
+```
+
+| 응답 | 동작 |
+|------|------|
+| Y / 예 / yes / 발행 | `publish-wiki` 스킬 실행 (별도 프로젝트 wiki-hub의 `wiki-hub-publish` 명령 호출) |
+| N / 아니오 / no / 나중에 | "나중에 필요하면 `wiki 발행해줘`라고 하세요" 안내 후 종료 |
+
+`wiki-hub-publish` 명령이 설치돼 있지 않으면 `publish-wiki` 스킬이 설치 방법부터 안내한다.
+
+---
+
 ## 원칙
 
 ### wiki는 산출물의 뷰, 소스는 harness
 wiki 파일은 `_workspace/`·`.claude/`에서 *생성*된다.  
 wiki 파일을 직접 편집해도 다음 `generate-wiki` 실행 시 덮어씌워진다.
+
+### 폴더 / v1 단일 DB / wiki-hub는 선택이 아니라 용도가 다르다
+폴더는 이 프로젝트 하나를 혼자 보는 용도, v1 DB(`--storage db`)는 예전부터 있던 단일 테이블
+저장, wiki-hub는 여러 시스템을 조직 차원에서 버전 관리와 함께 한 곳에 모아 보는 용도다.
+대부분은 폴더만으로 충분하고, 조직에 시스템이 여러 개 쌓이기 시작하면 wiki-hub 발행을
+추가하면 된다.

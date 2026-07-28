@@ -526,7 +526,7 @@ Agent(
 
 신뢰도 < 50이면 이 Agent 호출 대신 "구조 검증 실패로 미실행" 한 줄만 `_workspace/04_qa_report.md`에 작성.
 
-**위키 생성 선택 시** — `generate-wiki` 스킬의 Phase 0~3을 그대로 수행한다. Phase 0의 "사전 확인"은 harness-init이 방금 완료했으므로 존재 확인은 스킵 가능. `pair_config.md`가 있으면 (2/3 중 어느 쪽을 골라도) `wiki_generator.py`가 파트너의 call_graph.json·01_analyzer_report.md·api_contract.json·schema.json·external_io.json을 함께 읽어 architecture/api-endpoints/database/external-systems 페이지에 자동 병합하므로, "3. 단독"을 선택해도 통합 wiki가 나타나는 게 정상 동작임을 안내한다.
+**위키 생성 선택 시** — `generate-wiki` 스킬의 Phase 0~3.5을 그대로 수행한다(Phase 3.5는 생성된 wiki를 별도 프로젝트 wiki-hub에도 발행할지 묻는 선택 질문 — Y 선택 시 `publish-wiki` 스킬로 이어진다). Phase 0의 "사전 확인"은 harness-init이 방금 완료했으므로 존재 확인은 스킵 가능. `pair_config.md`가 있으면 (2/3 중 어느 쪽을 골라도) `wiki_generator.py`가 파트너의 call_graph.json·01_analyzer_report.md·api_contract.json·schema.json·external_io.json을 함께 읽어 architecture/api-endpoints/database/external-systems 페이지에 자동 병합하므로, "3. 단독"을 선택해도 통합 wiki가 나타나는 게 정상 동작임을 안내한다.
 
 선택된 항목만 실행하고(둘 다 선택하면 순서 무관, 병렬 가능), 완료 후 Phase 3와 같은 형식으로 결과를 사용자에게 보고한다. "지금 안 함"·무응답·다른 대화 주제로 넘어가면 아무것도 실행하지 않고 Phase 4로 진행한다.
 

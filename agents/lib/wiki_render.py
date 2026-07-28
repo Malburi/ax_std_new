@@ -4,6 +4,7 @@ import html
 # render_markdown_page()는 외부 CDN 의존 없이 markdown을 이스케이프 후 <pre>로 보여준다 —
 # 폐쇄망 환경에서도, file:// 로 직접 열어도 동작해야 하기 때문. (DB 뷰어·_html/ 정적 렌더 사본에서 사용)
 # render_index()는 [2026-07-15]부터 Docsify 기반이라 예외 — 외부 CDN 필요, file://는 미지원(serve.bat으로 로컬 서버 실행 필요).
+# 별도 프로젝트 wiki-hub(중앙 허브)는 이 파일과 무관 — 자체 렌더러(CDN 미사용)를 갖는다.
 
 PAGE_STYLE = """
 body { font-family: -apple-system, Segoe UI, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; }

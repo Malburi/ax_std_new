@@ -7,3 +7,6 @@ Thumbs.db
 __pycache__/
 presentation-ai-journey.html
 presentation.html
+wiki_hub.db
+*.db-wal
+*.db-shm

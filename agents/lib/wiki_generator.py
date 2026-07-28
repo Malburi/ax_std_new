@@ -471,13 +471,15 @@ def main():
             "sap_interface": "🔶 SAP SOAP", "db_table": "🗄 DB 테이블", "mssql_table": "🗄 MSSQL 테이블",
             "util": "⚙ 유틸"
         }
+        # set 순회 순서는 실행마다 달라진다 — 정렬하지 않으면 내용이 같아도 파일이 매번
+        # 달라져서 DB 발행(publish-wiki) 때마다 헛된 버전이 쌓인다.
         filter_buttons_html = ""
-        for t in detected_types:
+        for t in sorted(detected_types):
             if t in btn_labels:
                 filter_buttons_html += f'<button class="filter-btn active" data-type="{t}">{btn_labels[t]}</button>\n    '
 
         legend_html = ""
-        for t in detected_types:
+        for t in sorted(detected_types):
             if t in COLORS:
                 c = COLORS[t]
                 legend_html += f'<div class="legend-item"><div class="legend-dot" style="background:{c["border"]}"></div>{btn_labels.get(t, t)}</div>\n        '
@@ -616,6 +618,7 @@ def main():
             )
         except Exception as e:
             storage_line = f"저장 위치: DB 실패 — {e} (wiki/ 폴더 저장은 정상 완료됨)\n"
+    storage_line += "중앙 허브(여러 시스템 통합, 버전 관리)에도 두려면 별도 프로젝트 wiki-hub로 발행 → publish-wiki 스킬 참고\n"
     report_content += f"\n{storage_line}"
 
     report_content += "\n=== END ===\n"
