@@ -30,7 +30,14 @@ wiki-hub 스킬      ─────(콘솔 명령 호출)───────�
 
 의존 방향은 한쪽뿐이다. harness의 스킬이 `wiki-hub-publish`/`wiki-hub-serve`를 호출하지만,
 wiki-hub 프로젝트는 harness의 코드를 전혀 모른다 — harness 산출물의 **파일 규약**
-(`wiki/*.md`·`*.html`, `_workspace/index/*.json`)만 알 뿐이다.
+(`wiki/*.md`·`*.html`, `_workspace/**/*.json`)만 알 뿐이다.
+
+`_workspace/**/*.json`(call_graph·schema·sql_usage 등 harness index + writer_decisions.json
+등)도 `wiki/*.md`·`*.html`과 동일하게 발행·버전관리된다. 여러 인원이 한 프로젝트를 나눠
+맡을 때, 한 사람이 harness-init을 돌려 만든 분석 인덱스 원본을 허브에 올려두면 다른
+팀원은 harness-init을 다시 돌리지 않고 `wiki-hub-publish --pull`로 그 JSON을 자기 로컬
+`_workspace/`의 원래 경로로 받아 impact-analyzer 등 에이전트에 바로 재사용할 수 있다 —
+harness-init 재실행 비용(토큰)을 아끼기 위한 용도다.
 
 ---
 
@@ -60,10 +67,14 @@ TOP/LIMIT/FETCH FIRST)는 `.with_variant()`와 `select().limit()`으로 흡수�
 |--------|--------|
 | `wikihub_systems` | 시스템 마스터 — 표시이름·설명·담당·태그·보관 여부 |
 | `wikihub_components` | 시스템 안의 레이어 — backend/frontend/fullstack/batch/mobile/common |
-| `wikihub_pages` | 현재 본문 (시스템·컴포넌트·경로 3키, 체크섬·현재버전) |
-| `wikihub_page_versions` | 버전 이력 — 체크섬이 바뀔 때만 새 행 |
+| `wikihub_pages` | 현재 본문 (시스템·컴포넌트·경로 3키, 체크섬·현재버전). `wiki/*.md`·`*.html`과 `_workspace/**/*.json`이 같은 테이블에 저장되며, 경로가 항상 `_workspace/`로 시작하는 쪽이 JSON 원본이다 |
+| `wikihub_page_versions` | 버전 이력 — 체크섬이 바뀔 때만 새 행 (JSON도 동일) |
 | `wikihub_api_endpoints` / `wikihub_db_objects` / `wikihub_frontend_routes` / `wikihub_external_links` | 백엔드·프론트엔드 정보를 문서와 별도로 분리한 구조화 인덱스 |
 | `wikihub_publish_log` | 발행 실행 기록 |
+
+허브 화면(`/s/{시스템}`)은 컴포넌트별로 "문서" 표와 "워크스페이스 인덱스(JSON)" 표를
+나눠 보여준다. 페이지 보기 화면에 `?raw=1`을 붙이면 서식 없이 원본 그대로 받을 수 있어,
+JSON을 로컬 파일로 저장하기 편하다.
 
 버전은 체크섬이 바뀔 때만 늘어난다. 삭제는 표시만 하고 본문·이력은 남긴다. 되돌리기는
 과거 버전을 새 버전으로 추가하는 방식이라 이력이 줄지 않는다.
@@ -114,6 +125,12 @@ pip install -e ".[mssql]"        # 실제 쓸 엔진만 (postgresql / oracle / a
 
 백엔드·프론트엔드가 별도 저장소면 **양쪽에서 각각 발행**한다 — 같은 `--system-key`,
 다른 `--component-type`을 쓰면 허브에서 한 시스템 아래 두 레이어로 묶인다.
+
+여러 인원이 한 프로젝트를 나눠 맡을 때: 한 사람이 harness-init을 돌려 발행해두면,
+다른 팀원은 `wiki-hub-publish --root [자기 로컬 경로] --pull --system-key ... --component-key ...`
+로 위키 문서 + `_workspace/**/*.json`을 한 번에 받는다. JSON은 project_root 기준
+원래 경로(`_workspace/index/...` 등)로 복원되므로 harness-init을 다시 돌릴 필요 없이
+impact-analyzer 등 인덱스 의존 에이전트를 바로 쓸 수 있다.
 
 과거 harness의 단일 테이블 DB 저장(v1, 지금은 제거됨) 데이터가 남아있는 프로젝트라면
 `wiki-hub-publish --migrate-v1`으로 새 스키마로 옮긴다.

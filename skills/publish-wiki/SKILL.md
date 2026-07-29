@@ -13,9 +13,15 @@ description: 생성된 폴더 wiki를 별도 프로젝트 wiki-hub의 중앙 DB(
 |----|---------|
 | 시스템 | `wikihub_systems` 마스터에 등록. 시스템 키로 완전히 분리 |
 | 컴포넌트 | `wikihub_components` — 같은 시스템 안에서 백엔드·프론트엔드를 나눠 저장 |
-| 페이지 | `wikihub_pages` — (시스템, 컴포넌트, 경로) 단위, 체크섬이 바뀔 때만 새 버전 |
-| 버전 | `wikihub_page_versions` |
+| 페이지 | `wikihub_pages` — (시스템, 컴포넌트, 경로) 단위, 체크섬이 바뀔 때만 새 버전. `wiki/*.md`·`*.html` 뿐 아니라 `_workspace/**/*.json`(call_graph·schema·sql_usage 등 harness index + writer_decisions.json 등) 원본도 같은 테이블에 함께 발행된다 |
+| 버전 | `wikihub_page_versions` — JSON도 동일하게 버전 관리됨 |
 | 구조화 정보 | `wikihub_api_endpoints` · `wikihub_db_objects` · `wikihub_frontend_routes` · `wikihub_external_links` |
+
+> **여러 인원이 한 프로젝트를 나눠 맡는 경우**: 한 사람이 harness-init을 돌려 만든
+> `_workspace/**/*.json`(분석 인덱스 원본)을 발행해두면, 다른 팀원은 harness-init을 다시
+> 돌리지 않고 `wiki-hub-publish --pull`로 그 JSON을 자기 로컬 `_workspace/`의 원래 경로로
+> 받아 impact-analyzer 등 에이전트에 바로 재사용할 수 있다. 허브 화면(`/s/{시스템}`)에서도
+> "워크스페이스 인덱스(JSON)" 표로 별도 표시된다.
 
 지원 DB: **MSSQL**(1차 대상) · PostgreSQL · Oracle · SQLite. 하나의 `wikihub/models.py`로
 스키마를 정의하고 SQLAlchemy가 엔진별 SQL로 컴파일하므로, 나중에 MSSQL에서 PostgreSQL이나
@@ -123,9 +129,12 @@ wiki-hub-publish --root "[절대경로]" `
 |------|--------|
 | `--dry-run` | DB를 건드리지 않고 대상 페이지만 확인 |
 | `--no-index` | 구조화 인덱스 추출을 건너뜀 |
-| `--pull` | 반대 방향. DB → `wiki/` 폴더로 복원 |
+| `--no-workspace-json` | `_workspace/**/*.json` 원본 발행을 건너뜀 (위키 문서만 발행) |
+| `--pull` | 반대 방향. 위키 문서는 `wiki/`로, `_workspace/`로 시작하는 페이지는 프로젝트 루트 기준 **원래 경로**로 복원 |
 | `--list` | 등록된 시스템·컴포넌트 확인 |
 | `--migrate-v1` | 예전 harness의 단일 테이블(`harness_wiki_pages`) 데이터를 새 스키마로 이관 |
+
+기본값은 발행(둘 다 포함) — 대부분은 옵션 없이 그대로 실행하면 된다.
 
 ### 크로스 리포(pair-init) 구조일 때
 
@@ -144,9 +153,11 @@ wiki-hub-publish --root "[절대경로]" `
   시스템   : ORDER (주문관리시스템)
   컴포넌트 : backend [backend]  stack=Spring Boot 2.7 / MyBatis
   페이지   : 신규 0 / 변경 3 / 동일 5 / 삭제표시 1 (총 8)
+  워크스페이스 JSON : 6개 (위 페이지 수에 포함, 다른 팀원이 harness-init 재실행 없이 재사용 가능한 원본 index 데이터)
   인덱스   : api 4건, db 3건, route 0건, external 2건
 
 내용이 같은 페이지는 새 버전을 만들지 않았습니다. 변경된 3개만 v2가 되었습니다.
+_workspace/**/*.json 6개도 함께 발행돼 다른 팀원이 --pull로 원래 경로에 그대로 받을 수 있습니다.
 중앙 허브에서 보기 → wiki-hub 스킬로 wiki-hub-serve 실행
 ```
 
