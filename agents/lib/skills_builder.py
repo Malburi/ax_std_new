@@ -190,24 +190,90 @@ def deploy_domain_expert(root):
 
 
 def parse_pair_config(root):
-    """_workspace/pair_config.md (단순 key: value 마크다운) 파싱. 없으면 None."""
+    """_workspace/pair_config.md (단순 key: value 마크다운) 파싱. 없으면 None.
+    hub-roots(1:N) 형식 파일도 최상단 공통 키(project_type/init_mode/linked_at)는 읽히지만
+    partner_root 등은 '## Partner:' 블록 안에만 있어 여기엔 안 잡힌다 — 그건 parse_pair_config_partners() 몫."""
     path = os.path.join(root, "_workspace", "pair_config.md")
     if not os.path.isfile(path):
         return None
     with open(path, "r", encoding="utf-8-sig") as f:
         text = f.read()
+    scan_text = text.split("## Partner:", 1)[0]
     cfg = {}
     for key in ["project_type", "partner_type", "partner_root", "partner_workspace",
                 "partner_stack", "api_base_url", "api_contract_path",
                 "partner_api_contract", "linked_at"]:
-        m = re.search(rf"^{key}:\s*(.+)$", text, re.MULTILINE)
+        m = re.search(rf"^{key}:\s*(.+)$", scan_text, re.MULTILINE)
         if m:
             cfg[key] = m.group(1).strip()
     return cfg or None
 
 
+def parse_pair_config_partners(root):
+    """hub-roots(1:N, 예: 백엔드+웹+모바일+관리자) pair_config.md의 '## Partner: label' 블록들을
+    각각 파싱해 리스트로 반환. paired-roots(1:1, flat 형식)나 파일 자체가 없으면 빈 리스트.
+    라인 단위로 블록을 나눈다 (정규식 하나로 MULTILINE '$' + DOTALL '.'을 같이 쓰면 그리디
+    매칭이 파일 끝까지 삼켜버리는 문제가 있어 일부러 피함)."""
+    path = os.path.join(root, "_workspace", "pair_config.md")
+    if not os.path.isfile(path):
+        return []
+    with open(path, "r", encoding="utf-8-sig") as f:
+        text = f.read()
+    if "## Partner:" not in text:
+        return []
+
+    blocks = []  # (label, block_text)
+    label, buf = None, []
+    for line in text.splitlines():
+        m = re.match(r"^## Partner:\s*(.+)$", line)
+        if m:
+            if label is not None:
+                blocks.append((label, "\n".join(buf)))
+            label, buf = m.group(1).strip(), []
+        elif label is not None:
+            buf.append(line)
+    if label is not None:
+        blocks.append((label, "\n".join(buf)))
+
+    partners = []
+    for label, block in blocks:
+        cfg = {"label": label}
+        for key in ["partner_role_label", "partner_type", "partner_root", "partner_workspace",
+                    "partner_stack", "api_base_url", "api_contract_path", "partner_api_contract"]:
+            km = re.search(rf"^{key}:\s*(.+)$", block, re.MULTILINE)
+            if km:
+                cfg[key] = km.group(1).strip()
+        if cfg.get("partner_role_label"):
+            cfg["label"] = cfg["partner_role_label"]
+        partners.append(cfg)
+    return partners
+
+
 def build_partner_section(root):
-    """pair_config.md가 있으면 '## 파트너 프로젝트' 섹션을 그 필드값만으로 조립한다 (LLM 불필요 — 전부 pair_config.md에 이미 있는 값)."""
+    """pair_config.md가 있으면 '## 파트너 프로젝트' 섹션을 그 필드값만으로 조립한다 (LLM 불필요 — 전부 pair_config.md에 이미 있는 값).
+    1:1(paired-roots)과 1:N(hub-roots, 클라이언트 여러 개)을 서식만 다르게 조립한다."""
+    partners = parse_pair_config_partners(root)
+    if partners:
+        rows = "\n".join(
+            f"| {p.get('label', '미상')} | {p.get('partner_root', '미상')} | {p.get('partner_stack', '미상')} |"
+            for p in partners
+        )
+        return (
+            f"\n## 파트너 프로젝트들 (클라이언트 {len(partners)}개)\n\n"
+            "| 역할 라벨 | 경로 | 스택 |\n"
+            "|---|---|---|\n"
+            f"{rows}\n\n"
+            "- API 계약: `_workspace/index/api_contract.json` (클라이언트 전체가 공유)\n\n"
+            "### 크로스 리포 워크플로우\n"
+            "| 상황 | 명령 |\n"
+            "|------|------|\n"
+            '| 전체 스택 기능 동시 생성 (클라이언트 선택) | "전체 스택 기능 만들어줘" → cross-repo-scaffold |\n'
+            '| 기존 기능 개선/수정 (클라이언트 선택) | "이 기능 개선해줘" → cross-repo-modify |\n'
+            '| API 변경 전 클라이언트 영향 확인 | "영향도 분석해줘" → analyze-impact |\n'
+            '| API 드리프트 재확인 (전체) | "API 드리프트 확인해줘" → pair-init 재실행 |\n'
+            '| 클라이언트 추가 | "[새 역할] 클라이언트 추가해줘" → pair-init 재실행 |\n\n'
+        )
+
     cfg = parse_pair_config(root)
     if not cfg:
         return ""
@@ -324,8 +390,8 @@ def _build_scenarios(root, decisions, pair_cfg):
     if "client_pattern.md" in pattern_files:
         scenarios.append(("화면 오류 추적", "화면 이벤트에서 시작해 Controller → Service → DB까지 처리 흐름을 따라가며 원인 지점을 좁힙니다.",
                           "trace / find-logic", '"이 화면 저장 버튼 누르면 뭐가 실행돼?"'))
-    if pair_cfg:
-        scenarios.append(("파트너 저장소 동시 수정", "API 계약을 건드리는 변경을 파트너 저장소까지 함께 반영해 드리프트를 막습니다.",
+    if pair_cfg or parse_pair_config_partners(root):
+        scenarios.append(("파트너 저장소 동시 수정", "API 계약을 건드리는 변경을 파트너(들) 저장소까지 함께 반영해 드리프트를 막습니다.",
                           "cross-repo-modify", '"이 API 바꾸는데 프론트 영향 있으면 같이 처리해줘"'))
     md = []
     for i, (title, desc, skills, trigger) in enumerate(scenarios, 1):
@@ -353,6 +419,7 @@ def deploy_ito_guide(root, decisions):
             pass
 
     pair_cfg = parse_pair_config(root)
+    hub_partners = parse_pair_config_partners(root)
     project_name = fields.get("project_name") or os.path.basename(os.path.normpath(root)) or "프로젝트"
 
     sections, n = [], 0
@@ -367,7 +434,11 @@ def deploy_ito_guide(root, decisions):
         if prefix:
             usage, triggers = _usage_and_triggers(_skill_description(root, name))
             block = block.replace(f"{{{{{prefix}_USAGE}}}}", usage).replace(f"{{{{{prefix}_TRIGGERS}}}}", triggers)
-        if pair_cfg:
+        if hub_partners:
+            labels = ", ".join(p.get("label", "미상") for p in hub_partners)
+            block = (block.replace("{{PARTNER_ROOT}}", f"클라이언트 {len(hub_partners)}개 — CLAUDE.md 파트너 섹션 참조")
+                          .replace("{{PARTNER_TYPE}}", labels))
+        elif pair_cfg:
             block = (block.replace("{{PARTNER_ROOT}}", pair_cfg.get("partner_root", "미상"))
                           .replace("{{PARTNER_TYPE}}", pair_cfg.get("partner_type", "미상")))
         sections.append(block)

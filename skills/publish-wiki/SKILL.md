@@ -21,10 +21,9 @@ description: 생성된 폴더 wiki를 별도 프로젝트 wiki-hub의 중앙 DB(
 스키마를 정의하고 SQLAlchemy가 엔진별 SQL로 컴파일하므로, 나중에 MSSQL에서 PostgreSQL이나
 Oracle로 옮겨도 harness 쪽 스킬은 바뀌지 않는다 — `.env`의 `WIKI_DB_ENGINE` 값만 바뀐다.
 
-> harness의 예전 v1 DB 저장(`generate-wiki --storage db` → `wiki_db.py` → 단일 테이블
-> `harness_wiki_pages`)과는 별개다. v1은 계속 쓸 수 있으며, wiki-hub는 여러 시스템을 조직
-> 차원에서 버전 관리와 함께 모아 보고 싶을 때 추가로 쓰는 상위 계층이다. v1 데이터가 있으면
-> 아래 "예전 데이터 이관" 절로 옮길 수 있다.
+> harness가 예전에 쓰던 v1 단일 테이블 DB 저장(`--storage db` → `wiki_db.py` → 단일 테이블
+> `harness_wiki_pages`)은 제거됐다 — 지금은 폴더 wiki 아니면 wiki-hub 둘뿐이다. 그 시절
+> 데이터가 남아있으면 아래 "예전 데이터 이관" 절로 옮길 수 있다.
 
 발행된 내용은 [wiki-hub](../wiki-hub/SKILL.md) 스킬이 띄우는 `wiki-hub-serve`에서 전 시스템 통합 조회된다.
 

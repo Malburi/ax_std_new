@@ -4,8 +4,11 @@
 이 모듈의 build_*() 함수에 텍스트/딕셔너리를 넘기면, 각 함수는 markdown 문자열을 반환한다.
 
 크로스 리포(pair-init) 병합이 의미 있는 4개 함수(architecture/api-endpoints/database/
-external-systems)는 own_* 인자 옆에 partner_* 인자를 받아, 있으면 "## 파트너 (label)"
-섹션으로 이어붙인다. 없으면(파트너가 아직 harness-init 전이거나 단일 저장소) own 것만 반환.
+external-systems)는 own_* 인자 옆에 partner_* 인자(1:1, paired-roots)를 받아, 있으면
+"## 파트너 (label)" 섹션으로 이어붙인다. 파트너가 여러 개인 1:N(hub-roots, 예: 백엔드+웹+
+모바일+관리자)은 partner_*와 별개로 `partners`(리스트) 인자를 추가로 받아 항목마다 "## 파트너
+(label)" 섹션을 하나씩 더 이어붙인다 — 두 경로 다 동시에 값이 오면 partner_*가 먼저, partners
+목록이 그 뒤에 이어진다. 파트너가 없으면(harness-init 전이거나 단일 저장소) own 것만 반환.
 workflows/patterns/issues는 저장소별 실행 환경·품질 이슈라 병합 대상이 아니다
 (CLAUDE.md 2026-07-15 wiki 통합 변경 이력 참조).
 """
@@ -27,11 +30,14 @@ def build_home(claude_md_text):
 
 
 def build_architecture(own_report_text, partner_report_text=None,
-                        own_label="이 저장소", partner_label=None):
+                        own_label="이 저장소", partner_label=None, partners=None):
     own = own_report_text or "`_workspace/01_analyzer_report.md`가 없습니다. harness-init을 먼저 실행하세요.\n"
     parts = [f"# 아키텍처\n", _section(own_label, own)]
     if partner_report_text:
         parts.append(_section(f"파트너 ({partner_label or '연동 저장소'})", partner_report_text))
+    for p in (partners or []):
+        if p.get("text"):
+            parts.append(_section(f"파트너 ({p.get('label') or '연동 저장소'})", p["text"]))
     return "\n".join(p for p in parts if p)
 
 
@@ -214,13 +220,17 @@ def _api_endpoints_table(contract_json):
 
 
 def build_api_endpoints(own_contract_json, partner_contract_json=None,
-                         own_label="이 저장소", partner_label=None):
+                         own_label="이 저장소", partner_label=None, partners=None):
     own_table = _api_endpoints_table(own_contract_json)
     parts = ["# API Endpoints\n"]
     parts.append(_section(own_label, own_table) if own_table else "API 계약 정보가 없습니다.\n")
     partner_table = _api_endpoints_table(partner_contract_json)
     if partner_table:
         parts.append(_section(f"파트너 ({partner_label or '연동 저장소'})", partner_table))
+    for p in (partners or []):
+        table = _api_endpoints_table(p.get("contract_json"))
+        if table:
+            parts.append(_section(f"파트너 ({p.get('label') or '연동 저장소'})", table))
     return "\n".join(p for p in parts if p)
 
 
@@ -408,7 +418,7 @@ def _sql_usage_table(sql_usage_json):
 
 def build_database(own_schema_json, own_sql_usage_json,
                     partner_schema_json=None, partner_sql_usage_json=None,
-                    own_label="이 저장소", partner_label=None):
+                    own_label="이 저장소", partner_label=None, partners=None):
     own_body = "\n\n".join(
         p for p in [_database_tables_md(own_schema_json), _sql_usage_table(own_sql_usage_json)] if p
     )
@@ -420,6 +430,12 @@ def build_database(own_schema_json, own_sql_usage_json,
     )
     if partner_body:
         parts.append(_section(f"파트너 ({partner_label or '연동 저장소'})", partner_body))
+    for p in (partners or []):
+        body = "\n\n".join(
+            b for b in [_database_tables_md(p.get("schema_json")), _sql_usage_table(p.get("sql_usage_json"))] if b
+        )
+        if body:
+            parts.append(_section(f"파트너 ({p.get('label') or '연동 저장소'})", body))
     return "\n".join(p for p in parts if p)
 
 
@@ -562,11 +578,15 @@ def _external_io_table(io_json):
 
 
 def build_external_systems(own_io_json, partner_io_json=None,
-                            own_label="이 저장소", partner_label=None):
+                            own_label="이 저장소", partner_label=None, partners=None):
     own_table = _external_io_table(own_io_json)
     parts = ["# External Systems\n"]
     parts.append(_section(own_label, own_table) if own_table else "외부 시스템 연동 정보가 없습니다.\n")
     partner_table = _external_io_table(partner_io_json)
     if partner_table:
         parts.append(_section(f"파트너 ({partner_label or '연동 저장소'})", partner_table))
+    for p in (partners or []):
+        table = _external_io_table(p.get("io_json"))
+        if table:
+            parts.append(_section(f"파트너 ({p.get('label') or '연동 저장소'})", table))
     return "\n".join(p for p in parts if p)

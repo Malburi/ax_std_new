@@ -1,12 +1,13 @@
 ---
 name: cross-repo-scaffold
-description: 페어 연동된 백엔드+프론트엔드 전체 스택 기능을 한 번에 스캐폴딩한다. "전체 스택 기능 만들어줘", "백엔드랑 프론트 같이 만들어줘", "full-stack feature", "API부터 화면까지 만들어줘", "엔드투엔드 기능 추가", "cross-repo scaffold", "백엔드 API 만들고 프론트 연동해줘" 요청 시 트리거.
+description: 페어 연동된 백엔드+프론트엔드(1:1) 또는 백엔드+여러 클라이언트(1:N, 예: 백엔드+웹+모바일+관리자) 전체 스택 기능을 한 번에 스캐폴딩한다. "전체 스택 기능 만들어줘", "백엔드랑 프론트 같이 만들어줘", "full-stack feature", "API부터 화면까지 만들어줘", "엔드투엔드 기능 추가", "cross-repo scaffold", "백엔드 API 만들고 프론트 연동해줘" 요청 시 트리거.
 ---
 
 # Cross-Repo Scaffold (오케스트레이터)
 
-`pair-init`으로 연동된 백엔드·프론트엔드 양쪽에 기능을 동시 스캐폴딩한다.  
-백엔드 API 계약을 기준으로 프론트엔드 서비스·컴포넌트·라우트를 정합하게 생성해 **드리프트 없는 풀스택 기능**을 만든다.
+`pair-init`으로 연동된 저장소들에 기능을 동시 스캐폴딩한다.  
+백엔드 API 계약을 기준으로 클라이언트(들)의 서비스·컴포넌트·라우트를 정합하게 생성해 **드리프트 없는 풀스택 기능**을 만든다.
+1:1(백엔드+프론트엔드 1개)과 1:N(백엔드+클라이언트 여러 개)을 모두 지원한다.
 
 ---
 
@@ -15,28 +16,41 @@ description: 페어 연동된 백엔드+프론트엔드 전체 스택 기능을 
 ### 페어 설정 확인
 
 `_workspace/pair_config.md` 존재·로드:
-- 없으면 → "먼저 `pair-init`으로 백엔드·프론트엔드를 연동하세요" 안내 후 중단.
+- 없으면 → "먼저 `pair-init`으로 연동하세요" 안내 후 중단.
+- `## Partner:` 블록이 있으면 hub-roots(1:N) 형식, 없으면 기존 paired-roots(1:1) flat 형식.
 
-pair_config에서 읽어오는 변수:
+**1:1(flat)인 경우** pair_config에서 읽어오는 변수:
 - `project_type` (현재: backend/frontend)
 - `partner_type`, `partner_root`, `partner_workspace`
 - `api_contract_path`, `partner_api_contract`
 - `api_base_url`
 
-변수를 기반으로 `backend_root`·`frontend_root`를 결정.
+변수를 기반으로 `backend_root`·`frontend_root`를 결정하고, `frontend_targets = [{ label: partner_type, root: frontend_root, api_contract: partner_api_contract }]`(1개짜리 리스트)로 통일해 이후 Phase에서 1:N과 같은 코드 경로를 쓴다.
+
+**1:N(hub-roots)인 경우** `## Partner: <label>` 블록마다 `{ label, partner_root, partner_workspace, partner_api_contract }`를 파싱해 클라이언트 후보 목록을 만든 뒤, 등록된 클라이언트가 2개 이상이면 매번 체크리스트로 포함 대상을 묻는다:
+
+```
+등록된 클라이언트: [role_label 1], [role_label 2], [role_label 3], ...
+
+이번 스캐폴딩에 포함할 클라이언트를 선택하세요 (쉼표로 구분, 전체는 "all"):
+```
+
+응답으로 선택된 항목만 `frontend_targets = [{ label, root: partner_root, api_contract: partner_api_contract }, ...]`에 담는다. 무응답이면 전체(all)로 처리.
+
+`backend_root`는 hub-roots에서 항상 현재 프로젝트(hub)다.
 
 `wiki/architecture.md`(통합본, `generate-wiki`로 생성된 경우)가 있으면 먼저 훑어 기존 시스템 구조를
 빠르게 파악하는 데 참고할 수 있다 — 단, 생성 시점 스냅샷이므로 실제 API 계약·패턴은 아래처럼
 반드시 `_workspace/index/api_contract.json`·패턴 파일을 라이브로 다시 확인한다.
 
-### 양쪽 패턴 파일 확인
+### 패턴 파일 확인 (백엔드 + 선택된 클라이언트 전부)
 
 - 백엔드: `[backend_root]/.claude/patterns/*.md`
-- 프론트엔드: `[frontend_root]/.claude/patterns/*.md`
+- 각 `frontend_targets` 항목: `[target.root]/.claude/patterns/*.md`
 
-한쪽이라도 스켈레톤 상태(pattern-extractor 미실행)면 경고:
+하나라도 스켈레톤 상태(pattern-extractor 미실행)면 경고:
 ```
-[WARN] [백엔드/프론트엔드] 패턴이 아직 추출되지 않았습니다.
+[WARN] [대상] 패턴이 아직 추출되지 않았습니다.
        컨벤션 없이 생성하면 코드 스타일이 일치하지 않을 수 있습니다.
        계속 진행할까요? (Y/N)
 ```
@@ -136,30 +150,33 @@ Agent(
 
 ---
 
-## Phase 5: 프론트엔드 스캐폴딩
+## Phase 5: 클라이언트 스캐폴딩 (선택된 `frontend_targets` 전체 — 병렬)
+
+`frontend_targets`의 각 항목에 대해 아래 Agent 호출을 **같은 메시지에서 병렬로** 발행한다
+(1:1이면 항목이 1개라 사실상 기존과 동일하게 동작, 1:N이면 선택된 클라이언트 수만큼 동시 실행):
 
 ```
 Agent(
   subagent_type="general-purpose",
-  description="프론트엔드 서비스+컴포넌트 생성 ([기능명])",
-  prompt="다음 순서로 프론트엔드 파일을 생성하라.
+  description="[target.label] 서비스+컴포넌트 생성 ([기능명])",
+  prompt="다음 순서로 클라이언트 파일을 생성하라.
 
-  프론트엔드 루트: [frontend_root]
+  클라이언트 루트: [target.root]
   백엔드 API 계약: [backend_root]/_workspace/index/api_contract.json
   대상 엔드포인트: [METHOD /path]
   기능명: [기능명]
   생성 범위: [프론트엔드 생성 범위]
-  패턴 파일: [frontend_root]/.claude/patterns/
-  분석 리포트: [frontend_root]/_workspace/01_analyzer_report.md (있으면)
+  패턴 파일: [target.root]/.claude/patterns/
+  분석 리포트: [target.root]/_workspace/01_analyzer_report.md (있으면)
 
   Step 1 — 서비스 스텁 생성 (api-bridge generate-stub 지침 따름):
     - api_contract.json의 [METHOD /path] 항목 기반
-    - 프론트엔드 스택(분석 리포트 또는 package.json)에 맞는 스타일 적용
+    - 클라이언트 스택(분석 리포트 또는 package.json)에 맞는 스타일 적용
     - 기존 서비스 파일 있으면 함수 추가, 없으면 도메인 기반 신규 생성
     - axios 인스턴스 경로는 패턴 파일 또는 기존 서비스 파일에서 확인
 
   Step 2 — 컴포넌트 생성 (범위에 포함된 경우):
-    - [frontend_root]/.claude/patterns/ 의 컴포넌트 패턴 참조
+    - [target.root]/.claude/patterns/ 의 컴포넌트 패턴 참조
     - Step 1의 서비스 함수를 호출하는 구조
     - UI 구현은 TODO로 (비즈니스 로직 골격만)
     - 파일명: 도메인 + 기능명 기반 (예: OrderCancelPage.vue, OrderCancelModal.tsx)
@@ -168,31 +185,32 @@ Agent(
     - Vue Router: router/index.ts(js)에 route 객체 추가
     - React Router: routes 설정 파일에 추가
     - Next.js: pages/ 또는 app/ 아래 폴더/파일 생성
+    - 모바일(예: iOS/Android 네이티브, React Native, Flutter)이면 해당 스택의 화면 등록 관행을 분석 리포트에서 확인 후 그에 맞게
     - 기존 파일 덮어쓰지 말고 항목만 추가
 
-  결과를 [frontend_root]/_workspace/cross_scaffold_frontend.md에 저장.",
+  결과를 [target.root]/_workspace/cross_scaffold_frontend.md에 저장.",
   model="sonnet"
 )
 ```
 
-완료 후 `[frontend_root]/_workspace/cross_scaffold_frontend.md` 존재 확인.
+완료 후 각 `[target.root]/_workspace/cross_scaffold_frontend.md` 존재 확인. 일부 실패해도 나머지는 계속 — 실패 목록은 Phase 7 보고에 명시.
 
 ---
 
-## Phase 6: 통합 안전성 검사
+## Phase 6: 통합 안전성 검사 (선택된 `frontend_targets` 전체 — 병렬)
 
-양쪽 생성 완료 후 API 계약 정합성 확인:
+생성 완료 후 각 클라이언트마다 API 계약 정합성 확인 — Phase 5와 동일하게 대상 수만큼 병렬 발행:
 
 ```
 Agent(
   subagent_type="general-purpose",
-  description="크로스 리포 정합성 검증",
+  description="[target.label] 크로스 리포 정합성 검증",
   prompt="api-bridge 에이전트 지침에 따라 실행.
   mode: validate.
-  프론트엔드 루트: [frontend_root].
+  프론트엔드 루트: [target.root].
   파트너 api_contract: [backend_root]/_workspace/index/api_contract.json.
   
-  검증 범위: 방금 생성된 파일([frontend_root]/_workspace/cross_scaffold_frontend.md 목록)만.
+  검증 범위: 방금 생성된 파일([target.root]/_workspace/cross_scaffold_frontend.md 목록)만.
   출력: 콘솔 요약 (drift 없으면 '정합성 OK', 있으면 항목 나열). 파일 저장 불필요.",
   model="sonnet"
 )
@@ -213,27 +231,29 @@ Agent(
   Test        : [파일 경로]
   설정 변경   : [파일]: [추가 항목] (있으면)
 
-━━━ 프론트엔드 ([frontend_root]) ━━━
+━━━ 클라이언트 ([target.label] — [target.root]) ━━━ (frontend_targets 개수만큼 반복, 1:1이면 1개)
   Service 스텁: [파일 경로] → [함수명]()
   Component   : [파일 경로] (있으면)
   Route 등록  : [파일 경로] (있으면)
+  정합성 검증 : ✓ / ✗ (드리프트 항목)
 
 ━━━ API 계약 ━━━
   [METHOD /path] → api_contract.json 갱신 완료
-  정합성 검증: ✓ (백엔드 ↔ 프론트 일치)
 
 ⚠️  TODO (수동 완성 필요)
   [백엔드]
   - [Service 파일]: 비즈니스 로직 구현 (// TODO 위치)
   - [DAO 파일]: 실제 쿼리 작성
-  [프론트엔드]
+  [클라이언트별]
   - [Component 파일]: UI 구현 (// TODO 위치)
   - [Service 파일]: DTO 타입 백엔드 실제 필드 기준으로 보완
 
+실패한 대상 (있으면): [target.label] — [실패 사유]
+
 다음 단계:
-  백엔드  → TODO 채우기 → 테스트 실행 → [빌드 명령]
-  프론트  → UI 구현 → [개발 서버 명령]으로 확인
-  통합    → 백엔드 실행 후 프론트에서 API 연동 테스트
+  백엔드    → TODO 채우기 → 테스트 실행 → [빌드 명령]
+  클라이언트 → UI 구현 → [개발 서버 명령]으로 확인
+  통합      → 백엔드 실행 후 각 클라이언트에서 API 연동 테스트
 ```
 
 ---

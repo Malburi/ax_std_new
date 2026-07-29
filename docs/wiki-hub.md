@@ -4,11 +4,6 @@
 구조를 설명한다. **이 기능의 구현은 harness 플러그인 안에 있지 않다.** 별도 프로젝트
 `wiki-hub`가 전담하고, harness 쪽은 그 프로젝트의 콘솔 명령을 호출할 뿐이다.
 
-> harness에는 이전부터 있던 v1 단일 테이블 DB 저장(`generate-wiki --storage db` →
-> `agents/lib/wiki_db.py` → `harness_wiki_pages` 테이블, `sync-wiki` 스킬)도 그대로 남아
-> 있다. 이 문서는 그 위에 추가된 wiki-hub(구조화·버전관리·다중 시스템 통합)를 다룬다 — v1과
-> wiki-hub는 대체 관계가 아니라 서로 다른 규모의 요구에 대응하는 별개 기능이다.
-
 ---
 
 ## 왜 별도 프로젝트인가
@@ -39,18 +34,18 @@ wiki-hub 프로젝트는 harness의 코드를 전혀 모른다 — harness 산�
 
 ---
 
-## 위키를 보는 세 가지 방법
+## 위키를 보는 두 가지 방법
 
-| | 폴더 wiki | v1 단일 DB wiki | DB(중앙 허브) wiki |
-|---|---|---|---|
-| 만드는 명령 | `generate-wiki` (harness) | `generate-wiki --storage db` (harness) | `generate-wiki` 다음 `publish-wiki` |
-| 저장 위치 | 이 프로젝트의 `wiki/` 폴더 | `harness_wiki_pages` 단일 테이블 | wiki-hub의 중앙 DB |
-| 보는 명령 | `wiki/serve.bat` → `:3501` | `agents/lib/wiki_db_server.py` → `:8000` | `wiki-hub-serve` → `:8800` |
-| 범위 | 이 프로젝트 하나 | `WIKI_SYSTEM_KEY`로 구분된 프로젝트들(평면) | 발행된 모든 시스템(시스템·컴포넌트로 구조화) |
-| 버전 이력 | 없음 | 없음 | 있음 (비교·되돌리기) |
+| | 폴더 wiki | DB(중앙 허브) wiki |
+|---|---|---|
+| 만드는 명령 | `generate-wiki` (harness) | `generate-wiki` 다음 `publish-wiki` |
+| 저장 위치 | 이 프로젝트의 `wiki/` 폴더 | wiki-hub의 중앙 DB |
+| 보는 명령 | `wiki/serve.bat` → `:3501` | `wiki-hub-serve` → `:8800` |
+| 범위 | 이 프로젝트 하나 | 발행된 모든 시스템(시스템·컴포넌트로 구조화) |
+| 버전 이력 | 없음 | 있음 (비교·되돌리기) |
 
-**기본은 폴더다.** `generate-wiki`는 질문 없이 항상 폴더에 wiki를 만든다. v1 DB·wiki-hub 발행은
-둘 다 완료 후 선택 질문으로만 나타난다 — 필요할 때만 켜는 상위 계층 기능이다.
+**기본은 폴더다.** `generate-wiki`는 질문 없이 항상 폴더에 wiki를 만든다. wiki-hub 발행은
+완료 후 선택 질문으로만 나타난다 — 필요할 때만 켜는 상위 계층 기능이다.
 
 ---
 
@@ -120,7 +115,7 @@ pip install -e ".[mssql]"        # 실제 쓸 엔진만 (postgresql / oracle / a
 백엔드·프론트엔드가 별도 저장소면 **양쪽에서 각각 발행**한다 — 같은 `--system-key`,
 다른 `--component-type`을 쓰면 허브에서 한 시스템 아래 두 레이어로 묶인다.
 
-예전 harness v1의 단일 테이블(`harness_wiki_pages`) 데이터가 있으면
+과거 harness의 단일 테이블 DB 저장(v1, 지금은 제거됨) 데이터가 남아있는 프로젝트라면
 `wiki-hub-publish --migrate-v1`으로 새 스키마로 옮긴다.
 
 ---

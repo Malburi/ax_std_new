@@ -50,18 +50,59 @@ def render_and_track(wiki_dir, page_entries, project_name, filename, content, la
 
 
 def parse_pair_config(root):
-    """_workspace/pair_config.md (단순 key: value 마크다운)를 파싱. 없으면 None."""
+    """_workspace/pair_config.md (단순 key: value 마크다운)를 파싱. 없으면 None.
+    hub-roots(1:N) 파일은 '## Partner:' 블록 안에 partner_root 등 같은 키 이름이 반복되므로,
+    그 앞부분(project_type/init_mode/linked_at 같은 공통 키)까지만 스캔 대상으로 자른다 —
+    안 그러면 첫 번째 파트너 블록의 값이 마치 1:1 최상단 값인 것처럼 잘못 읽힌다."""
     text = read_file(os.path.join(root, "_workspace", "pair_config.md"))
     if not text:
         return None
+    scan_text = text.split("## Partner:", 1)[0]
     cfg = {}
     for key in ["project_type", "partner_type", "partner_root", "partner_workspace",
                 "partner_stack", "api_base_url", "api_contract_path",
                 "partner_api_contract", "linked_at"]:
-        m = re.search(rf"^{key}:\s*(.+)$", text, re.MULTILINE)
+        m = re.search(rf"^{key}:\s*(.+)$", scan_text, re.MULTILINE)
         if m:
             cfg[key] = m.group(1).strip()
     return cfg or None
+
+
+def parse_pair_config_partners(root):
+    """_workspace/pair_config.md가 hub-roots(1:N, 예: 백엔드+웹+모바일+관리자) 형식이면
+    '## Partner: <label>' 블록마다 파싱해 리스트로 반환. paired-roots(1:1, 기존 flat 형식)나
+    파일 자체가 없으면 빈 리스트 — parse_pair_config()의 1:1 경로는 그대로 둔 채 순수 추가.
+    라인 단위로 블록을 나눈다 (정규식 하나로 MULTILINE '$' + DOTALL '.'을 같이 쓰면 그리디
+    매칭이 파일 끝까지 삼켜버리는 문제가 있어 일부러 피함)."""
+    text = read_file(os.path.join(root, "_workspace", "pair_config.md"))
+    if not text or "## Partner:" not in text:
+        return []
+
+    blocks = []  # (label, block_text)
+    label, buf = None, []
+    for line in text.splitlines():
+        m = re.match(r"^## Partner:\s*(.+)$", line)
+        if m:
+            if label is not None:
+                blocks.append((label, "\n".join(buf)))
+            label, buf = m.group(1).strip(), []
+        elif label is not None:
+            buf.append(line)
+    if label is not None:
+        blocks.append((label, "\n".join(buf)))
+
+    partners = []
+    for label, block in blocks:
+        cfg = {"label": label}
+        for key in ["partner_role_label", "partner_type", "partner_root", "partner_workspace",
+                    "partner_stack", "api_base_url", "api_contract_path", "partner_api_contract"]:
+            km = re.search(rf"^{key}:\s*(.+)$", block, re.MULTILINE)
+            if km:
+                cfg[key] = km.group(1).strip()
+        if cfg.get("partner_role_label"):
+            cfg["label"] = cfg["partner_role_label"]
+        partners.append(cfg)
+    return partners
 
 
 def normalize_api_path(p):
@@ -221,13 +262,57 @@ def merge_partner_call_graph(project_root, raw_graph):
     return merged_graph, merge_info
 
 
+def merge_hub_partner_call_graphs(project_root, raw_graph, partner_cfgs):
+    """hub-roots(1:N) 버전의 merge_partner_call_graph — 등록된 파트너 전부(웹/모바일/관리자 등)를
+    각각 고유 접두사(partner0_, partner1_, ...)로 병합한다. own_type은 항상 backend로 취급한다
+    (hub-roots는 1개 중심(backend) + N개 소비자(frontend류) 구조라는 전제 — pair-init 참조).
+    반환: (병합된 그래프, {"merged": bool, "partners": [{label, nodes, cross_edges, unmatched}, ...]})"""
+    if not partner_cfgs:
+        return raw_graph, {"merged": False}
+
+    own_contract = load_json(os.path.join(project_root, "_workspace", "index", "api_contract.json"))
+    endpoint_index = build_endpoint_index(own_contract)
+    backend_nodes = raw_graph.get("nodes", [])
+
+    merged_nodes = list(raw_graph.get("nodes", []))
+    merged_edges = list(raw_graph.get("edges", []))
+    partner_reports = []
+
+    for i, cfg in enumerate(partner_cfgs):
+        ws = cfg.get("partner_workspace")
+        label = cfg.get("label") or cfg.get("partner_type") or f"파트너{i+1}"
+        if not ws:
+            partner_reports.append({"label": label, "nodes": 0, "cross_edges": 0, "unmatched": 0, "skipped": "partner_workspace 없음"})
+            continue
+        partner_graph = load_json(os.path.join(ws, "index", "call_graph.json"))
+        if not partner_graph:
+            partner_reports.append({"label": label, "nodes": 0, "cross_edges": 0, "unmatched": 0, "skipped": "call_graph.json 없음/비어있음"})
+            continue
+
+        prefixed = prefix_graph(partner_graph, f"partner{i}_")
+        cross_edges, unmatched = [], 0
+        if endpoint_index:
+            cross_edges, unmatched = infer_cross_edges(prefixed.get("nodes", []), endpoint_index, backend_nodes)
+
+        merged_nodes += prefixed.get("nodes", [])
+        merged_edges += prefixed.get("edges", []) + cross_edges
+        partner_reports.append({
+            "label": label, "nodes": len(prefixed.get("nodes", [])),
+            "cross_edges": len(cross_edges), "unmatched": unmatched,
+        })
+        print(f"Cross-repo merge [{label}]: nodes {len(prefixed.get('nodes', []))}, "
+              f"inferred cross edges {len(cross_edges)} (unmatched: {unmatched})")
+
+    return {"nodes": merged_nodes, "edges": merged_edges}, {"merged": True, "partners": partner_reports}
+
+
 def _partner_paths(pair_cfg):
     """pair_cfg에서 파트너 _workspace 하위 산출물 절대경로들을 계산. pair_cfg 없으면 전부 None."""
     if not pair_cfg or not pair_cfg.get("partner_workspace"):
         return None
     ws = pair_cfg["partner_workspace"]
     return {
-        "label": pair_cfg.get("partner_type", "연동 저장소"),
+        "label": pair_cfg.get("label") or pair_cfg.get("partner_type", "연동 저장소"),
         "analyzer_report": os.path.join(ws, "01_analyzer_report.md"),
         "api_contract": pair_cfg.get("partner_api_contract") or os.path.join(ws, "index", "api_contract.json"),
         "schema": os.path.join(ws, "index", "schema.json"),
@@ -241,8 +326,6 @@ def main():
     parser = argparse.ArgumentParser(description="Zero-LLM Wiki Generator — _workspace/.claude 산출물을 그대로 wiki 페이지로")
     parser.add_argument("--root", required=True, help="Project root directory")
     parser.add_argument("--wiki-dir", required=True, help="Output wiki directory")
-    parser.add_argument("--storage", choices=["folder", "db"], default="folder",
-                         help="folder(기본): wiki_dir에 파일로만 저장. db: 파일 생성 후 MSSQL(harness_wiki_pages)에도 upsert")
     args = parser.parse_args()
 
     project_root = args.root
@@ -256,6 +339,23 @@ def main():
     pair_cfg = parse_pair_config(project_root)
     own_label = (pair_cfg or {}).get("project_type") or "이 저장소"
     partner = _partner_paths(pair_cfg)
+
+    # hub-roots(1:N, 예: 백엔드+웹+모바일+관리자) — paired-roots(1:1)와 별개 경로.
+    # pair_config.md가 1:1 flat 형식이면 아래는 빈 리스트라 이후 로직은 기존과 동일하게 동작한다.
+    hub_partner_cfgs = parse_pair_config_partners(project_root)
+    partners_data = []
+    for cfg in hub_partner_cfgs:
+        paths = _partner_paths(cfg)
+        if not paths:
+            continue
+        partners_data.append({
+            "label": paths["label"],
+            "text": read_file(paths["analyzer_report"]),
+            "contract_json": load_json(paths["api_contract"]),
+            "schema_json": load_json(paths["schema"]),
+            "sql_usage_json": load_json(paths["sql_usage"]),
+            "io_json": load_json(paths["external_io"]),
+        })
 
     # ---- own-side 원본 로드 ----
     claude_md_text = read_file(os.path.join(project_root, "CLAUDE.md"))
@@ -279,11 +379,14 @@ def main():
     partner_external_io_json = load_json(partner["external_io"]) if partner else None
     partner_label = partner["label"] if partner else None
 
-    # ---- 페이지 존재 판정 ----
-    api_exists = wiki_content.has_api_data(own_api_contract_json) or wiki_content.has_api_data(partner_api_contract_json)
-    db_exists = wiki_content.has_schema_data(own_schema_json) or wiki_content.has_schema_data(partner_schema_json)
+    # ---- 페이지 존재 판정 (hub-roots 파트너들도 포함) ----
+    api_exists = (wiki_content.has_api_data(own_api_contract_json) or wiki_content.has_api_data(partner_api_contract_json)
+                  or any(wiki_content.has_api_data(p["contract_json"]) for p in partners_data))
+    db_exists = (wiki_content.has_schema_data(own_schema_json) or wiki_content.has_schema_data(partner_schema_json)
+                 or any(wiki_content.has_schema_data(p["schema_json"]) for p in partners_data))
     patterns_exists = os.path.isdir(patterns_dir) and any(f.endswith(".md") for f in os.listdir(patterns_dir))
-    external_exists = wiki_content.has_external_data(own_external_io_json) or wiki_content.has_external_data(partner_external_io_json)
+    external_exists = (wiki_content.has_external_data(own_external_io_json) or wiki_content.has_external_data(partner_external_io_json)
+                       or any(wiki_content.has_external_data(p["io_json"]) for p in partners_data))
     issues_exists = bool(validator_report_text or qa_report_text or dead_code_json or owasp_json)
 
     # 1. Home.md ← CLAUDE.md 그대로
@@ -294,7 +397,8 @@ def main():
 
     # 2. architecture.md ← 01_analyzer_report.md (+ 파트너 병합)
     arch_content = wiki_content.build_architecture(
-        analyzer_report_text, partner_report_text, own_label=own_label, partner_label=partner_label)
+        analyzer_report_text, partner_report_text, own_label=own_label, partner_label=partner_label,
+        partners=partners_data)
     write_file(os.path.join(wiki_dir, "architecture.md"), arch_content)
     render_and_track(wiki_dir, page_entries, project_name, "architecture.md", arch_content, "Architecture (아키텍처)")
     print("Generated architecture.md")
@@ -315,7 +419,8 @@ def main():
     # 5. api-endpoints.md ← api_contract.json (+ 파트너 병합)
     if api_exists:
         api_content = wiki_content.build_api_endpoints(
-            own_api_contract_json, partner_api_contract_json, own_label=own_label, partner_label=partner_label)
+            own_api_contract_json, partner_api_contract_json, own_label=own_label, partner_label=partner_label,
+            partners=partners_data)
         write_file(os.path.join(wiki_dir, "api-endpoints.md"), api_content)
         render_and_track(wiki_dir, page_entries, project_name, "api-endpoints.md", api_content, "API Endpoints")
         print("Generated api-endpoints.md")
@@ -324,7 +429,7 @@ def main():
     if db_exists:
         db_content = wiki_content.build_database(
             own_schema_json, own_sql_usage_json, partner_schema_json, partner_sql_usage_json,
-            own_label=own_label, partner_label=partner_label)
+            own_label=own_label, partner_label=partner_label, partners=partners_data)
         write_file(os.path.join(wiki_dir, "database.md"), db_content)
         render_and_track(wiki_dir, page_entries, project_name, "database.md", db_content, "Database")
         print("Generated database.md")
@@ -332,7 +437,8 @@ def main():
     # 7. external-systems.md ← external_io.json (+ 파트너 병합)
     if external_exists:
         ext_content = wiki_content.build_external_systems(
-            own_external_io_json, partner_external_io_json, own_label=own_label, partner_label=partner_label)
+            own_external_io_json, partner_external_io_json, own_label=own_label, partner_label=partner_label,
+            partners=partners_data)
         write_file(os.path.join(wiki_dir, "external-systems.md"), ext_content)
         render_and_track(wiki_dir, page_entries, project_name, "external-systems.md", ext_content, "External Systems")
         print("Generated external-systems.md")
@@ -364,7 +470,10 @@ def main():
     if cg_template:
         raw_graph = load_json(call_graph_path) or {"nodes": [], "edges": []}
 
-        raw_graph, merge_info = merge_partner_call_graph(project_root, raw_graph)
+        if hub_partner_cfgs:
+            raw_graph, merge_info = merge_hub_partner_call_graphs(project_root, raw_graph, hub_partner_cfgs)
+        else:
+            raw_graph, merge_info = merge_partner_call_graph(project_root, raw_graph)
 
         detected_types = set()
         nodes_data = []
@@ -535,7 +644,7 @@ def main():
     write_file(os.path.join(wiki_dir, "offline.html"), wiki_render.render_static_index(project_name, page_entries))
     print("Generated offline.html (file:// 진입점)")
 
-    # 파트너(frontend) 데이터가 실제로 병합된 페이지만 사이드바에 앵커 서브항목으로 노출
+    # 파트너(frontend류) 데이터가 실제로 병합된 페이지만 사이드바에 앵커 서브항목으로 노출
     frontend_merged_slugs = []
     if partner:
         if partner_report_text:
@@ -544,11 +653,20 @@ def main():
             frontend_merged_slugs.append("api-endpoints")
         if wiki_content.has_external_data(partner_external_io_json):
             frontend_merged_slugs.append("external-systems")
+    if any(p.get("text") for p in partners_data):
+        frontend_merged_slugs.append("architecture")
+    if any(wiki_content.has_api_data(p.get("contract_json")) for p in partners_data):
+        frontend_merged_slugs.append("api-endpoints")
+    if any(wiki_content.has_external_data(p.get("io_json")) for p in partners_data):
+        frontend_merged_slugs.append("external-systems")
+    frontend_merged_slugs = sorted(set(frontend_merged_slugs))
+
+    hub_partner_label = ", ".join(p["label"] for p in partners_data) if partners_data else None
 
     write_file(os.path.join(wiki_dir, "_sidebar.md"),
                docsify_convert.build_sidebar(project_name, present_slugs, has_call_graph_file,
                                               frontend_merged_slugs=frontend_merged_slugs,
-                                              partner_label=partner_label))
+                                              partner_label=partner_label or hub_partner_label))
     print("Generated _sidebar.md")
 
     write_file(os.path.join(wiki_dir, "_navbar.md"),
@@ -582,7 +700,17 @@ def main():
 - wiki/external-systems.md  {"✅ (원본: _workspace/index/external_io.json)" if external_exists else "⏭ (미대상)"}
 - wiki/issues.md            {"✅ (원본: 03_validator_report.md + 04_qa_report.md + dead_code.json + owasp_top10.json)" if issues_exists else "⏭ (미대상)"}
 """
-    if merge_info.get("merged"):
+    if merge_info.get("merged") and "partners" in merge_info:
+        report_content += "\n크로스 리포 병합 (call-graph.html, hub-roots 1:N):\n"
+        for pr in merge_info["partners"]:
+            if pr.get("skipped"):
+                report_content += f"  ⏭ {pr['label']}: 스킵 — {pr['skipped']}\n"
+            else:
+                report_content += (
+                    f"  ✅ {pr['label']}: 노드 {pr['nodes']}개 병합, 추론된 크로스 엣지 {pr['cross_edges']}개 "
+                    f"(미매칭 후보 {pr['unmatched']}개)\n"
+                )
+    elif merge_info.get("merged"):
         report_content += (
             f"\n크로스 리포 병합 (call-graph.html): ✅ 파트너({merge_info['partner_type']}) 노드 {merge_info['partner_nodes']}개 병합, "
             f"추론된 크로스 엣지 {merge_info['cross_edges']}개 (미매칭 후보 {merge_info['unmatched']}개)\n"
@@ -605,20 +733,25 @@ def main():
         else:
             report_content += f"크로스 리포 병합 (markdown 페이지): ⏭ pair_config.md는 있으나 파트너 산출물({partner['analyzer_report']} 등)을 찾지 못함\n"
 
-    storage_line = "저장 위치: 폴더 (wiki/)\n"
-    if args.storage == "db":
-        try:
-            sys.path.insert(0, LIB_DIR)
-            import wiki_db
-            db_result = wiki_db.save_folder_to_db(project_root, wiki_dir)
-            storage_line = (
-                f"저장 위치: MSSQL DB ({db_result['synced']}개 페이지 upsert, "
-                f"project_name='{db_result['project_name']}') — wiki/ 폴더는 로컬 캐시로 유지\n"
-                f"브라우저 확인: python \"{os.path.join(LIB_DIR, 'wiki_db_server.py')}\" --root \"{project_root}\" 실행 후 http://localhost:8000\n"
-            )
-        except Exception as e:
-            storage_line = f"저장 위치: DB 실패 — {e} (wiki/ 폴더 저장은 정상 완료됨)\n"
-    storage_line += "중앙 허브(여러 시스템 통합, 버전 관리)에도 두려면 별도 프로젝트 wiki-hub로 발행 → publish-wiki 스킬 참고\n"
+    for p in partners_data:
+        merged_pages = []
+        if p.get("text"):
+            merged_pages.append("architecture.md")
+        if wiki_content.has_api_data(p.get("contract_json")):
+            merged_pages.append("api-endpoints.md")
+        if wiki_content.has_schema_data(p.get("schema_json")):
+            merged_pages.append("database.md")
+        if wiki_content.has_external_data(p.get("io_json")):
+            merged_pages.append("external-systems.md")
+        if merged_pages:
+            report_content += f"크로스 리포 병합 (markdown 페이지, hub-roots): ✅ 파트너({p['label']}) 데이터가 {', '.join(merged_pages)}에 병합됨\n"
+        else:
+            report_content += f"크로스 리포 병합 (markdown 페이지, hub-roots): ⏭ 파트너({p['label']}) 산출물을 찾지 못함\n"
+
+    storage_line = (
+        "저장 위치: 폴더 (wiki/)\n"
+        "중앙 허브(여러 시스템 통합, 버전 관리)에도 두려면 별도 프로젝트 wiki-hub로 발행 → publish-wiki 스킬 참고\n"
+    )
     report_content += f"\n{storage_line}"
 
     report_content += "\n=== END ===\n"

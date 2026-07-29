@@ -42,54 +42,14 @@ description: harness 산출물(_workspace + .claude)을 기반으로 프로젝�
 
 ---
 
-## Phase 1.5: 저장 위치 선택
-
-```
-시스템 wiki를 어디에 저장할까요?
-
-1. 폴더 (기본) — wiki/ 폴더에 파일로 저장, Docsify 기반(wiki/serve.bat 실행 후 http://localhost:3501)으로 열람 (인터넷 CDN 필요, file:// 직접 열기는 미지원)
-2. DB (MSSQL) — 프로젝트 루트의 .env(MSSQL_HOST/PORT/USER/PASSWORD/DATABASE) 접속 정보로
-   harness_wiki_pages 테이블에 저장. 조회는 agents/lib/wiki_db_server.py 로컬 서버로 브라우저 열람.
-   (wiki/ 폴더는 빌드 스테이징 겸 로컬 캐시로 계속 남음)
-
-선택? (1/2)
-```
-
-| 선택 | `wiki_generator.py --storage` |
-|------|------|
-| 1 / 폴더 | `folder` (기본값 — 생략 가능) |
-| 2 / DB | `db` |
-
-`.env` 없거나 접속 실패 시 → wiki_generator.py가 폴더 저장은 그대로 완료하고 `07_wiki_build.md`에 DB 실패 사유만 기록한다 (전체 실패로 처리하지 않음). 해당 경우 사용자에게 `.env` 설정 확인 안내.
-
-### DB 선택 시 — 시스템 키 확인
-
-여러 시스템(백엔드/프론트엔드, 또는 서로 다른 프로젝트)의 wiki가 같은 DB에 쌓이므로,
-프로젝트 루트 `.env`에 `WIKI_SYSTEM_KEY`가 이미 있는지 먼저 확인한다.
-
-| 상태 | 동작 |
-|------|------|
-| `.env`에 `WIKI_SYSTEM_KEY` 있음 | "시스템 키: [값] (기존 설정 재사용)" 안내만 하고 재질문 없이 진행 |
-| 없음 | 아래 질문 후 응답을 `.env`에 저장하고 진행 |
-
-```
-이 시스템을 DB에서 구분할 고유 키를 입력하세요 (예: ORDER-BACKEND, ORDER-FRONTEND).
-다른 시스템과 겹치지 않는 이름을 권장합니다.
-(미입력 시 폴더명 "[basename]"을 사용 — 다른 시스템도 폴더명이 같으면 데이터가 섞일 수 있습니다)
-```
-
-응답을 `.env`에 `WIKI_SYSTEM_KEY=[값]`으로 저장(이미 있으면 덮어쓰지 않음 — 기존 시스템 키가 실수로
-바뀌는 사고 방지). 이후 별도 인자 전달 불필요 — `--storage db`일 때 `wiki_generator.py`가 import하는
-`wiki_db.py`가 프로젝트 루트 `.env`에서 `MSSQL_*` 접속 정보와 `WIKI_SYSTEM_KEY`를 직접 읽는다.
-
----
-
 ## Phase 2: wiki_generator.py 실행
 
 LLM 호출 없이, 다음 터미널 명령 한 번으로 wiki 페이지 + 인터랙티브 호출 그래프를 생성한다.
+저장은 항상 폴더(`wiki/`)다 — 질문 없이 바로 진행. 여러 시스템을 DB에 모아 보고 싶으면
+완료 후 Phase 3.5에서 물어보는 wiki-hub 발행을 이용한다.
 
 ```powershell
-python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/wiki_generator.py" --root "[절대경로]" --wiki-dir "[절대경로]/wiki" --storage [folder|db]
+python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/wiki_generator.py" --root "[절대경로]" --wiki-dir "[절대경로]/wiki"
 ```
 
 (스크립트는 플러그인 설치 루트에 있다 — PowerShell `$env:CLAUDE_PLUGIN_ROOT`, bash `$CLAUDE_PLUGIN_ROOT`. 비어 있으면 이 SKILL.md가 위치한 플러그인 디렉터리 절대경로로 대체. cwd 상대경로 `agents/lib/...` 금지.)
@@ -110,18 +70,14 @@ wiki 생성 완료
   - wiki/call-graph.html: 데이터가 파일 안에 인라인으로 포함된 완전 독립 페이지 (file://로 직접 열람 가능)
 ```
 
-DB 저장을 선택한 경우, `07_wiki_build.md`의 "저장 위치" 줄(페이지 수·project_name·`wiki_db_server.py` 실행 명령)을 그대로 포함해 보고.
-
 `pair_config.md`가 있으면 `07_wiki_build.md`의 "크로스 리포 병합" 줄 2개(call-graph.html 노드/엣지 병합 + architecture/api-endpoints/database/external-systems markdown 페이지 병합)를 그대로 포함해 보고 (병합 성공 시 파트너 노드/추론된 크로스 엣지 수 또는 병합된 페이지 목록, 스킵 시 사유).
-
-이후 DB ↔ 폴더 저장 위치를 바꾸고 싶으면 `sync-wiki` 스킬 안내.
 
 ---
 
 ## Phase 3.5: 중앙 허브(wiki-hub) 발행 여부 확인 (선택)
 
-Phase 1.5에서 어떤 저장 위치를 골랐든(폴더든 v1 DB든) 이 질문은 별도로 한다 — 여러 시스템을
-버전 관리와 함께 한 곳에서 보고 싶을 때만 켜는 별도 프로젝트 `wiki-hub` 발행이기 때문이다.
+폴더 wiki 생성이 끝난 뒤 이 질문을 한다 — 여러 시스템을 버전 관리와 함께 한 곳에서 보고
+싶을 때만 켜는 별도 프로젝트 `wiki-hub` 발행이기 때문이다.
 
 ```
 생성된 wiki를 중앙 허브(wiki-hub)에도 발행할까요? (Y/N)
@@ -147,8 +103,7 @@ Phase 1.5에서 어떤 저장 위치를 골랐든(폴더든 v1 DB든) 이 질문
 wiki 파일은 `_workspace/`·`.claude/`에서 *생성*된다.  
 wiki 파일을 직접 편집해도 다음 `generate-wiki` 실행 시 덮어씌워진다.
 
-### 폴더 / v1 단일 DB / wiki-hub는 선택이 아니라 용도가 다르다
-폴더는 이 프로젝트 하나를 혼자 보는 용도, v1 DB(`--storage db`)는 예전부터 있던 단일 테이블
-저장, wiki-hub는 여러 시스템을 조직 차원에서 버전 관리와 함께 한 곳에 모아 보는 용도다.
-대부분은 폴더만으로 충분하고, 조직에 시스템이 여러 개 쌓이기 시작하면 wiki-hub 발행을
-추가하면 된다.
+### 폴더 / wiki-hub는 선택이 아니라 용도가 다르다
+폴더는 이 프로젝트 하나를 혼자 보는 용도, wiki-hub는 여러 시스템을 조직 차원에서 버전
+관리와 함께 한 곳에 모아 보는 용도다. 대부분은 폴더만으로 충분하고, 조직에 시스템이
+여러 개 쌓이기 시작하면 wiki-hub 발행을 추가하면 된다.

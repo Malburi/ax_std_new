@@ -36,15 +36,16 @@ model: opus
 ### Step 0.5: 파트너 프로젝트 감지 (Type B 지원)
 
 `_workspace/pair_config.md` 존재 확인:
-- **있으면** 파일 로드 → 다음 변수 설정:
-  - `pair_linked = true`
+- **있고 `## Partner:` 블록이 없으면** (paired-roots, 1:1) 파일 로드 → 다음 변수 설정:
+  - `pair_linked = true`, `pair_mode = "1:1"`
   - `partner_type` (frontend/backend)
   - `partner_root` (파트너 절대경로)
   - `partner_api_contract` (파트너 api_contract.json 경로)
   - `api_base_url`
+- **있고 `## Partner:` 블록이 있으면** (hub-roots, 1:N — 예: 백엔드+웹+모바일+관리자) 블록마다 파싱 → `pair_linked = true`, `pair_mode = "1:N"`, `partner_list`(각 블록의 role_label/partner_root/partner_api_contract)
 - **없으면** `pair_linked = false` (페어 미연동, 이후 Step에서 조건 분기 없음)
 
-pair_linked = true이면 분석 리포트 헤더에 "파트너 연동: [partner_type] @ [partner_root]" 기록.
+pair_linked = true이면 분석 리포트 헤더에 기록: 1:1이면 "파트너 연동: [partner_type] @ [partner_root]", 1:N이면 "파트너 연동(허브형, 클라이언트 N개): [role_label 목록]".
 
 ### Step 1: 루트 구조 파악
 

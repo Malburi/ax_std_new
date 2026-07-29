@@ -11,30 +11,24 @@ description: 별도 프로젝트 wiki-hub를 실행해 여러 시스템의 wiki�
 이 스킬이 실행하는 `wiki-hub-serve`는 harness 플러그인이 아니라 **별도 프로젝트 wiki-hub**의
 콘솔 명령이다. harness는 폴더 wiki만 만들고, DB에 쌓인 wiki를 보는 화면은 전부 이쪽에 있다.
 
-> harness에는 이전부터 있던 v1 단일 테이블 DB 저장(`generate-wiki --storage db` +
-> `agents/lib/wiki_db_server.py`, `sync-wiki` 스킬)도 그대로 남아 있다. v1은 이 프로젝트
-> 하나만 별도 로컬 서버로 보는 용도이고, wiki-hub는 여러 시스템을 버전 관리와 함께 한 곳에서
-> 보는 용도다 — 서로 대체 관계가 아니라 각자 다른 규모의 요구에 대응한다.
-
 ---
 
-## 위키를 보는 방법 세 가지
+## 위키를 보는 방법 두 가지
 
 harness가 만드는 wiki는 저장 위치에 따라 보는 방법이 다르다. 사용자가 "위키 보여줘"라고만
 말하면 어느 쪽을 원하는지 확인한다.
 
-| | 폴더 wiki | v1 단일 DB wiki | DB(중앙 허브) wiki |
-|---|---|---|---|
-| 저장 위치 | 이 프로젝트의 `wiki/` 폴더 | 이 프로젝트가 접속한 MSSQL의 `harness_wiki_pages` 단일 테이블 | wiki-hub의 중앙 DB (여러 프로젝트 공유) |
-| 보는 방법 | `wiki/serve.bat` 실행 → `http://localhost:3501` | `agents/lib/wiki_db_server.py` 실행 → `http://localhost:8000` | `wiki-hub-serve` 실행 → `http://localhost:8800` |
-| 범위 | 이 프로젝트 하나 | `WIKI_SYSTEM_KEY`로 구분된 프로젝트들(평면) | 발행된 모든 시스템 (시스템·컴포넌트로 구조화) |
-| 버전 이력 | 없음 (매번 덮어씀) | 없음 (매번 upsert) | 있음 (비교·되돌리기 가능) |
-| 만드는 스킬 | `generate-wiki` | `generate-wiki --storage db` | `generate-wiki` 다음 `publish-wiki` |
+| | 폴더 wiki | DB(중앙 허브) wiki |
+|---|---|---|
+| 저장 위치 | 이 프로젝트의 `wiki/` 폴더 | wiki-hub의 중앙 DB (여러 프로젝트 공유) |
+| 보는 방법 | `wiki/serve.bat` 실행 → `http://localhost:3501` | `wiki-hub-serve` 실행 → `http://localhost:8800` |
+| 범위 | 이 프로젝트 하나 | 발행된 모든 시스템 (시스템·컴포넌트로 구조화, API/DB/화면/외부연동까지 별도 인덱스 테이블로 세분 저장) |
+| 버전 이력 | 없음 (매번 덮어씀) | 있음 (비교·되돌리기 가능) |
+| 만드는 스킬 | `generate-wiki` | `generate-wiki` 다음 `publish-wiki` |
 
 **"이 프로젝트 wiki만 보고 싶다"** → `generate-wiki`가 이미 만든 `wiki/serve.bat` 안내로 끝. 이 스킬은
 필요 없다.
 **"여러 시스템을 한 곳에서 보고 싶다" / "버전 이력을 보고 싶다"** → 이 스킬(`wiki-hub-serve`)로 진행.
-**"기존에 DB로 저장한 걸 계속 그대로 보고 싶다"** → `sync-wiki` 스킬(v1) 안내.
 
 ---
 

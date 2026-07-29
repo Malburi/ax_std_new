@@ -39,13 +39,17 @@ description: 프로젝트를 심층 분석해 맞춤형 하네스(CLAUDE.md, 5+ 
   2. 현재 폴더 안의 서버·클라이언트를 함께 초기화
      한 상위 폴더 안의 backend와 frontend/desktop/mobile을 워크스페이스로 통합 분석합니다.
 
-  3. 서로 다른 폴더의 서버·클라이언트를 각각 초기화 후 연결
+  3. 서로 다른 폴더의 서버·클라이언트를 각각 초기화 후 연결 (1:1)
      두 프로젝트를 독립적으로 초기화하고 양쪽 검증 후 pair-init으로 연결합니다.
 
   4. 현재 폴더의 특정 폴더·모듈만 초기화
      선택한 상대경로만 분석합니다.
 
-어느 쪽인가요? (1/2/3/4)
+  5. 하나의 중심 저장소 + 여러 클라이언트 저장소를 각각 초기화 후 연결 (1:N)
+     예: 백엔드 1개 + 웹/모바일(iOS·Android)/관리자 등 클라이언트 2개 이상을 독립 초기화하고
+     연결합니다. 파트너가 정확히 1개면 3번을 쓰세요 — 이 옵션은 2개 이상일 때만 유효합니다.
+
+어느 쪽인가요? (1/2/3/4/5)
 ```
 
 **응답별 분기:**
@@ -54,8 +58,9 @@ description: 프로젝트를 심층 분석해 맞춤형 하네스(CLAUDE.md, 5+ 
 |------|------|---------|---------|
 | 1 (단일) | `single-root` | 없음 | Phase 0으로 진행 |
 | 2 (모노레포) | `monorepo` | root 내부 workspace 상대경로와 역할 | Phase 0으로 진행 |
-| 3 (분리 저장소) | `paired-roots` | 파트너 정보 수집 (아래) | Phase 0으로 진행 |
+| 3 (분리 저장소, 1:1) | `paired-roots` | 파트너 정보 수집 (아래) | Phase 0으로 진행 |
 | 4 (부분 범위) | `selected-paths` | root 내부 상대경로 | Phase 0으로 진행 |
+| 5 (허브형, 1:N) | `hub-roots` | 파트너 목록 수집 — N개 (아래) | Phase 0으로 진행 |
 | 기타·미응답 | `single-root` (기본값) | 없음 | Phase 0으로 진행 |
 
 휴리스틱으로 발견한 `server`/`backend`/`client`/`frontend`/`web`/`mobile` 후보는 경로 확인 표의 제안값으로만 쓰고 사용자의 구성 선택을 자동으로 바꾸지 않는다.
@@ -79,6 +84,32 @@ description: 프로젝트를 심층 분석해 맞춤형 하네스(CLAUDE.md, 5+ 
 
 > 수집한 `partner_info`는 Phase 3.5에서 pair-init 자동 실행 시 컨텍스트로 전달된다.
 
+### 허브형(`hub-roots`) 파트너 목록 수집 (N개)
+
+현재 프로젝트는 항상 hub(backend류) 역할로 취급한다 — hub-roots는 "1개 중심 + N개 클라이언트"
+구조이기 때문이다 (현재 프로젝트가 클라이언트 중 하나라면 3번 `paired-roots`로 그 백엔드 하나와만
+먼저 연결하거나, 백엔드 쪽 루트에서 harness-init을 실행하도록 안내).
+
+```
+클라이언트 프로젝트가 몇 개인가요? (2개 이상)
+```
+
+응답받은 개수만큼 아래 질문을 반복한다:
+
+```
+클라이언트 [i/N] 정보를 입력해주세요:
+
+1. 역할 라벨 (예: web-frontend, mobile-ios, mobile-android, admin-panel — 자유 입력, 다른 클라이언트와 겹치지 않게)
+2. 절대 경로:
+3. API base URL (선택 — 로컬 개발 기준, 미입력 시 1번 클라이언트와 동일하다고 가정):
+4. (선택) 스택 (예: React, Flutter, Swift — 모르면 빈칸)
+```
+
+수집한 정보를 `partner_list = [{ role_label, path, api_url, stack }, ...]` (N개 항목)에 저장.  
+경로 유효성 확인 및 각 파트너 하네스 존재 여부는 pair-init Phase 1에서 (파트너별로 순회하며) 수행.
+
+> 수집한 `partner_list`는 Phase 3.5에서 pair-init 자동 실행 시 컨텍스트로 전달된다.
+
 ### 출력
 
 `_workspace/00_init_scope.md`를 일반 파일 쓰기로 기록한다.
@@ -88,12 +119,13 @@ description: 프로젝트를 심층 분석해 맞춤형 하네스(CLAUDE.md, 5+ 
 
 ## 사용자 확인 내용
 - 프로젝트 위치: `[절대경로]`
-- 초기화 구성: 단일 | 모노레포 | 분리 저장소 | 부분 범위
+- 초기화 구성: 단일 | 모노레포 | 분리 저장소(1:1) | 부분 범위 | 허브형(1:N)
 - 포함 경로: `[검증된 상대경로]`
 - 대상 프로젝트: `[절대경로와 역할 목록, paired-roots만]`
+- 클라이언트 목록: `[role_label·절대경로 목록, hub-roots만]`
 
 ## 기계 실행 값
-- init_layout: single-root | monorepo | paired-roots | selected-paths
+- init_layout: single-root | monorepo | paired-roots | selected-paths | hub-roots
 - paths: [검증된 상대경로]
 - source: user-selection | explicit-request | reused
 - tier: [Phase 0 Step 2.5에서 결정 후 추가 기록 — Phase -1 시점에는 비워 둠]
@@ -411,9 +443,10 @@ HIGH 우선순위 항목이 있으면 사용자에게 명시적 안내. 자동 �
 | `init_layout = "single-root"`, `"monorepo"`, `"selected-paths"` | 이 Phase 전체 스킵 → Phase 3.6으로 |
 | `_workspace/pair_config.md` 이미 있음 | 이 Phase 전체 스킵 → Phase 3.6으로 |
 | `init_layout = "paired-roots"` + `partner_info` 수집됨 | pair-init 자동 실행 (사용자 확인 생략) → Phase 3.6으로 |
+| `init_layout = "hub-roots"` + `partner_list`(N개) 수집됨 | pair-init 자동 실행, `partner_list` 전체를 한 번에 전달 (사용자 확인 생략) → Phase 3.6으로 |
 | Phase -1 스킵 + `pair_config.md` 없음 | 연동 여부 질문 후 진행 |
 
-### pair-init 자동 실행 (멀티레포 + 파트너 정보 있는 경우)
+### pair-init 자동 실행 — 1:1 (`paired-roots` + 파트너 정보 있는 경우)
 
 사용자에게 다음을 안내한 후 pair-init 스킬을 실행한다:
 
@@ -428,19 +461,31 @@ pair-init 스킬을 다음 컨텍스트로 실행:
 - API base URL: `partner_info.api_url` (미입력 시 pair-init Phase 1에서 재확인)
 - pair-init Phase 1의 사용자 질문 중 이미 수집된 항목은 생략하고 Phase 2부터 실행
 
+### pair-init 자동 실행 — 1:N (`hub-roots` + 파트너 목록 있는 경우)
+
+```
+[Phase 3.5] pair-init 시작 — 클라이언트 N개 연동 중
+클라이언트: [role_label 목록]
+```
+
+pair-init 스킬을 다음 컨텍스트로 실행:
+- 현재 프로젝트 역할: `backend` (hub-roots는 항상 현재 프로젝트=hub 전제, Phase -1 참조)
+- 파트너 목록: `partner_list`(N개, 각 `{ role_label, path, api_url, stack }`) 전체를 한 번에 전달
+- pair-init이 파트너별로 순회하며 경로 확인·하네스 존재 확인·`pair_config.md` 생성(hub 쪽은 다중 블록, 각 클라이언트 쪽은 기존 1:1 형식 그대로)을 수행
+
 ### 파트너 하네스 없는 경우 — 자동 생성 (harness-init 주도 흐름 한정)
 
-pair-init Phase 1에서 파트너 `CLAUDE.md`가 없어 3지선다가 뜨는 경우, **harness-init이 이미 멀티레포 의도를 확인한 상태**이므로 사용자에게 다시 묻지 않고 선택지 1(자동 생성)을 기본 적용한다.
+pair-init Phase 1에서 파트너 `CLAUDE.md`가 없어 3지선다가 뜨는 경우, **harness-init이 이미 멀티레포 의도를 확인한 상태**이므로 사용자에게 다시 묻지 않고 선택지 1(자동 생성)을 기본 적용한다. `hub-roots`는 하네스 없는 클라이언트마다 각각 적용한다(클라이언트별로 독립 판단 — 일부는 이미 하네스가 있고 일부는 없을 수 있음).
 
-pair-init이 실행하는 "파트너 하네스 자동 생성" Agent 호출(파트너 루트에서 harness-init 재실행)은 아래처럼 **이번 턴의 Phase 4(harness-evaluator) 호출과 같은 메시지에서 병렬로 발행**한다 — 두 작업은 서로 독립적이므로 (파트너 초기화는 파트너 프로젝트를 대상으로, evaluator는 현재 프로젝트 결과물을 대상으로) 동시 실행 가능:
+pair-init이 실행하는 "파트너 하네스 자동 생성" Agent 호출(파트너 루트에서 harness-init 재실행)은 아래처럼 **이번 턴의 Phase 4(harness-evaluator) 호출과 같은 메시지에서 병렬로 발행**한다 — 모든 작업이 서로 독립적인 대상(각 파트너 프로젝트 / 현재 프로젝트)이므로 동시 실행 가능. `hub-roots`에서 하네스 없는 클라이언트가 M개면 M개의 파트너 초기화 subagent를 전부 이 병렬 묶음에 포함한다(순차 실행 금지 — N이 늘어나도 총 대기 시간은 가장 느린 1개 기준):
 
 ```
-[같은 메시지 — 병렬 Agent 호출 2건]
-1) 파트너 하네스 자동 생성 subagent (pair-init 내부 호출, 대상: 파트너 루트)
-2) harness-evaluator (Phase 4, 대상: 현재 프로젝트 _workspace/)
+[같은 메시지 — 병렬 Agent 호출 (1 + M)건]
+1) harness-evaluator (Phase 4, 대상: 현재 프로젝트 _workspace/)
+2..1+M) 파트너 하네스 자동 생성 subagent × M (pair-init 내부 호출, 대상: 하네스 없는 각 클라이언트 루트)
 ```
 
-두 호출이 모두 반환되면 다음으로 진행. 파트너 초기화가 evaluator보다 오래 걸리면, 현재 프로젝트의 Phase 4 결과 보고를 먼저 사용자에게 보여주고 "파트너 하네스 생성 중..." 안내 후 완료를 기다린다 (join).
+모든 호출이 반환되면 다음으로 진행. 파트너 초기화가 evaluator보다 오래 걸리면, 현재 프로젝트의 Phase 4 결과 보고를 먼저 사용자에게 보여주고 "파트너 하네스 생성 중... (M개 중 완료: k)" 안내 후 전체 완료를 기다린다 (join).
 
 > 파트너 초기화 subagent가 실패해도 현재 프로젝트 파이프라인은 막지 않는다 — WARN 기록 후 Phase 3.6에서 통합 wiki 대신 단독 wiki 제안으로 폴백.
 
