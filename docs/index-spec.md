@@ -13,12 +13,18 @@ analyzer가 생성하고, 후속 에이전트(impact-analyzer, sql-reviewer, cha
 - 들여쓰기: 2칸 (압축 안 함, 사람이 검토 가능)
 - 용량 한도: 각 파일 종류별 한도 (analyzer.md 참조). 초과 시 분할.
 
+`_meta`의 9개 필드(`generated_at`~`files_total`)는 모든 인덱스 파일에 필수다 — 없으면 `validator_checks.py`가 하드 FAIL 처리한다.
+
+`generated_at`은 analyzer가 추측해 지어내는 값이 아니라 `agents/lib/now_kst.py` 실행 결과(KST, UTC+9, `+09:00` 오프셋)여야 한다 — `git_commit`을 `git rev-parse HEAD`로 얻는 것과 동일하게 실제 명령 실행 결과를 쓴다.
+
+`call_graph.json`의 모든 edge는 `from`/`to`가 `nodes` 배열에 실존하는 id를 가리켜야 한다 (dangling 금지, `validator_checks.py`가 기계 검증). `_meta.node_count`/`edge_count`도 실제 배열 길이와 일치해야 한다.
+
 각 인덱스 파일은 최상위에 메타 정보:
 
 ```json
 {
   "_meta": {
-    "generated_at": "2026-06-02T15:30:00Z",
+    "generated_at": "2026-06-02T15:30:00+09:00",
     "generator": "analyzer",
     "version": "1.0",
     "source_root": "/path/to/project",
@@ -330,7 +336,7 @@ OWASP Top 10 (2021) 카테고리별 매핑. 정적 분석 증거 기반 — 증�
 
 ```json
 {
-  "_meta": {"generated_at": "2026-06-02T15:30:00Z", "sampled": false},
+  "_meta": {"generated_at": "2026-06-02T15:30:00+09:00", "sampled": false},
   "categories": [
     {
       "id": "A01:2021",

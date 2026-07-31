@@ -415,6 +415,7 @@ Eval 품질 점수 (harness-evaluator):
 [점수: N/100 — PASS / PARTIAL / RETRY]
 - 커버리지: /25 | 정확도: /25 | 실행가능성: /25 | 컨텍스트 품질: /25
 (PARTIAL/RETRY이면 → Phase 4 재생성 실행 후 최종 점수 업데이트)
+(인덱스 무결성 기계 게이트가 걸렸으면 → PASS여도 analyzer 재실행 1회 진행, 결과·잔존 이슈 여부 여기 표시)
 
 이제 다음 작업이 가능합니다:
   "이 함수 영향도 분석해줘"          → analyze-impact
@@ -583,6 +584,23 @@ Agent(
 
 1차 평가(harness-evaluator)는 Phase 2-5에서 모든 Tier가 항상 실행한다 — 이 Phase는 그 결과(`_workspace/06_eval_report.md`)의 총점을 읽어 **점수 기반 재생성 루프만** 담당한다(evaluator 실패로 파일이 없으면 에러 핸들링 표에 따라 eval 없이 Phase 3 보고로 종료). Phase 3.5에서 파트너 하네스 자동 생성 subagent와 evaluator를 병렬 발행한 경우, 이 Phase의 재생성·재평가는 두 호출이 모두 join된 뒤 시작한다.
 
+### 인덱스 무결성 기계 게이트 (점수와 무관하게 우선 적용)
+
+harness-evaluator의 4개 차원은 harness *파일*이 인덱스를 "참조하는지"만 보고(실행가능성 검증 방법 3) 인덱스 *내용*(call_graph dangling edge, `_meta` 누락, edge 종류 누락)은 채점하지 않는다 — 그래서 qualitative 점수가 80 이상(PASS)이어도 인덱스가 구조적으로 결함 있는 채 그대로 통과될 수 있다(2026-07-31 실제 사례 3건에서 확인됨). 이를 막기 위해 harness-evaluator의 점수 해석보다 먼저, 결정론적으로 다음을 확인한다.
+
+`_workspace/validator_mechanical.json`을 읽어 아래 중 하나라도 해당하면(2-4에서 이미 생성됨, 다시 실행할 필요 없음):
+
+- `index_integrity_fail == true`
+- `index_spotcheck_fail == true`
+- `warns` 배열에 "analyzer.md Step 8 참고" 문구가 포함된 항목 1개 이상 (call_graph 추출 누락 의심 휴리스틱 — import/inherit/inject 편중 감지)
+- `warns` 배열에 "generated_at" 문구가 포함된 항목 1개 이상 (실제 시각 미조회 의심)
+
+위 중 하나라도 해당하면, harness-evaluator 점수가 PASS여도 **`analyzer` 강제 재실행**을 fix_targets에 추가한다 — task-id `T-A-RETRY`, scope는 `report_fragments["7"]`(및 해당 warn 라인) 원문 그대로, instruction은 "다음 기계 검증 결과의 FAIL/WARN 항목을 전부 해소하라(analyzer.md '작성 후 자체 검증' 절 기준으로 dangling 0건·`_meta` 9필드·edge 종류 완전성을 스스로 재확인할 것): [report_fragments['7'] 및 관련 warn 원문]". harness-evaluator가 이미 `analyzer` fix_target을 반환했으면 이 게이트의 scope/instruction을 그 행에 병합하고, 없으면 새 행을 추가한다(행 자체는 하나만 — 같은 회차에 analyzer를 두 번 부르지 않는다).
+
+이 게이트로 추가된 analyzer 재실행도 아래 "타겟 재생성 실행"과 같은 흐름으로 한 번에 처리한다 — PASS인데 이 게이트만 걸린 경우에도 재생성 1회 + harness-evaluator 재평가 1회는 그대로 실행한다(무한 루프 없음, 아래와 동일).
+
+analyzer 재실행 완료 후 `validator_checks.py`를 1회 재실행해 게이트가 해소됐는지 확인한다. 해소 안 되면(2026-07-31 에러 핸들링 원칙과 동일 — 1회 재시도 후 재실패 시 결과 명시) 추가 재시도 없이 Phase 3 보고에 "인덱스 무결성 잔존 이슈"로 남은 FAIL/WARN을 그대로 명시하고 진행한다.
+
 ### 점수별 동작
 
 | 총점 | 결정 | 동작 |
@@ -591,9 +609,9 @@ Agent(
 | 60~79 (PARTIAL) | 타겟 재생성 | fix_targets 기반 특정 에이전트 재실행 → 재평가 (1회) |
 | 0~59 (RETRY) | 주요 재생성 | fix_targets 상위 2개 에이전트 재실행 → 재평가 (1회) |
 
-### 타겟 재생성 실행 (PARTIAL/RETRY)
+### 타겟 재생성 실행 (PARTIAL/RETRY, 또는 PASS여도 위 기계 게이트가 걸린 경우)
 
-`_workspace/06_eval_report.md`의 fix_targets를 읽어 각 에이전트 재실행. fix_target.agent는 `analyzer` 또는 `writer`만 반환된다 — task-id는 `analyzer→T-A`, `writer→T-W` 매핑을 따른다:
+`_workspace/06_eval_report.md`의 fix_targets(+ 기계 게이트가 추가/병합한 analyzer 행)를 읽어 각 에이전트 재실행. fix_target.agent는 `analyzer` 또는 `writer`만 반환된다 — task-id는 `analyzer→T-A`, `writer→T-W` 매핑을 따른다:
 
 ```
 for each fix_target in eval_report.fix_targets (우선순위 순):
@@ -659,6 +677,7 @@ Eval 품질 점수: 63/100 → 84/100 (+21, PARTIAL→PASS)
 | `_workspace/` 생성 실패 | 1회 재시도. 실패 시 중단 |
 | harness-evaluator 실패 | eval 없이 Phase 3 결과만 보고. "eval 미실행" 안내 |
 | eval 재생성 후 점수 하락 | 재생성 결과 무시, 초기 harness 유지. 1차·2차 점수 모두 사용자에게 보고 |
+| 인덱스 무결성 기계 게이트가 analyzer 재실행 후에도 미해소 | 추가 재시도 없음. Phase 3 보고에 "인덱스 무결성 잔존 이슈"로 남은 FAIL/WARN 그대로 명시 |
 
 상충 데이터: writer가 두 패턴 발견 시 출처 병기, validator/qa가 우선순위 권고 (자동 결정 X).
 

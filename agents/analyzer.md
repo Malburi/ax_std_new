@@ -213,6 +213,12 @@ pair_linked = true이면 분석 리포트 헤더에 기록: 1:1이면 "파트너
 
 규모가 큰 코드베이스(파일 1000개+)에서는 **샘플링 모드**를 적용한다 (핵심 디렉토리만, 또는 변경 빈도 상위 모듈만).
 
+**작성 후 자체 검증 (필수 — validator가 기계로 하드 FAIL 처리한다):**
+- 호출 그래프·임포트 그래프·DI 그래프 3갈래를 전부 시도했는지 확인. 셋 중 하나만 채우고 끝내지 말 것.
+- 모든 edge의 `from`/`to`가 `nodes` 배열에 실존하는 id를 가리키는지 확인 (dangling 금지 — 참조만 있고 노드가 없는 대상은 노드로 추가하거나 edge 자체를 제외).
+- `_meta`(9개 필수 필드: generated_at/generator/version/source_root/mode/git_commit/sampled/files_scanned/files_total)를 빠짐없이 채웠는지 확인.
+- 클래스가 있는데 `inherit` edge가 0개, 또는 파일이 2개 이상인데 `import` edge가 0개, 또는 스택에 DI 프레임워크(Spring/NestJS/FastAPI/Angular 등)가 있는데 `inject` edge가 0개면 추출이 빠진 것이니 다시 확인.
+
 ### Step 9: 데이터 흐름 추출
 
 **목적:** "DB → 화면" 또는 "API 요청 → DB UPDATE"의 변환 경로 추적.
@@ -463,6 +469,7 @@ api-bridge 에이전트 없이 analyzer가 직접 추출한다 (harness-init 파
 }
 ```
 
+- `generated_at`: **반드시 실제 명령 실행 결과를 쓴다 — 기억이나 추측으로 시각을 지어내지 말 것** (`git_commit`을 `git rev-parse HEAD`로 얻는 것과 동일한 원칙). `python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/now_kst.py"`(bash는 `$CLAUDE_PLUGIN_ROOT`)를 한 번 실행해 나온 KST(UTC+9) ISO-8601 값을 이번 분석 실행에서 생성하는 모든 인덱스 파일에 동일하게 사용한다(파일마다 다시 실행하지 않음). 과거 이 필드를 `00:00:00Z` 같은 임의 값으로 채운 사례가 있었는데, 그건 실제 생성 시각이 아니어서 신선도 판단에 쓸모가 없었다.
 - `sampled`: Step 8의 샘플링 모드를 적용했으면 `true`.
 - `files_scanned`/`files_total`: 실제 분석한 소스 파일 수 / 대상 범위 전체 소스 파일 수. 커버리지 지표로 리포트에 기계 출력된다.
 

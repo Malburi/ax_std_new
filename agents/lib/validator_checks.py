@@ -26,6 +26,14 @@ SECURITY_PATTERNS = [
 
 CORE_INDEX_FILES = ["call_graph.json", "symbols.json", "transactions.json", "external_io.json"]
 SKELETON_MARKER = "pattern-extractor 에이전트가 채울 예정입니다"
+
+# docs/index-spec.md 공통 규칙의 _meta 필수 필드 (node_count/edge_count는 call_graph.json
+# 등 그래프형 파일에만 의미가 있어 별도로 검사한다 — 여기엔 모든 인덱스 파일 공통분만 둔다)
+REQUIRED_META_FIELDS = (
+    "generated_at", "generator", "version", "source_root",
+    "mode", "git_commit", "sampled", "files_scanned", "files_total",
+)
+DI_STACK_MARKERS = ("spring", "nestjs", "fastapi", "angular", "guice", "micronaut")
 PROJECT_PATH_PREFIXES = (
     "src/", "app/", "lib/", "pages/", "components/", "test/", "tests/",
     "WEB-INF/", "routes/", "controllers/", "services/", "models/",
@@ -273,12 +281,89 @@ def check6_security_scan(root):
 # Check 7: 인덱스 무결성
 # ---------------------------------------------------------------------------
 
-def check7_index_integrity(root, analyzer_report_text):
+def _meta_field_issues(data, name):
+    """반환: (fail_lines, warn_notes). generated_at이 실제 명령 실행(now_kst.py) 결과가
+    아니라 추측으로 채워진 값(예: 과거 사례의 T00:00:00Z)인 것으로 의심되면 WARN만 남긴다
+    — 형식만으로 100% 단정할 수 없어 FAIL이 아니라 WARN으로 완화."""
+    meta = data.get("_meta") if isinstance(data, dict) else None
+    if not isinstance(meta, dict):
+        return [f"- {name}: FAIL (_meta 블록 없음)"], []
+    missing = [k for k in REQUIRED_META_FIELDS if k not in meta]
+    if missing:
+        return [f"- {name}: FAIL (_meta 필수 필드 누락: {', '.join(missing)})"], []
+
+    warns = []
+    generated_at = str(meta.get("generated_at") or "")
+    if generated_at.endswith("T00:00:00Z") or generated_at.endswith("T00:00:00+09:00"):
+        warns.append(
+            f"{name}: generated_at이 자정(00:00:00) — 실제 시각 조회 없이 채워졌을 가능성 (agents/lib/now_kst.py 실행 결과 사용 권장)"
+        )
+    elif generated_at.endswith("Z") and not generated_at.endswith("+09:00"):
+        warns.append(f"{name}: generated_at이 KST(+09:00)가 아닌 UTC(Z) 표기 — agents/lib/now_kst.py 실행 결과 사용 권장")
+    return [], warns
+
+
+def _call_graph_integrity_issues(data, decisions):
+    """dangling edge·node/edge count 불일치·edge 종류 누락(import/inherit/inject)
+    검사. mfs-test3 사례(호출그래프만 추출되고 임포트/DI/상속 그래프가 누락된 채
+    _meta도 없이 통과되던 문제)를 재발 방지하기 위한 게이트."""
+    fail_lines, warn_notes = [], []
+    nodes = [n for n in (data.get("nodes") or []) if isinstance(n, dict)]
+    edges = [e for e in (data.get("edges") or []) if isinstance(e, dict)]
+    ids = {n.get("id") for n in nodes}
+
+    dangling = [e for e in edges if e.get("from") not in ids or e.get("to") not in ids]
+    if dangling:
+        sample = "; ".join(f"{e.get('from')} -> {e.get('to')}" for e in dangling[:5])
+        fail_lines.append(
+            f"- call_graph.json: FAIL (dangling edge {len(dangling)}건 — nodes에 없는 from/to 참조, 예: {sample})"
+        )
+
+    meta = data.get("_meta") or {}
+    if "node_count" in meta and meta.get("node_count") != len(nodes):
+        fail_lines.append(f"- call_graph.json: FAIL (_meta.node_count={meta.get('node_count')} ≠ 실제 노드 {len(nodes)})")
+    if "edge_count" in meta and meta.get("edge_count") != len(edges):
+        fail_lines.append(f"- call_graph.json: FAIL (_meta.edge_count={meta.get('edge_count')} ≠ 실제 엣지 {len(edges)})")
+
+    edge_types = {}
+    for e in edges:
+        t = e.get("type")
+        edge_types[t] = edge_types.get(t, 0) + 1
+
+    files_total = meta.get("files_total") or 0
+    if files_total and files_total > 1 and edge_types.get("import", 0) == 0:
+        warn_notes.append(
+            f"call_graph.json: 파일 {files_total}개인데 import edge 0개 — 임포트 그래프 추출 누락 의심 (analyzer.md Step 8 참고)"
+        )
+
+    class_count = len([n for n in nodes if n.get("type") == "class"])
+    if class_count == 0:
+        # nodes에 class 타입이 없으면 symbols.json에서 대신 센다 (call_graph는 class를 아예
+        # 노드화하지 않는 스타일도 있어 이것만으로 inherit 누락을 단정하지 않기 위함)
+        pass
+    if class_count > 0 and edge_types.get("inherit", 0) == 0:
+        warn_notes.append(
+            f"call_graph.json: class 노드 {class_count}개 존재하나 inherit edge 0개 — 상속 관계 추출 누락 의심 (analyzer.md Step 8 참고)"
+        )
+
+    detected_stack = ((decisions or {}).get("detected_stack") or "").lower()
+    if any(marker in detected_stack for marker in DI_STACK_MARKERS) and edge_types.get("inject", 0) == 0:
+        warn_notes.append(
+            f"call_graph.json: 스택({(decisions or {}).get('detected_stack')})에 DI 프레임워크가 감지되나 inject edge 0개 — DI 그래프 추출 누락 의심 (analyzer.md Step 8 참고)"
+        )
+
+    return fail_lines, warn_notes
+
+
+def check7_index_integrity(root, analyzer_report_text, decisions=None):
     index_dir = os.path.join(root, "_workspace", "index")
     lines = []
+    warn_notes = []
     missing_core = 0
     parse_failures = 0
     call_graph_empty = False
+    meta_fail = False
+    cg_issue_fail = False
 
     for name in CORE_INDEX_FILES:
         path = os.path.join(index_dir, name)
@@ -300,8 +385,29 @@ def check7_index_integrity(root, analyzer_report_text):
             call_graph_empty = (nodes == 0 and edges == 0)
             status = "FAIL (노드/엣지 0)" if call_graph_empty else "PASS"
             lines.append(f"- {name}: {status} (노드 {nodes}, 엣지 {edges})")
+            if not call_graph_empty:
+                cg_fail_lines, cg_warns = _call_graph_integrity_issues(data, decisions)
+                if cg_fail_lines:
+                    cg_issue_fail = True
+                    lines.extend(cg_fail_lines)
+                warn_notes.extend(cg_warns)
         else:
             lines.append(f"- {name}: PASS")
+
+    # _meta 필수 필드 확인 — 존재하는 인덱스 파일 전부 (core 4종에 한정하지 않음)
+    all_index_files = sorted(glob.glob(os.path.join(index_dir, "*.json"))) if os.path.isdir(index_dir) else []
+    for path in all_index_files:
+        name = os.path.basename(path)
+        try:
+            with open(path, "r", encoding="utf-8-sig") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            continue  # 파싱 실패는 core 파일이면 위에서 이미 기록됨
+        meta_fail_lines, meta_warns = _meta_field_issues(data, name)
+        if meta_fail_lines:
+            meta_fail = True
+            lines.extend(meta_fail_lines)
+        warn_notes.extend(meta_warns)
 
     confidence_m = re.search(r"의존성 그래프 완전성:\s*(HIGH|MEDIUM|LOW)", analyzer_report_text or "")
     stale_mismatch = False
@@ -309,8 +415,11 @@ def check7_index_integrity(root, analyzer_report_text):
         stale_mismatch = True
         lines.append("- 신뢰도 불일치: 분석 신뢰도 MEDIUM 이상인데 call_graph가 비어있음")
 
-    fail = missing_core >= 2 or parse_failures > 0 or call_graph_empty or stale_mismatch
-    return fail, "\n".join(lines)
+    fail = (
+        missing_core >= 2 or parse_failures > 0 or call_graph_empty
+        or stale_mismatch or meta_fail or cg_issue_fail
+    )
+    return fail, "\n".join(lines), warn_notes
 
 
 # ---------------------------------------------------------------------------
@@ -361,11 +470,15 @@ def check7b_spotcheck(root):
             cg = None
         if cg:
             node_file = {n.get("id"): n.get("file") for n in (cg.get("nodes") or []) if isinstance(n, dict)}
-            edges = [e for e in (cg.get("edges") or []) if isinstance(e, dict) and e.get("from") and e.get("to")]
-            edges.sort(key=lambda e: (str(e.get("from")), str(e.get("to"))))
+            all_edges = [e for e in (cg.get("edges") or []) if isinstance(e, dict) and e.get("from") and e.get("to")]
+            # import 타입 edge(파일 단위 관계)는 to가 파일 경로라 _simple_name()이 확장자("js" 등)만
+            # 남겨 심볼명 매칭이 의미 없다 — 별도로 "대상 파일이 실존하는가"만 확인한다.
+            symbol_edges = sorted((e for e in all_edges if e.get("type") != "import"), key=lambda e: (str(e.get("from")), str(e.get("to"))))
+            import_edges = sorted((e for e in all_edges if e.get("type") == "import"), key=lambda e: (str(e.get("from")), str(e.get("to"))))
+
             hits = checked = missing_files = 0
             misses = []
-            for e in _evenly_spaced(edges, SPOTCHECK_EDGE_SAMPLES):
+            for e in _evenly_spaced(symbol_edges, SPOTCHECK_EDGE_SAMPLES):
                 src_rel = e.get("file") or node_file.get(e.get("from"))
                 if not src_rel:
                     continue
@@ -389,6 +502,27 @@ def check7b_spotcheck(root):
                     lines.append(f"  - 불일치: {m}")
             else:
                 lines.append(f"- call_graph 엣지 스팟체크: 판정 불가 (대조 가능 엣지 {checked}개 < {SPOTCHECK_MIN_CHECKABLE})")
+
+            if import_edges:
+                ihits = ichecked = 0
+                imisses = []
+                for e in _evenly_spaced(import_edges, SPOTCHECK_EDGE_SAMPLES):
+                    to_rel = NODE_TYPE_PREFIX_RE.sub("", str(e.get("to")), count=1)
+                    ichecked += 1
+                    if os.path.isfile(os.path.join(root, to_rel)):
+                        ihits += 1
+                    else:
+                        imisses.append(f"{e.get('from')} → {e.get('to')}")
+                if ichecked >= SPOTCHECK_MIN_CHECKABLE:
+                    irate = ihits / ichecked
+                    istatus = "PASS" if irate >= SPOTCHECK_PASS_RATE else "FAIL"
+                    if istatus == "FAIL":
+                        fail = True
+                    lines.append(f"- call_graph import 엣지 대상 파일 존재 확인: {istatus} ({ihits}/{ichecked}, 기준 {int(SPOTCHECK_PASS_RATE*100)}%)")
+                    for m in imisses[:5]:
+                        lines.append(f"  - 대상 파일 없음: {m}")
+                else:
+                    lines.append(f"- call_graph import 엣지 대상 파일 존재 확인: 판정 불가 (대조 가능 {ichecked}개 < {SPOTCHECK_MIN_CHECKABLE})")
             if missing_files:
                 lines.append(f"  - 소스 파일 자체가 없는 엣지 {missing_files}개 (경로 오류 또는 stale 인덱스 의심)")
 
@@ -554,7 +688,7 @@ def main():
 
     security_findings = check6_security_scan(root)
 
-    index_fail, index_lines = check7_index_integrity(root, analyzer_report_text)
+    index_fail, index_lines, index_warns = check7_index_integrity(root, analyzer_report_text, decisions)
     spotcheck_fail, spotcheck_lines = check7b_spotcheck(root)
     freshness_lines = _index_meta_freshness(root)
     if spotcheck_fail:
@@ -564,7 +698,7 @@ def main():
     check10_lines, check10_undecided = check10_pattern_status(root)
 
     fails = [n for s, n in combined_1to6 if s == "FAIL"]
-    warns = [n for s, n in combined_1to6 if s == "WARN"]
+    warns = [n for s, n in combined_1to6 if s == "WARN"] + index_warns
     passes = [n for s, n in combined_1to6 if s == "PASS"]
     if check8_status == "FAIL":
         fails.append(check8_note)
