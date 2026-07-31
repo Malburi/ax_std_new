@@ -1,6 +1,6 @@
 ---
 name: generate-wiki
-description: harness 산출물(_workspace + .claude)을 기반으로 프로젝트 wiki 페이지 세트를 생성한다. call_graph.json을 vis-network 기반 인터랙티브 HTML(call-graph.html)로 변환하는 것을 포함. 생성 후 원하면 별도 프로젝트 wiki-hub(여러 시스템 통합·버전관리 중앙 허브)로 이어서 발행할 수 있다. "wiki 만들어줘", "wiki 생성", "문서 wiki", "프로젝트 wiki 생성", "위키 만들어줘", "generate wiki", "위키 업데이트", "call graph 시각화", "호출 그래프 wiki" 요청 시 트리거. harness-init 완료 후 자동 제안.
+description: harness 산출물(_workspace + .claude)을 기반으로 프로젝트 wiki 페이지 세트를 생성한다. call_graph.json을 vis-network 기반 인터랙티브 HTML(call-graph.html)로 변환하는 것을 포함. 생성 후 원하면 별도 프로젝트 wiki-hub(여러 시스템 통합·버전관리 중앙 허브)로 이어서 발행할 수 있다. "wiki 만들어줘", "wiki 생성", "문서 wiki", "프로젝트 wiki 생성", "위키 만들어줘", "generate wiki", "위키 업데이트", "call graph 시각화", "호출 그래프 wiki" 요청 시 트리거. harness-init 완료 후 기본으로 자동 실행됨(질문 없음, 2026-07-31부터).
 ---
 
 # Generate Wiki (오케스트레이터)
@@ -90,10 +90,10 @@ wiki 생성 완료
 
 | 응답 | 동작 |
 |------|------|
-| Y / 예 / yes / 발행 | `publish-wiki` 스킬 실행 (별도 프로젝트 wiki-hub의 `wiki-hub-publish` 명령 호출) |
+| Y / 예 / yes / 발행 | `publish-wiki` 스킬 실행 (harness 플러그인에 내장된 `agents/lib/wikihub_db/`가 DB에 직접 저장 — 별도 wiki-hub 설치 불필요) |
 | N / 아니오 / no / 나중에 | "나중에 필요하면 `wiki 발행해줘`라고 하세요" 안내 후 종료 |
 
-`wiki-hub-publish` 명령이 설치돼 있지 않으면 `publish-wiki` 스킬이 설치 방법부터 안내한다.
+DB 저장에 필요한 건 `SQLAlchemy` + 엔진별 드라이버(pymssql 등)뿐이다 — 없으면 `publish-wiki` 스킬이 pip install 안내부터 한다.
 
 ---
 

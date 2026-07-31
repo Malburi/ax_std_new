@@ -15,7 +15,8 @@ description: 프로젝트를 심층 분석해 맞춤형 하네스(CLAUDE.md, 5+ 
 - 필수 파이프라인: analyzer → writer → validator
 - 선택 추가: pattern-extractor (writer 직후, 패턴 채우기)
 - 품질 루프: harness-evaluator (Phase 4)
-- 온디맨드(자동 실행 안 함, Phase 3.6에서 선택 시만): qa, generate-wiki
+- 기본 자동 실행 (Phase 3.6, 질문 없음): generate-wiki
+- 온디맨드(자동 실행 안 함, Phase 3.7에서 선택 시만): qa
 
 ---
 
@@ -185,13 +186,13 @@ description: 프로젝트를 심층 분석해 맞춤형 하네스(CLAUDE.md, 5+ 
 | **Standard** | analyzer(init/sonnet, 스택 해당 Phase B만) → writer(sonnet) → pattern(병렬) → validator | — |
 | **Full** | 전체 파이프라인 (analyzer만 opus, writer 포함 나머지는 sonnet) | — |
 
-QA는 Tier와 무관하게 두 Tier 모두 자동 실행에서 스킵되며, Phase 3.6 선택 작업 메뉴에서 사용자가 고를 때만 실행된다(위 표에는 포함하지 않음).
+QA는 Tier와 무관하게 두 Tier 모두 자동 실행에서 스킵되며, Phase 3.7 선택 작업 메뉴에서 사용자가 고를 때만 실행된다(위 표에는 포함하지 않음).
 
 ### Step 3: 실행 모드 분기
 
 | 상황 | 모드 | 처리 |
 |------|------|------|
-| 기존 하네스 없음 | **초기 실행** | 전체 파이프라인 (analyzer init + writer + validator + pattern-extractor; qa는 Phase 3.6 선택 시만) |
+| 기존 하네스 없음 | **초기 실행** | 전체 파이프라인 (analyzer init + writer + validator + pattern-extractor; qa는 Phase 3.7 선택 시만) |
 | 기존 + "다시"·"새로" | **재초기화** | `.claude/backup/[YYYYMMDD-HHMMSS]/`로 백업 후 전체 실행 (analyzer init 모드) |
 | 기존 + "스킬만"·"에이전트만"·"validator만"·"qa만"·"패턴만" | **부분 재실행** | 해당 단계만, 이전 `_workspace/` 산출물 재사용 |
 | 기존 + 일반 보완 | **업데이트** | 백업 후 analyzer incremental + 재실행 |
@@ -236,7 +237,7 @@ T-E (harness-eval):      → _workspace/06_eval_report.md            (blockedBy:
 ```
 T-P는 T-W 완료 후 T-V/T-E와 병렬 실행 가능.
 
-QA(`T-Q`)는 Tier와 무관하게 이 초기 작업 그래프에 포함하지 않는다 — Phase 3.6의 선택 작업 메뉴에서 사용자가 고를 때만 온디맨드로 실행한다(토큰 절감).
+QA(`T-Q`)는 Tier와 무관하게 이 초기 작업 그래프에 포함하지 않는다 — Phase 3.7의 선택 작업 메뉴에서 사용자가 고를 때만 온디맨드로 실행한다(토큰 절감).
 
 `TaskCreate`가 있으면 위 작업 ID와 한글 설명을 **함께 포함한 제목 그대로** 작업을 생성한다(예: `T-A · analyzer · 프로젝트 구조·의존성·레거시 로직 분석`). 아래 Phase 2의 모든 `Agent()` 호출은 `subagent_type="general-purpose"`를 쓰므로, 호스트 진행 화면에는 기본적으로 `general-purpose`만 노출된다 — 이를 보완하기 위해 각 호출의 `description` 필드에 반드시 `[task-id] · [실제 에이전트 이름] · 한글 목적`을 그대로 넣어 어떤 단계가 실행 중인지 사용자에게 드러낸다. `TaskCreate`가 없는 호스트에서는 `_workspace/00_pipeline_status.md` 체크리스트로 폴백하며 같은 제목을 사용한다.
 
@@ -348,7 +349,7 @@ Agent(
 )
 ```
 
-> QA(경계면 교차 비교)는 더 이상 Phase 2에서 자동 실행하지 않는다. Agent 호출 방법은 Phase 3.6 "선택 작업 안내"에서 사용자가 선택했을 때만 참조한다 — 토큰 절감을 위해 Tier와 무관하게 항상 온디맨드다.
+> QA(경계면 교차 비교)는 더 이상 Phase 2에서 자동 실행하지 않는다. Agent 호출 방법은 Phase 3.7 "선택 작업 안내"에서 사용자가 선택했을 때만 참조한다 — 토큰 절감을 위해 Tier와 무관하게 항상 온디맨드다.
 
 ### 2-5. harness-evaluator 호출 (모든 Tier)
 
@@ -512,48 +513,47 @@ pair-init으로 연동하면 아래가 가능합니다:
 
 ---
 
-## Phase 3.6: 선택 작업 안내 (QA·Wiki)
+## Phase 3.6: 위키 생성 (기본 실행, 질문 없음)
 
-Phase 3 보고 직후, 기본 파이프라인에 포함되지 않는 QA(경계면 교차 비교)와 wiki 생성을 놓치지 않도록 한 번에 제시하고 선택받는다. 둘 다 온디맨드이며 선택하지 않으면 실행하지 않는다(토큰 절감).
+2026-07-31부터 wiki 생성은 온디맨드가 아니라 **기본 자동 실행**이다 — QA와 달리 매번 질문하지
+않고 바로 진행한다(사용자가 "위키 생성을 기본으로 해달라"고 명시적으로 요청).
 
-`_workspace/pair_config.md` 존재 + 파트너 `CLAUDE.md` 존재(파트너 초기화 완료) 여부로 wiki 옵션 문구만 분기한다.
+`generate-wiki` 스킬의 Phase 0~3.5을 그대로 수행한다. Phase 0의 "사전 확인"은 harness-init이
+방금 완료했으므로 존재 확인은 스킵. `pair_config.md`가 있으면 `wiki_generator.py`가 파트너의
+call_graph.json·01_analyzer_report.md·api_contract.json·schema.json·external_io.json을
+함께 읽어 architecture/api-endpoints/database/external-systems 페이지에 자동 병합한다.
 
-> Phase 3.5(파트너 연동 질문)와 Phase 3.6(이 선택 작업 메뉴)은 **순서대로** 제시한다. 두 질문을 동시에 보여주지 않는다.
+`generate-wiki` 자체의 Phase 3.5("중앙 DB에도 발행할까요? Y/N")는 그대로 질문한다 — 이건
+wiki 생성 여부와 별개의 선택이라 자동화하지 않는다. DB 저장은 harness에 내장된
+`agents/lib/wikihub_db/`가 처리하므로 별도 프로젝트 wiki-hub 설치 여부와 무관하게 항상 가능하다.
 
-### 파트너 하네스 없는 경우 (단일 스택 / 모노레포 / 파트너 초기화 실패)
+wiki 생성이 실패해도(예: `_workspace/01_analyzer_report.md` 없음 등 이례적 상황) harness-init
+자체를 막지 않는다 — WARN 후 Phase 3.7로 계속 진행.
+
+---
+
+## Phase 3.7: 선택 작업 안내 (QA)
+
+Phase 3.6(wiki) 직후, 기본 파이프라인에 포함되지 않는 QA(경계면 교차 비교)를 놓치지 않도록 제시하고 선택받는다. 온디맨드이며 선택하지 않으면 실행하지 않는다(토큰 절감).
+
+> Phase 3.5(파트너 연동 질문)·Phase 3.6(wiki, 질문 없음)·Phase 3.7(이 QA 메뉴)은 **순서대로** 제시한다.
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-초기화는 끝났지만, 아래는 아직 실행하지 않은 선택 작업입니다.
+초기화·위키 생성은 끝났지만, 아래는 아직 실행하지 않은 선택 작업입니다.
 
   1. 경계 QA   — writer 주장(패턴·컨벤션)이 실제 코드·인덱스와 일치하는지 교차검증합니다
-  2. 위키 생성 — 호출 그래프·API·SQL·패턴을 브라우저에서 보는 wiki를 만듭니다
-  3. 지금 안 함 — 나중에 "경계 QA 실행해줘"/"wiki 만들어줘"로 개별 호출 가능
+  2. 지금 안 함 — 나중에 "경계 QA 실행해줘"로 개별 호출 가능
 
-어떤 걸 실행할까요? (번호로 답하세요, 복수 선택 가능·예: "1, 2")
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-```
-
-### 파트너 하네스가 있는 경우 (pair_config.md 존재 + 파트너 완료)
-
-```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-초기화는 끝났지만, 아래는 아직 실행하지 않은 선택 작업입니다.
-
-  1. 경계 QA          — writer 주장(패턴·컨벤션)이 실제 코드·인덱스와 일치하는지 교차검증합니다
-  2. 통합 wiki 생성 (권장) — 파트너 프로젝트([partner_root])까지 포함한 아키텍처/API/DB/호출그래프 통합 wiki
-  3. 이 프로젝트 단독 wiki만 생성
-  4. 지금 안 함        — 나중에 "경계 QA 실행해줘"/"wiki 만들어줘"로 개별 호출 가능
-
-어떤 걸 실행할까요? (번호로 답하세요, 복수 선택 가능·예: "1, 2")
+실행할까요? (1/2)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
 `_workspace/03_validator_report.md` 신뢰도 < 50이면 "1. 경계 QA" 항목에 "— 구조 검증 실패로 결과 없이 종료됨" 주석을 붙여 표시한다(선택해도 미실행 사유만 기록).
 
-### 선택 항목 실행
+### QA 선택 시
 
-**QA 선택 시** — Agent() 호출 전에 Boundary 6 기계 체크를 먼저 실행(LLM 미사용):
+Agent() 호출 전에 Boundary 6 기계 체크를 먼저 실행(LLM 미사용):
 
 ```powershell
 python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/qa_boundary6.py" --root "[절대경로]"
@@ -574,9 +574,7 @@ Agent(
 
 신뢰도 < 50이면 이 Agent 호출 대신 "구조 검증 실패로 미실행" 한 줄만 `_workspace/04_qa_report.md`에 작성.
 
-**위키 생성 선택 시** — `generate-wiki` 스킬의 Phase 0~3.5을 그대로 수행한다(Phase 3.5는 생성된 wiki를 별도 프로젝트 wiki-hub에도 발행할지 묻는 선택 질문 — Y 선택 시 `publish-wiki` 스킬로 이어진다). Phase 0의 "사전 확인"은 harness-init이 방금 완료했으므로 존재 확인은 스킵 가능. `pair_config.md`가 있으면 (2/3 중 어느 쪽을 골라도) `wiki_generator.py`가 파트너의 call_graph.json·01_analyzer_report.md·api_contract.json·schema.json·external_io.json을 함께 읽어 architecture/api-endpoints/database/external-systems 페이지에 자동 병합하므로, "3. 단독"을 선택해도 통합 wiki가 나타나는 게 정상 동작임을 안내한다.
-
-선택된 항목만 실행하고(둘 다 선택하면 순서 무관, 병렬 가능), 완료 후 Phase 3와 같은 형식으로 결과를 사용자에게 보고한다. "지금 안 함"·무응답·다른 대화 주제로 넘어가면 아무것도 실행하지 않고 Phase 4로 진행한다.
+선택 시 완료 후 Phase 3와 같은 형식으로 결과를 사용자에게 보고한다. "지금 안 함"·무응답·다른 대화 주제로 넘어가면 QA는 실행하지 않고 Phase 4로 진행한다.
 
 ---
 
@@ -672,7 +670,7 @@ Eval 품질 점수: 63/100 → 84/100 (+21, PARTIAL→PASS)
 | pattern-extractor 실패 | patterns/ 는 스켈레톤 상태 유지. "pattern-extractor 재실행 권고" 안내 |
 | validator 보안 위험 발견 | 자동 수정 금지. 위치 명시, 사용자 직접 처리 |
 | qa DEAD/ORPHAN 발견 | 자동 수정 금지. 우선순위 표시, 사용자 직접 처리 |
-| validator 신뢰도 < 50 | Phase 3.6 메뉴의 QA 옵션 선택 시 실행 대신 "구조 검증 실패로 미실행" 한 줄만 작성. "validator 권고 우선 처리 후 재실행" 안내 |
+| validator 신뢰도 < 50 | Phase 3.7 메뉴의 QA 선택 시 실행 대신 "구조 검증 실패로 미실행" 한 줄만 작성. "validator 권고 우선 처리 후 재실행" 안내 |
 | 작업 디렉토리 권한 오류 | 즉시 중단, 권한 확인 요청 |
 | `_workspace/` 생성 실패 | 1회 재시도. 실패 시 중단 |
 | harness-evaluator 실패 | eval 없이 Phase 3 결과만 보고. "eval 미실행" 안내 |

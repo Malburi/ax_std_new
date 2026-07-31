@@ -5,11 +5,15 @@ description: 별도 프로젝트 wiki-hub를 실행해 여러 시스템의 wiki�
 
 # Wiki Hub (오케스트레이터)
 
-`publish-wiki`(= `wiki-hub-publish`)로 발행된 모든 시스템의 wiki를 한 사이트에서 다룬다.
-읽기 전용 뷰어가 아니라 **관리 도구**다. 검색·버전 비교·복원·시스템 정보 편집을 포함한다.
+`publish-wiki`(harness 플러그인에 내장된 `agents/lib/wikihub_db/publish.py`가 직접 DB에 씀)로
+발행된 모든 시스템의 wiki를 한 사이트에서 다룬다. 읽기 전용 뷰어가 아니라 **관리 도구**다.
+검색·버전 비교·복원·시스템 정보 편집을 포함한다.
 
 이 스킬이 실행하는 `wiki-hub-serve`는 harness 플러그인이 아니라 **별도 프로젝트 wiki-hub**의
-콘솔 명령이다. harness는 폴더 wiki만 만들고, DB에 쌓인 wiki를 보는 화면은 전부 이쪽에 있다.
+콘솔 명령이다(운영 계획 수립 중 — 서버로 배포되면 그 서버를 호출). harness는 폴더 wiki를
+만들고 DB에도 직접 저장하지만, 여러 시스템을 한 사이트에서 통합 열람·관리하는 화면은
+계속 이 별도 서버 쪽에 있다 — 같은 DB(스키마가 harness의 `agents/lib/wikihub_db/models.py`와
+동일)를 읽기만 하므로 harness가 저장한 데이터를 그대로 보여줄 수 있다.
 
 ---
 
@@ -38,8 +42,10 @@ harness가 만드는 wiki는 저장 위치에 따라 보는 방법이 다르다.
 wiki-hub-serve --help
 ```
 
-명령이 없으면 `publish-wiki` 스킬의 Phase 0과 같은 설치 안내를 먼저 한다 (별도 프로젝트라 harness와
-따로 `pip install -e .` 필요).
+명령이 없으면 wiki-hub-serve(별도 서버, 운영 계획 수립 중)가 아직 배포되지 않은 것이다 —
+"서버 배포 전이라 통합 조회 화면은 아직 없습니다. 데이터는 이미 DB에 저장돼있으니(`publish-wiki`),
+서버 배포 후 그대로 보입니다"라고 안내하고 중단. (`publish-wiki`의 DB 저장 자체는 이 명령과
+무관하게 항상 가능 — Phase 0의 SQLAlchemy 확인만 필요.)
 
 허브는 **발행된 데이터만** 보여준다. 아직 아무 시스템도 발행하지 않았다면 `publish-wiki`를 먼저 안내한다.
 
@@ -95,8 +101,8 @@ wiki-hub-serve --root "[절대경로]" --port 8800
 허브에서 되돌린 것은 DB 안의 내용이다. harness 프로젝트 폴더에도 반영하려면 회수한다.
 
 ```powershell
-wiki-hub-publish --root "[절대경로]" --system-key "[시스템키]" --component-key "[컴포넌트키]" `
-  --pull --wiki-dir "[절대경로]/wiki"
+python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/wikihub_db/publish.py" --root "[절대경로]" `
+  --system-key "[시스템키]" --component-key "[컴포넌트키]" --pull --wiki-dir "[절대경로]/wiki"
 ```
 
 > 다음 `generate-wiki`를 실행하면 harness 산출물 기준으로 다시 덮어써진다. 되돌리기는 문서 이력
