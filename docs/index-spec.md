@@ -80,7 +80,7 @@ analyzer가 생성하고, 후속 에이전트(impact-analyzer, sql-reviewer, cha
 - `import` — 파일/클래스 간 import 관계 (`validator_checks.py`가 파일 2개 이상인데 이 타입이 0개면 WARN)
 - `reflect` — 리플렉션 가능성 (heuristic, 신뢰도 낮음)
 
-**기계 추출(Java/Spring 한정)**: `agents/lib/index_extractor_java_spring.py`가 정규식 기반으로 `symbols.json`+`call_graph.json`을 결정론적으로 생성하는 경로가 있다(`_workspace/00_stack_precheck.json`의 `extractor: "java_spring"`일 때). 이 경로에서는 analyzer(LLM)가 두 파일을 처음부터 작성하지 않고 모호한 케이스(리플렉션 등)만 보강한다 — `agents/analyzer.md` Step 8 참조. 다른 스택은 지금처럼 analyzer가 전량 작성한다.
+**기계 추출(Java/Spring, C#/.NET, Python, Vue, Android/Kotlin)**: `agents/lib/index_extractor_<stack>.py`가 정규식 기반으로 `symbols.json`+`call_graph.json`을 결정론적으로 생성하는 경로가 있다(`_workspace/00_stack_precheck.json`의 `extractors` 배열에 해당 스택이 감지됐을 때 — 모노레포 등 여러 스택이 동시에 감지되면 각 추출기 결과가 병합된다). 이 경로에서는 analyzer(LLM)가 두 파일을 처음부터 작성하지 않고 모호한 케이스(리플렉션 등)만 보강한다 — `agents/analyzer.md` Step 8 참조. 그 외 스택(iOS/Swift, COBOL 등)은 지금처럼 analyzer가 전량 작성한다.
 
 ---
 
