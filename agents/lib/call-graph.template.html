@@ -134,14 +134,19 @@
     const baseOpacity = {};
     nodesData.forEach(n => { baseOpacity[n.id] = n.opacity ?? 1; });
 
-    function edge(from, to, label = '', dashed = false) {
+    function edge(from, to, label = '', dashed = false, edgeType = 'call') {
       return {
-        from, to, label, arrows: 'to', dashes: dashed,
+        from, to, label, edgeType, arrows: 'to', dashes: dashed,
         color: { color: 'rgba(150,150,200,0.4)', highlight: '#4A90D9' },
         font: { size: 9, color: '#999', align: 'middle' },
         smooth: { type: 'curvedCW', roundness: 0.1 }
       };
     }
+
+    const EDGE_TYPE_LABEL = {
+      call: '호출', inject: 'DI 주입', inherit: '상속/구현',
+      reflect: '리플렉션(추정)', depends: '의존'
+    };
 
     const edgesData = {{EDGES_DATA}};
     const META = {{META}};
@@ -167,6 +172,12 @@
       return n ? n.label.replace(/\n/g, ' ') : id;
     }
 
+    function edgeTag(e) {
+      const t = e.edgeType || 'call';
+      const unsure = t === 'reflect' ? ' style="opacity:.6;font-style:italic"' : '';
+      return `<span${unsure}>[${EDGE_TYPE_LABEL[t] || t}]</span> `;
+    }
+
     function showDetail(id) {
       const dc = document.getElementById('detailContent');
       const m = META[id] || {};
@@ -175,18 +186,30 @@
       const c = COLORS[type];
       const typeColor = c ? c.border : '#aaa';
       const connEdges = edgesData.filter(e => e.from === id || e.to === id);
-      const outgoing = connEdges.filter(e => e.from === id).map(e => `<li><span class="conn-arrow">→</span>${getLabel(e.to)}</li>`).join('');
-      const incoming = connEdges.filter(e => e.to === id).map(e => `<li><span class="conn-arrow">←</span>${getLabel(e.from)}</li>`).join('');
+      const outgoing = connEdges.filter(e => e.from === id).map(e => `<li>${edgeTag(e)}<span class="conn-arrow">→</span>${getLabel(e.to)}</li>`).join('');
+      const incoming = connEdges.filter(e => e.to === id).map(e => `<li>${edgeTag(e)}<span class="conn-arrow">←</span>${getLabel(e.from)}</li>`).join('');
+
+      const badges = [];
+      if (m.type) badges.push(`<span class="badge" style="background:${typeColor}22;color:${typeColor};border:1px solid ${typeColor}">${m.type}</span>`);
+      if (m.visibility) badges.push(`<span class="badge" style="background:#33333322;color:#ccc;border:1px solid #555">${m.visibility}</span>`);
+      if (m.static) badges.push(`<span class="badge" style="background:#33333322;color:#ccc;border:1px solid #555">static</span>`);
+      if (m.hub) badges.push(`<span class="badge" style="background:#4A90D922;color:#4A90D9;border:1px solid #4A90D9">◎ 허브 (in ${m.inDegree})</span>`);
+      if (m.dead) badges.push(`<span class="badge" style="background:#ff555522;color:#ff5555;border:1px solid #ff5555">☠ 데드 코드 후보</span>`);
+
       dc.classList.remove('empty');
       dc.innerHTML = `
         <div class="detail-card">
           <div class="label">노드</div>
           <div class="value">${lbl}</div>
-          ${m.type ? `<span class="badge" style="background:${typeColor}22;color:${typeColor};border:1px solid ${typeColor}">${m.type}</span>` : ''}
+          <div style="margin-top:6px">${badges.join(' ')}</div>
         </div>
-        ${m.file ? `<div class="detail-card"><div class="label">파일</div><div class="value" style="font-family:monospace;font-size:11px">${m.file}</div></div>` : ''}
+        ${m.file ? `<div class="detail-card"><div class="label">파일</div><div class="value" style="font-family:monospace;font-size:11px">${m.file}${m.line ? ':' + m.line : ''}</div></div>` : ''}
+        ${m.signature ? `<div class="detail-card"><div class="label">시그니처</div><div class="value" style="font-family:monospace;font-size:11px;white-space:pre-wrap">${m.signature}</div></div>` : ''}
+        ${m.annotations && m.annotations.length ? `<div class="detail-card"><div class="label">애노테이션</div><div class="value" style="font-family:monospace;font-size:11px">${m.annotations.join(' ')}</div></div>` : ''}
         ${m.api  ? `<div class="detail-card"><div class="label">API</div><div class="value" style="font-size:11px">${m.api}</div></div>` : ''}
         ${m.note ? `<div class="detail-card"><div class="label">설명</div><div class="value" style="font-size:11px;white-space:pre-wrap">${m.note}</div></div>` : ''}
+        ${m.dead && m.deadReason ? `<div class="detail-card"><div class="label">데드 코드 사유</div><div class="value" style="font-size:11px">${m.deadReason} (정적 분석 기준, 리플렉션 등 동적 호출 미탐지 — 삭제 전 확인 필요)</div></div>` : ''}
+        <div class="detail-card"><div class="label">연결 수</div><div class="value" style="font-size:12px">← 호출처 ${m.inDegree ?? connEdges.filter(e => e.to === id).length}개 · 호출 대상 → ${m.outDegree ?? connEdges.filter(e => e.from === id).length}개</div></div>
         ${outgoing ? `<div class="detail-card"><div class="label">호출 대상 (→ ${connEdges.filter(e => e.from === id).length}개)</div><ul class="conn-list">${outgoing}</ul></div>` : ''}
         ${incoming ? `<div class="detail-card"><div class="label">호출처 (← ${connEdges.filter(e => e.to === id).length}개)</div><ul class="conn-list">${incoming}</ul></div>` : ''}
       `;

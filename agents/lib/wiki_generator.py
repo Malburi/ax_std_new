@@ -494,17 +494,21 @@ def main():
         }
 
         in_degree = {}
+        out_degree = {}
         for edge_item in raw_graph.get("edges", []):
             to_node = edge_item.get("to")
+            from_node = edge_item.get("from")
             in_degree[to_node] = in_degree.get(to_node, 0) + 1
+            out_degree[from_node] = out_degree.get(from_node, 0) + 1
 
         total_nodes = len(raw_graph.get("nodes", []))
         hub_threshold = max(5, int(total_nodes * 0.15))
 
-        dead_code = set()
+        dead_code = {}
         if dead_code_json:
-            for item in dead_code_json.get("dead_code", []):
-                dead_code.add(item.get("id"))
+            # dead_code.json 스키마 키는 unused_methods (docs/index-spec.md) — "dead_code"가 아님.
+            for item in dead_code_json.get("unused_methods", []):
+                dead_code[item.get("id")] = item.get("reason", "")
 
         for node in raw_graph.get("nodes", []):
             nid = node.get("id")
@@ -561,9 +565,20 @@ def main():
 
             meta_data[nid] = {
                 "type": vis_type,
+                "rawType": raw_type,
                 "file": node.get("file", ""),
+                "line": node.get("line", ""),
+                "signature": node.get("signature", ""),
+                "visibility": node.get("visibility", ""),
+                "static": bool(node.get("static", False)),
+                "annotations": node.get("annotations", []),
                 "api": node.get("api", ""),
-                "note": node.get("note", "")
+                "note": node.get("note", ""),
+                "inDegree": node_degree,
+                "outDegree": out_degree.get(nid, 0),
+                "hub": node_degree >= hub_threshold,
+                "dead": nid in dead_code,
+                "deadReason": dead_code.get(nid, "")
             }
 
         for edge_item in raw_graph.get("edges", []):
@@ -571,6 +586,7 @@ def main():
                 "from": edge_item.get("from"),
                 "to": edge_item.get("to"),
                 "label": edge_item.get("label", ""),
+                "type": edge_item.get("type", "call"),
                 "dashed": edge_item.get("type") == "depends"
             })
 
@@ -609,7 +625,7 @@ def main():
 
         js_edges = []
         for e in edges_data:
-            js_edges.append(f"edge('{e['from']}', '{e['to']}', '{e['label']}', {str(e['dashed']).lower()})")
+            js_edges.append(f"edge('{e['from']}', '{e['to']}', '{e['label']}', {str(e['dashed']).lower()}, '{e['type']}')")
 
         js_nodes_array_str = "[\n      " + ",\n      ".join(js_nodes) + "\n    ]"
         js_edges_array_str = "[\n      " + ",\n      ".join(js_edges) + "\n    ]"
