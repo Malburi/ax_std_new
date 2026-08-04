@@ -5,5 +5,10 @@ from datetime import datetime, timezone, timedelta
 
 KST = timezone(timedelta(hours=9))
 
+
+def now_kst():
+    return datetime.now(KST).strftime("%Y-%m-%dT%H:%M:%S+09:00")
+
+
 if __name__ == "__main__":
-    print(datetime.now(KST).strftime("%Y-%m-%dT%H:%M:%S+09:00"))
+    print(now_kst())

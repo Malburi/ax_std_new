@@ -251,6 +251,24 @@ QA(`T-Q`)는 Tier와 무관하게 이 초기 작업 그래프에 포함하지 �
 
 ## Phase 2: 팀원 실행
 
+### 2-0.5. 기계적 인덱스 사전 추출 (LLM 미사용, Java/Spring 한정 — 신규)
+
+analyzer 호출 전에 실행. `_workspace/01_analyzer_report.md`가 이미 있어 2-1을 스킵하는 경우 이 단계도 함께 스킵.
+
+```powershell
+python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/stack_precheck.py" --root "[절대경로]"
+```
+
+`_workspace/00_stack_precheck.json`의 `extractor`가 `java_spring`이면:
+
+```powershell
+python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/index_extractor_java_spring.py" --root "[절대경로]"
+```
+
+`_workspace/index/symbols.json` + `call_graph.json`을 정규식 기반으로 기계 생성(mode: init 한정 — incremental/feature-scoped는 이번 범위 밖, 기존처럼 analyzer가 전담). 실패하거나 `extractor: none`이면 2-1의 analyzer가 두 파일까지 처음부터 전부 작성(기존 동작, 회귀 없음).
+
+> 이 두 파일 외 sql_usage/schema/transactions/external_io/env_branches/dead_code/owasp_top10은 Phase 1 범위 밖 — 지금처럼 analyzer가 계속 작성한다.
+
 ### 2-1. analyzer 호출
 
 부분 재실행 + `_workspace/01_analyzer_report.md` 존재 시 스킵.
@@ -268,6 +286,8 @@ Agent(
   description="T-A · analyzer · 프로젝트 구조·의존성·레거시 로직 분석",
   prompt="<analyzer 에이전트 지침에 따라 분석. 프로젝트 루트: [절대경로]. mode: init. tier: [Standard/Full].
   init_layout/paths: _workspace/00_init_scope.md 참조 (selected-paths면 해당 상대경로만 분석).
+  2-0.5에서 symbols.json/call_graph.json이 이미 기계 생성됐으면(_workspace/00_stack_precheck.json의 extractor=java_spring)
+  두 파일 재작성 금지 — analyzer.md Step 8의 '기계 추출 결과가 있을 때' 분기를 따라 검증·모호한 케이스 보강만 수행.
   결과: _workspace/01_analyzer_report.md + _workspace/index/*.json>",
   model="[sonnet/opus]"
 )

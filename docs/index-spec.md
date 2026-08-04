@@ -77,7 +77,10 @@ analyzer가 생성하고, 후속 에이전트(impact-analyzer, sql-reviewer, cha
 - `call` — 메서드 직접 호출
 - `inject` — DI 주입 관계 (Spring `@Autowired` 등)
 - `inherit` — 상속/구현
+- `import` — 파일/클래스 간 import 관계 (`validator_checks.py`가 파일 2개 이상인데 이 타입이 0개면 WARN)
 - `reflect` — 리플렉션 가능성 (heuristic, 신뢰도 낮음)
+
+**기계 추출(Java/Spring 한정)**: `agents/lib/index_extractor_java_spring.py`가 정규식 기반으로 `symbols.json`+`call_graph.json`을 결정론적으로 생성하는 경로가 있다(`_workspace/00_stack_precheck.json`의 `extractor: "java_spring"`일 때). 이 경로에서는 analyzer(LLM)가 두 파일을 처음부터 작성하지 않고 모호한 케이스(리플렉션 등)만 보강한다 — `agents/analyzer.md` Step 8 참조. 다른 스택은 지금처럼 analyzer가 전량 작성한다.
 
 ---
 

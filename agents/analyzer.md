@@ -185,6 +185,11 @@ pair_linked = true이면 분석 리포트 헤더에 기록: 1:1이면 "파트너
 
 ### Step 8: 의존성 그래프 추출
 
+**기계 추출 결과가 있을 때 (Java/Spring 한정, 신규):** `_workspace/00_stack_precheck.json`의 `extractor`가 `java_spring`이면 harness-init이 이 Step 전에 `agents/lib/index_extractor_java_spring.py`로 `symbols.json`·`call_graph.json`을 이미 정규식 기반으로 기계 생성했다. **이 경우 두 파일을 처음부터 다시 작성하지 않는다** — 대신:
+1. 두 파일을 읽고 리플렉션·동적 프록시·문자열 기반 DI(빈 이름으로 조회 등) 등 정규식으로 잡기 어려운 케이스만 소스에서 확인해 필요한 edge만 추가(파일 재작성이 아니라 기존 nodes/edges 배열에 항목만 보태는 식).
+2. 아래 "작성 후 자체 검증" 체크리스트는 그대로 적용 — 기계 생성분이라도 dangling·`_meta`·edge 종류 누락 여부는 동일하게 확인.
+3. `_workspace/00_stack_precheck.json`이 없거나 `extractor`가 `none`이면 아래 지침대로 처음부터 전부 작성한다(기존 동작 그대로).
+
 **목적:** "이 함수를 수정하면 어디에 영향?"의 기반.
 
 추출 대상:
