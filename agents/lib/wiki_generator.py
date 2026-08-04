@@ -450,17 +450,12 @@ def main():
         render_and_track(wiki_dir, page_entries, project_name, "issues.md", issues_content, "Issues (이슈 & 보안)")
         print("Generated issues.md")
 
-    # 9. Copy vis-network lib
-    dest_lib_dir = os.path.join(wiki_dir, "lib")
-    os.makedirs(dest_lib_dir, exist_ok=True)
-    for filename in ["vis-network.min.js", "vis-network.min.css"]:
-        src_file = os.path.join(LIB_DIR, filename)
-        dest_file = os.path.join(dest_lib_dir, filename)
-        if os.path.exists(src_file):
-            with open(src_file, 'rb') as sf:
-                with open(dest_file, 'wb') as df:
-                    df.write(sf.read())
-    print("Copied vis-network library files.")
+    # 9. vis-network 라이브러리는 call-graph.html에 직접 인라인한다(아래 10번) — 파일로
+    # 복사해 상대경로(lib/...)로 참조하면 DB 발행 시(wikihub_db) 이 페이지만 올라가고
+    # lib/ 폴더는 안 올라가서 그래프가 빈 화면으로 뜨는 문제가 있었다(2026-08-05 확인).
+    # 완전 독립 페이지(file://·DB 열람 모두 동작)로 만들려면 인라인이 유일한 방법이다.
+    vis_network_js = read_file(os.path.join(LIB_DIR, "vis-network.min.js")) or ""
+    vis_network_css = read_file(os.path.join(LIB_DIR, "vis-network.min.css")) or ""
 
     # 10. Generate call-graph.html (100% Python program-side binding, 파트너 그래프 병합 포함)
     merge_info = {"merged": False}
@@ -510,9 +505,21 @@ def main():
             for item in dead_code_json.get("unused_methods", []):
                 dead_code[item.get("id")] = item.get("reason", "")
 
+        seen_node_ids = {}
         for node in raw_graph.get("nodes", []):
             nid = node.get("id")
-            label = node.get("label", nid)
+            # vis.DataSet()이 id 중복을 던지므로(런타임에 전체 그래프가 깨짐), 분석기가
+            # 중첩 클래스 등을 같은 id로 잘못 뭉친 경우를 여기서 방어적으로 풀어준다
+            # (예: 같은 파일에 동일 이름의 nested class가 여러 번 나오는 경우 —
+            # mfs-test3의 backend.app.schemas.schemas.Config 사례, 2026-08-05 확인).
+            # 첫 등장은 원래 id 그대로 둬서 기존 엣지 참조가 깨지지 않게 하고, 2번째부터만
+            # file:line을 붙여 구분한다.
+            if nid in seen_node_ids:
+                seen_node_ids[nid] += 1
+                nid = f"{nid}#dup{seen_node_ids[nid]}:{node.get('file', '')}:{node.get('line', '')}"
+            else:
+                seen_node_ids[nid] = 0
+            label = node.get("label", node.get("id"))
             raw_type = node.get("type", "function")
 
             vis_type = "function"
@@ -631,6 +638,8 @@ def main():
         js_edges_array_str = "[\n      " + ",\n      ".join(js_edges) + "\n    ]"
 
         cg_html = cg_template\
+            .replace("{{VIS_NETWORK_JS}}", vis_network_js)\
+            .replace("{{VIS_NETWORK_CSS}}", vis_network_css)\
             .replace("{{PROJECT_NAME}}", project_name)\
             .replace("{{STACK_DESCRIPTION}}", "정적 분석 결과")\
             .replace("{{FILTER_BUTTONS}}", filter_buttons_html)\

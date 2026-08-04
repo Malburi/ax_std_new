@@ -192,9 +192,18 @@ def parse_file(path, rel):
         bases_str, colon_pos = _scan_signature(text, cm)
         colon_line_idx = line_of(raw_text, colon_pos) - 1
         body_end = _block_end(lines, header_indent, colon_line_idx + 1)
+
+        # 중첩 클래스(예: pydantic의 nested `class Config:`)는 module.name만 쓰면 같은 파일 안
+        # 다른 클래스에 붙은 동명 nested class와 id가 충돌한다(mfs-test3에서 실제 발생 —
+        # backend.app.schemas.schemas.Config가 3개 클래스에 걸쳐 동일 id로 뭉쳐짐, vis.DataSet이
+        # id 중복에 예외를 던져 call-graph.html 전체가 렌더링 안 됨, 2026-08-05 확인). 이미 기록된
+        # class_body_ranges 중 이 헤더를 감싸는 것 중 가장 안쪽(가장 늦게 시작한) 것을 부모로 삼는다.
+        enclosing = [i for i, (s, e) in enumerate(class_body_ranges) if s <= header_idx < e]
+        parent_name = classes[max(enclosing, key=lambda i: class_body_ranges[i][0])]["name"] if enclosing else None
+
         class_body_ranges.append((header_idx, body_end))
 
-        class_id = f"{module}.{name}"
+        class_id = f"{module}.{parent_name}.{name}" if parent_name else f"{module}.{name}"
         decorators = _decorators_before(lines, header_idx)
         bases = []
         if bases_str:

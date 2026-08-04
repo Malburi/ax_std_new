@@ -8,7 +8,11 @@ import subprocess
 
 from now_kst import now_kst
 
-SKIP_DIRS = {".git", "node_modules", "target", "build", "dist", "out", ".idea", ".vscode", "__pycache__", "bin", "obj"}
+SKIP_DIRS = {
+    ".git", "node_modules", "target", "build", "dist", "out", ".idea", ".vscode",
+    "__pycache__", "bin", "obj", "venv", ".venv", "env", "site-packages",
+    ".mypy_cache", ".pytest_cache", "egg-info",
+}
 
 # C-계열 문법(//, /* */, "...") 공용 — Java/C#/Kotlin과 Vue <script> 블록(JS/TS)이 모두 해당.
 # 백틱(`) 템플릿 리터럴은 다루지 않음(알려진 한계, JS/TS 흔한 패턴이라 향후 보강 여지).
