@@ -148,21 +148,52 @@ def base_meta(root, generator, files_scanned, files_total):
     }
 
 
+def _load_json(path):
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8-sig") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
 def write_outputs(root, generator, symbols, nodes, edges, files_scanned, files_total):
-    """symbols.json + call_graph.json을 _workspace/index/에 표준 스키마로 저장한다."""
+    """symbols.json + call_graph.json을 _workspace/index/에 표준 스키마로 저장한다.
+    이미 파일이 있으면(모노레포 등에서 다른 스택 추출기가 같은 회차에 먼저 실행된 경우)
+    덮어쓰지 않고 병합한다 — harness-init 2-0.5는 감지된 스택마다 이 함수를 순서대로
+    호출하므로, 병합하지 않으면 나중에 실행된 추출기가 앞선 결과를 지워버린다."""
     index_dir = os.path.join(root, "_workspace", "index")
     os.makedirs(index_dir, exist_ok=True)
+    symbols_path = os.path.join(index_dir, "symbols.json")
+    cg_path = os.path.join(index_dir, "call_graph.json")
 
-    symbols_meta = base_meta(root, generator, files_scanned, files_total)
+    existing_symbols = _load_json(symbols_path)
+    prev_scanned, prev_total = 0, 0
+    if existing_symbols and isinstance(existing_symbols.get("symbols"), list):
+        symbols = existing_symbols["symbols"] + symbols
+        prev_meta = existing_symbols.get("_meta") or {}
+        prev_scanned = prev_meta.get("files_scanned") or 0
+        prev_total = prev_meta.get("files_total") or 0
+
+    existing_cg = _load_json(cg_path)
+    if existing_cg and isinstance(existing_cg.get("nodes"), list):
+        nodes = existing_cg["nodes"] + nodes
+        edges = dedupe_edges(existing_cg.get("edges", []) + edges)
+
+    total_scanned = prev_scanned + files_scanned
+    total_files = prev_total + files_total
+
+    symbols_meta = base_meta(root, generator, total_scanned, total_files)
     symbols_meta["node_count"] = len(symbols)
     symbols_meta["edge_count"] = 0
-    with open(os.path.join(index_dir, "symbols.json"), "w", encoding="utf-8") as f:
+    with open(symbols_path, "w", encoding="utf-8") as f:
         json.dump({"_meta": symbols_meta, "symbols": symbols}, f, indent=2, ensure_ascii=False)
 
-    cg_meta = base_meta(root, generator, files_scanned, files_total)
+    cg_meta = base_meta(root, generator, total_scanned, total_files)
     cg_meta["node_count"] = len(nodes)
     cg_meta["edge_count"] = len(edges)
-    with open(os.path.join(index_dir, "call_graph.json"), "w", encoding="utf-8") as f:
+    with open(cg_path, "w", encoding="utf-8") as f:
         json.dump({"_meta": cg_meta, "nodes": nodes, "edges": edges}, f, indent=2, ensure_ascii=False)
 
 
