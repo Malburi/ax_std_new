@@ -1,6 +1,6 @@
 ---
 name: review-sql
-description: SQL 영향도·성능·보안을 리뷰한다. "이 SQL 리뷰해줘", "쿼리 점검", "SQL review", "N+1 확인", "이 쿼리 성능", "인덱스 잘 쓰고 있어?" 요청 시 트리거.
+description: SQL 영향도·성능·보안을 리뷰한다. "이 SQL 리뷰해줘", "쿼리 점검", "SQL review", "N+1 확인", "이 쿼리 성능", "인덱스 잘 쓰고 있어?" 요청 시 트리거. 축약 호출: "SQL리뷰 [SQL ID·쿼리]", "쿼리리뷰 [대상]".
 ---
 
 # Review SQL (오케스트레이터)

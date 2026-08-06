@@ -24,11 +24,16 @@
 | 기본 신규 파일 체크리스트 | scaffolder |
 | **변경 영향도 분석** | analyze-impact |
 | **안전한 변경 진행** | safe-modify |
+| **범용 수정 요청 ("수정해줘", "고쳐줘", "개선해줘") — 게이트 포함** | safe-modify |
 | **컨벤션 따라 신규 기능 생성** | scaffold-feature |
+| **범용 개발 요청 ("개발해줘", "구현해줘", "코드 짜줘") — 컨벤션 기반** | scaffold-feature |
+| **알아서/바이브 ("알아서 해줘", "그냥 해줘") — 게이트 생략 직접 작업** | vibe |
 | **마이그레이션 계획** | plan-migration |
 | **SQL 영향도/리뷰** | review-sql |
 | **전체 스택 기능 생성 (pair 연동 시)** | cross-repo-scaffold |
 | **기존 기능 개선/수정 양쪽 저장소 반영 (pair 연동 시)** | cross-repo-modify |
+
+축약 호출: `영향도 [대상]` `안전수정 [내용]` `스캐폴드 [기능명]` `마이그 [현재 → 목표]` `SQL리뷰 [쿼리·SQL ID]`
 
 ## 작업 시 주의사항
 {{CAUTIONS}}

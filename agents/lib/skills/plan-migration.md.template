@@ -1,6 +1,6 @@
 ---
 name: plan-migration
-description: 스택 마이그레이션 계획을 수립한다. "Spring Boot로 마이그레이션", "Struts → Spring", "iBatis → MyBatis", "마이그레이션 계획", "migration plan", ".NET Core로 옮겨야 해" 요청 시 트리거.
+description: 스택 마이그레이션 계획을 수립한다. "Spring Boot로 마이그레이션", "Struts → Spring", "iBatis → MyBatis", "마이그레이션 계획", "migration plan", ".NET Core로 옮겨야 해" 요청 시 트리거. 축약 호출: "마이그 [현재 → 목표]".
 ---
 
 # Plan Migration (오케스트레이터)
