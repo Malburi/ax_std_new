@@ -167,7 +167,7 @@ ASCII_QUOTE_RE = re.compile(r'"([a-zA-Z][a-zA-Z \-]*)"')
 # 부작용이다 — 남아있는 사본은 트리거 부실 WARN으로 존재가 드러나 정리 대상임을 알 수 있다.
 STATIC_OR_PREEXISTING_SKILLS = {
     "analyze-impact.md", "safe-modify.md", "scaffold-feature.md",
-    "plan-migration.md", "review-sql.md",
+    "plan-migration.md", "review-sql.md", "vibe.md",
 }
 
 

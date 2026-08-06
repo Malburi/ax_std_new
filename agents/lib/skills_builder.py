@@ -24,7 +24,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 LIB_DIR = os.path.dirname(os.path.abspath(__file__))
 TEMPLATE_DIR = os.path.join(LIB_DIR, "skills")
 
-ALWAYS_DEPLOY = ["analyze-impact", "safe-modify", "scaffold-feature"]
+ALWAYS_DEPLOY = ["analyze-impact", "safe-modify", "scaffold-feature", "vibe"]
 CONDITIONAL_DEPLOY = ["plan-migration", "review-sql"]
 
 SKELETON_MARKER = "pattern-extractor 에이전트가 채울 예정입니다"
@@ -123,6 +123,7 @@ def render_writer_files_report(root, decisions):
         "- .claude/skills/analyze-impact.md\n"
         "- .claude/skills/safe-modify.md\n"
         "- .claude/skills/scaffold-feature.md\n"
+        "- .claude/skills/vibe.md\n"
         "- .claude/skills/plan-migration.md          (생성 조건 충족 시 — 아래 판단 참조)\n"
         "- .claude/skills/review-sql.md              (DB 사용 확인 시 — 아래 판단 참조)\n"
         "- .claude/patterns/[목록]                    (스켈레톤 — skills_builder.py가 조립, 아래 목록 참조)\n\n"
@@ -338,7 +339,7 @@ ITO_TEMPLATE = os.path.join(LIB_DIR, "ito_guide.md.template")
 # ito-guide 스킬 섹션 나열 순서 (존재하는 스킬만 포함)
 ITO_SKILL_ORDER = [
     "trace", "find-logic", "scaffolder",
-    "analyze-impact", "safe-modify", "scaffold-feature",
+    "analyze-impact", "safe-modify", "scaffold-feature", "vibe",
     "plan-migration", "review-sql",
     "cross-repo-scaffold", "cross-repo-modify",
 ]
