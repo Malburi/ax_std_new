@@ -107,15 +107,16 @@ CLAUDE.md의 자동 워크플로우 테이블에 모든 스킬이 등록되었�
 
 | 검사 | FAIL 조건 |
 |------|---------|
-| 파일 존재 (call_graph, symbols, transactions, external_io 등) | 4개 핵심 인덱스 중 2개 이상 누락 |
+| 파일 존재 — `call_graph`·`symbols` | 둘 중 하나라도 없으면 FAIL |
+| 선언과 실제 일치 — `_meta.json`의 `indexes`에 있는 파일이 디스크에도 있는지 | 선언됐는데 없으면 FAIL. 반대로 `transactions`·`external_io` 등이 아예 없는 것은 정상이다(해당 사실이 없으면 생성기가 만들지 않는다) |
 | JSON 파싱 가능 | 파싱 실패 |
 | 노드/엣지 수 0 초과 | 모두 0 (분석 실패) |
 | 분석 리포트의 신뢰도 ≥ MEDIUM이면 인덱스도 비어 있지 않아야 | 불일치 |
-| **`_meta` 필수 필드** — 존재하는 인덱스 파일 전부(core 4종 한정 아님)에 9개 필드(generated_at~files_total) 완비 여부 | 하나라도 없으면 FAIL |
+| **`_meta` 필수 필드** — 인덱스 파일 전부에 9개 필드(generated_at~files_total) 완비 여부. `_`로 시작하는 제어 파일(`_meta`·`_analysis_input`·`_ai_patch`)은 대상 아님 | 하나라도 없으면 FAIL |
 | **`generated_at` 실시각 의심(WARN)** — 자정(`T00:00:00`) 또는 KST 아닌 `Z`(UTC) 표기면 실제 명령 실행 없이 채워졌을 가능성 | 감점(-3) — `agents/lib/now_kst.py` 실행 결과 사용 권장 |
-| **call_graph 참조 무결성** — 모든 edge의 from/to가 nodes에 실존하는지, `_meta.node_count`/`edge_count`가 실제 배열 길이와 일치하는지 | dangling edge 1건 이상 또는 카운트 불일치 |
-| **call_graph 추출 누락 의심(WARN)** — 클래스 있는데 inherit edge 0개 / 파일 2개 이상인데 import edge 0개 / DI 스택인데 inject edge 0개 | 감점(-3) — Step 8 3갈래(호출/임포트/DI 그래프) 중 일부만 채워졌을 때의 재발 방지용 휴리스틱 |
-| **7b. 내용 스팟체크** — call_graph 엣지 샘플 20개의 callee가 caller 파일에 실존하는지, sql_usage SQL ID가 매퍼 파일에 실존하는지 실측 대조 (validator_checks.py가 기계 수행) | 일치율 < 80% |
+| **call_graph 참조 무결성** — 모든 edge의 from/to가 nodes에 실존하는지, node id 중복이 없는지, `_meta.node_count`/`edge_count`가 실제 배열 길이와 일치하는지 | dangling edge 1건 이상, 중복 node id, 카운트 불일치 |
+| **call_graph 추출 누락 의심(WARN)** — 클래스 있는데 inherit edge 0개 / DI 스택인데 inject edge 0개 | 감점(-3). `import` edge 부재는 검사하지 않는다 — 결정론적 인덱서는 파일 노드가 없어 이 타입을 만들지 않는 것이 정상이다 |
+| **7b. 내용 스팟체크** — call_graph 엣지 샘플 20개의 callee가 caller 파일에 실존하는지, sql_usage 항목이 선언 파일에 실존하는지 실측 대조 (validator_checks.py가 기계 수행). import 엣지는 `to`가 경로형이면 파일 존재를, 심볼형이면 노드 존재를 확인한다. SQL은 이름 있는 id면 그 id를, 위치 기반 id(`파일:줄:raw`)면 테이블명·본문을 찾는다 | 일치율 < 80% |
 
 7b는 인덱스 *내용*의 정확성 게이트다 — 기존 검사는 구조(존재·파싱·카운트)만 봤다. `_meta.sampled`·`git_commit` 드리프트도 정보성으로 함께 표기된다 (감점 없음).
 

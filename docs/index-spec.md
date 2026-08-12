@@ -2,7 +2,21 @@
 
 `_workspace/index/` 하위 JSON 파일들의 스키마 정의.
 
-analyzer가 생성하고, 후속 에이전트(impact-analyzer, sql-reviewer, change-safety, migration-planner 등)가 조회한다.
+후속 에이전트(impact-analyzer, sql-reviewer, change-safety, migration-planner 등)가 조회한다.
+
+## 생성 주체
+
+| 파일 | 생성 주체 |
+|------|---------|
+| `symbols` · `call_graph` · `sql_usage` · `transactions` · `external_io` · `env_branches` · `schema` · `api_contract` · `dead_code` | `agents/lib/build-index.mjs` (결정론적 인덱서, LLM 미개입) |
+| `call_graph`의 모호 관계 보강 | analyzer가 `_ai_patch.json`으로 제출 → 인덱서가 검증 후 병합 |
+| `data_flow` · `owasp_top10` · `client_index` | analyzer (판단이 필요해 기계화 대상 아님) |
+| `schema` (라이브 DB 접속으로 뜬 경우) | analyzer |
+| Vue 컴포넌트·Pinia 스토어 노드와 `import`·`inject` 엣지 | `agents/lib/index_extractor_vue.py` (인덱서 결과에 병합) |
+
+인덱서가 없는 환경(node 18 미만)에서는 스택별 Python 추출기가 `symbols`·`call_graph`만 만들고, 그것도 실패하면 analyzer가 전부 작성한다. 상세는 `skills/harness-init/SKILL.md` 2-0.5.
+
+인덱서는 제어 파일 3종을 함께 만든다 — `_meta.json`(전역 매니페스트: tier·복잡도·어댑터 커버리지·생성된 인덱스 목록), `_analysis_input.json`(analyzer가 읽는 상한 있는 요약과 계약), `_unresolved.jsonl`(후보가 둘 이상이라 확정하지 못한 관계). 이 셋은 `_meta` 블록을 갖지 않으므로 아래 9필드 규칙 대상이 아니다.
 
 ---
 
@@ -77,10 +91,15 @@ analyzer가 생성하고, 후속 에이전트(impact-analyzer, sql-reviewer, cha
 - `call` — 메서드 직접 호출
 - `inject` — DI 주입 관계 (Spring `@Autowired` 등)
 - `inherit` — 상속/구현
-- `import` — 파일/클래스 간 import 관계 (`validator_checks.py`가 파일 2개 이상인데 이 타입이 0개면 WARN)
-- `reflect` — 리플렉션 가능성 (heuristic, 신뢰도 낮음)
+- `import` — 파일/모듈 간 import 관계. 결정론적 인덱서는 **이 타입을 만들지 않는다**(파일 노드가 없는 순수 심볼 그래프라 `to`가 노드가 아니게 된다). Vue 추출기 등 파일 단위 관계를 내는 생성기만 쓴다
+- `reflect` — 리플렉션 가능성 (heuristic, 신뢰도 낮음). 인덱서는 만들지 않고 analyzer가 `_ai_patch.json`으로만 추가한다
+- `ui_event` · `markup_event` · `scheduler` · `process_entry` — 진입점에서 핸들러로 가는 관계. 출발점은 `trigger:<파일>#<트리거>` 형태의 합성 노드다
 
-**기계 추출(Java/Spring, C#/.NET, Python, Vue, Android/Kotlin)**: `agents/lib/index_extractor_<stack>.py`가 정규식 기반으로 `symbols.json`+`call_graph.json`을 결정론적으로 생성하는 경로가 있다(`_workspace/00_stack_precheck.json`의 `extractors` 배열에 해당 스택이 감지됐을 때 — 모노레포 등 여러 스택이 동시에 감지되면 각 추출기 결과가 병합된다). 이 경로에서는 analyzer(LLM)가 두 파일을 처음부터 작성하지 않고 모호한 케이스(리플렉션 등)만 보강한다 — `agents/analyzer.md` Step 8 참조. 그 외 스택(iOS/Swift, COBOL 등)은 지금처럼 analyzer가 전량 작성한다.
+모든 레코드에는 `origin`(`deterministic-indexer` | `ai-enrichment` | `analyzer`)과 `confidence`(`HIGH`/`MEDIUM`/`LOW`)가 붙는다 — 어디서 온 사실인지 구분하기 위한 것이다.
+
+**후보가 둘 이상이면 엣지를 만들지 않는다.** 인덱서는 이름 해석 결과가 정확히 하나일 때만 엣지를 쓰고, 둘 이상이면 `_unresolved.jsonl`에 후보 목록과 함께 넘기며, 하나도 없으면(외부 라이브러리 호출 등) 버린다. 그래서 dangling 엣지가 구조적으로 생기지 않는다. analyzer는 이 목록을 판정해 `_ai_patch.json`으로만 보강하며, 이때도 **기존 노드 사이의 엣지만** 추가할 수 있다.
+
+미해결이 대량인 레거시 시스템에서는 `_analysis_input.json`의 `analyzer_contract.process_all_unresolved`가 `false`가 되고 `unresolved_priority`(후보 적은 순 상위 N건)만 판정 대상이 된다. 그 밖의 레코드는 위치와 후보 수만 남고 `candidates_omitted: true`가 붙는다.
 
 ---
 
