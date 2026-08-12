@@ -185,10 +185,27 @@ pair_linked = true이면 분석 리포트 헤더에 기록: 1:1이면 "파트너
 
 ### Step 8: 의존성 그래프 추출
 
-**기계 추출 결과가 있을 때 (Java/Spring, C#/.NET, Python, Vue, Android/Kotlin):** `_workspace/00_stack_precheck.json`의 `extractors` 배열에 감지된 스택이 있으면 harness-init이 이 Step 전에 해당 `agents/lib/index_extractor_<stack>.py`로 `symbols.json`·`call_graph.json`을 이미 정규식 기반으로 기계 생성했다(모노레포 등 여러 스택이 동시에 감지된 경우 각 추출기 결과가 병합돼 있음). **이 경우 두 파일을 처음부터 다시 작성하지 않는다** — 대신:
-1. 두 파일을 읽고 리플렉션·동적 프록시·문자열 기반 DI(빈 이름으로 조회 등) 등 정규식으로 잡기 어려운 케이스만 소스에서 확인해 필요한 edge만 추가(파일 재작성이 아니라 기존 nodes/edges 배열에 항목만 보태는 식).
-2. 아래 "작성 후 자체 검증" 체크리스트는 그대로 적용 — 기계 생성분이라도 dangling·`_meta`·edge 종류 누락 여부는 동일하게 확인.
-3. `_workspace/00_stack_precheck.json`이 없거나 `extractors`가 비어있으면(해당 스택 지원 없음) 아래 지침대로 처음부터 전부 작성한다(기존 동작 그대로).
+**기계 인덱스가 있을 때 (`_workspace/index/_meta.json` 존재):** harness-init 2-0.5의 `build-index.mjs`가 프로젝트 전체를 결정론적으로 인덱싱했다. **이때 `_meta.json`의 `indexes`에 나열된 파일은 한 줄도 고치지 않는다.** 대신 아래 계약을 따른다.
+
+1. **읽는 것** — `_workspace/index/_analysis_input.json`. 규모 상한이 적용된 요약(허브·진입점·모듈·위험·대표 파일)이다. 대형 인덱스 원본을 통째로 읽지 않고, 소스도 재순회하지 않는다.
+2. **판정할 것** — `_workspace/index/_unresolved.jsonl`. 인덱서가 "후보가 둘 이상이라 하나로 정할 수 없었다"고 남긴 목록이다. 각 레코드의 `file`·`line`만 열어 `candidates` 중 무엇인지 판단한다.
+   - `_analysis_input.json`의 `analyzer_contract.process_all_unresolved`가 `true`면 `unresolved_batch_size`(200)씩 끝까지 처리한다.
+   - `false`면 `unresolved_priority`가 지정한 범위(후보 수가 적은 순 상위 N건, 파일 앞부분에 모여 있다)만 처리한다. 레거시 대형 시스템에서는 미해결이 십수만 건이라 전수 처리 계약이 성립하지 않는다. `candidates_omitted: true`인 레코드는 판정 대상이 아니다.
+3. **쓰는 것** — `_workspace/index/_ai_patch.json` **하나뿐**이다.
+
+```json
+{"version": 1, "operations": [
+  {"op": "add_edge", "from": "<기존 노드 id>", "to": "<기존 노드 id>", "type": "call|inject|inherit|reflect",
+   "file": "src/.../OrderService.java", "line": 42, "evidence": "리플렉션으로 빈 이름 조회"}
+]}
+```
+
+- `from`/`to`는 **반드시 `call_graph.json`의 `nodes`에 이미 있는 id**여야 한다. 노드는 새로 만들 수 없고, 없는 id는 `unknown_from_node`/`unknown_to_node`로 거부된다.
+- 미해결 목록에 없더라도 리플렉션·동적 프록시·문자열 기반 DI처럼 정규식이 잡을 수 없는 관계를 발견하면 같은 방식으로 operation을 추가한다.
+- `call_graph.json`을 직접 편집하지 않는 이유 — 재인덱싱(`--mode incremental`)이 그래프를 캐시에서 다시 만들기 때문에 직접 덧붙인 엣지는 다음 갱신에서 **에러 없이 사라진다**. patch는 쓰기 직전에 다시 병합된다.
+4. **확인만 하고 보고할 것** — 아래 "작성 후 자체 검증" 항목은 이때 읽기 전용 점검이다. dangling·`_meta`는 인덱서가 구조적으로 보장하므로, Spring인데 `inject`가 0개인 식의 **비개연성**만 리포트에 적는다(직접 고치지 않는다).
+
+**기계 인덱스가 없을 때(`_meta.json` 없음)** 아래 지침대로 처음부터 전부 작성한다(기존 동작 그대로).
 
 **목적:** "이 함수를 수정하면 어디에 영향?"의 기반.
 
@@ -447,23 +464,28 @@ api-bridge 에이전트 없이 analyzer가 직접 추출한다 (harness-init 파
 분석 결과를 단순 마크다운만이 아닌 **구조화된 JSON 인덱스**로도 저장한다.  
 후속 에이전트(impact-analyzer, change-safety 등)는 매번 코드를 다시 grep하지 않고 인덱스를 로드해 즉시 조회한다.
 
-| 파일 | 스키마 | 용량 한도 |
-|------|--------|---------|
-| `_workspace/index/symbols.json` | 클래스/메서드/함수 심볼 인덱스 | 10MB |
-| `_workspace/index/call_graph.json` | 호출 그래프 (Step 8) | 10MB |
-| `_workspace/index/data_flow.json` | 데이터 흐름 (Step 9, 선택적) | 5MB |
-| `_workspace/index/transactions.json` | 트랜잭션 경계 (Step 10) | 1MB |
-| `_workspace/index/external_io.json` | 외부 통신 (Step 11) | 1MB |
-| `_workspace/index/env_branches.json` | 환경 분기 (Step 13) | 500KB |
-| `_workspace/index/dead_code.json` | 데드 코드 후보 (Step 15) | 1MB |
-| `_workspace/index/owasp_top10.json` | OWASP Top 10 매핑 (Step 14.5) | 500KB |
-| `_workspace/index/api_contract.json` | REST API 계약 (Step 15.5, 백엔드 탐지 시) | 2MB |
-| `_workspace/index/sql_usage.json` | SQL ID ↔ 호출 위치 (Java/Python 등) | 5MB |
-| `_workspace/index/schema.json` | DB 스키마 스냅샷 (Step 16) | 5MB |
+**먼저 `_workspace/index/_meta.json`이 있는지 본다.** 있으면 `indexes` 배열에 나열된 파일은 harness-init 2-0.5의 결정론적 인덱서가 이미 만든 것이다 — **읽고 해석만 하고, 다시 쓰지 않는다.** 아래 표의 "생성 주체"는 그 경우를 기준으로 한다.
+
+| 파일 | 스키마 | 생성 주체 | 용량 한도 |
+|------|--------|---------|---------|
+| `_workspace/index/symbols.json` | 클래스/메서드/함수 심볼 인덱스 | 인덱서 | 10MB |
+| `_workspace/index/call_graph.json` | 호출 그래프 (Step 8) | 인덱서 (보강은 `_ai_patch.json`) | 10MB |
+| `_workspace/index/data_flow.json` | 데이터 흐름 (Step 9, 선택적) | **analyzer** | 5MB |
+| `_workspace/index/transactions.json` | 트랜잭션 경계 (Step 10) | 인덱서 | 1MB |
+| `_workspace/index/external_io.json` | 외부 통신 (Step 11) | 인덱서 | 1MB |
+| `_workspace/index/env_branches.json` | 환경 분기 (Step 13) | 인덱서 | 500KB |
+| `_workspace/index/dead_code.json` | 데드 코드 후보 (Step 15) | 인덱서 | 1MB |
+| `_workspace/index/owasp_top10.json` | OWASP Top 10 매핑 (Step 14.5) | **analyzer** | 500KB |
+| `_workspace/index/api_contract.json` | REST API 계약 (Step 15.5, 백엔드 탐지 시) | 인덱서 | 2MB |
+| `_workspace/index/sql_usage.json` | SQL ID ↔ 호출 위치 (Java/Python 등) | 인덱서 | 5MB |
+| `_workspace/index/schema.json` | DB 스키마 스냅샷 (Step 16) | 인덱서 (DDL) / **analyzer** (라이브 DB 접속 시) | 5MB |
+| `_workspace/index/client_index.json` | 레거시 정적 JS 인덱스 | **analyzer** | 2MB |
+
+"인덱서" 표시 파일에 해당하는 Step(10·11·13·15·15.5·16)은 값이 이미 있으면 **재작성하지 않고**, 표본을 확인해 리포트에 해석과 불일치만 적는다. `_meta.json`이 없으면 종전대로 전부 직접 작성한다.
 
 용량 한도 초과 시: 핵심 패키지/모듈만 포함하고 나머지는 분리 파일로.
 
-**`_meta` 필수 기록 (모든 인덱스 파일 공통):** `docs/index-spec.md`의 공통 필드에 더해 다음을 반드시 채운다 — 후속 검증(validator check 7b)과 신선도 판단의 근거가 된다.
+**`_meta` 필수 기록 (analyzer가 직접 쓰는 인덱스 파일에 한함):** `docs/index-spec.md`의 공통 필드에 더해 다음을 반드시 채운다 — 후속 검증(validator check 7b)과 신선도 판단의 근거가 된다. 인덱서가 만든 파일은 이미 채워져 있으므로 손대지 않는다.
 
 ```json
 "_meta": {

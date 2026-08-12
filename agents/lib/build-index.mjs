@@ -1643,7 +1643,7 @@ export function applyAiPatch(rootArg, patchArg) {
   const graphPath = join(indexDir, "call_graph.json");
   const graph = readJson(graphPath);
   const result = mergeAiPatchEdges(graph, patch);
-  const appliedAt = new Date().toISOString();
+  const appliedAt = kstIso();
   graph._meta.edge_count = graph.edges.length;
   graph._meta.ai_enriched_at = appliedAt;
   graph._meta.ai_patch_applied = result.applied;

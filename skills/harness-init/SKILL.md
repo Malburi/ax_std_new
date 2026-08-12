@@ -251,31 +251,62 @@ QA(`T-Q`)는 Tier와 무관하게 이 초기 작업 그래프에 포함하지 �
 
 ## Phase 2: 팀원 실행
 
-### 2-0.5. 기계적 인덱스 사전 추출 (LLM 미사용 — Java/Spring, C#/.NET, Python, Vue, Android/Kotlin)
+### 2-0.5. 결정론적 전수 인덱싱 (LLM 미사용)
 
 analyzer 호출 전에 실행. `_workspace/01_analyzer_report.md`가 이미 있어 2-1을 스킵하는 경우 이 단계도 함께 스킵.
 
+**Step A — 실행 환경 확인**
+
 ```powershell
+node --version
 python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/stack_precheck.py" --root "[절대경로]"
 ```
 
-`_workspace/00_stack_precheck.json`의 `extractors` 배열(모노레포 등에서 여러 스택이 동시에 감지될 수 있음)을 순회하며, 각 항목의 `stack` 값에 대응하는 스크립트를 **차례로** 실행한다(동시 실행 금지 — 뒤 스크립트가 앞 스크립트의 symbols.json/call_graph.json에 병합해서 쓰므로 순서 보장 필요):
+`node`가 exit 0이고 major 버전이 18 이상이면 결정론적 인덱서를 쓴다. `stack_precheck.py`는 어느 쪽이든 항상 실행한다 — 감지된 스택(`detected_stack`)이 validator의 DI 휴리스틱과 아래 폴백 선택에 쓰이고 비용이 거의 없다.
 
-| `stack` 값 | 실행 스크립트 |
-|---|---|
-| `java_spring` | `agents/lib/index_extractor_java_spring.py` |
-| `csharp_dotnet` | `agents/lib/index_extractor_csharp.py` |
-| `python_web` | `agents/lib/index_extractor_python.py` |
-| `vue` | `agents/lib/index_extractor_vue.py` |
-| `kotlin_android` | `agents/lib/index_extractor_kotlin.py` |
+**Step B — `_workspace/indexer-config.json` 작성**
 
-```powershell
-python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/index_extractor_<stack>.py" --root "[절대경로]"
+`_workspace/00_init_scope.md`의 값을 그대로 옮긴다(판단 없는 기계 변환).
+
+```json
+{"init_layout": "single-root", "include_paths": ["."], "workspace_mode": false,
+ "workspaces": [{"id": "root", "path": "", "kind": "unknown", "stack": "unknown"}]}
 ```
 
-`_workspace/index/symbols.json` + `call_graph.json`을 정규식 기반으로 기계 생성(mode: init 한정 — incremental/feature-scoped는 이번 범위 밖, 기존처럼 analyzer가 전담). 감지된 스택이 없거나(`extractors: []`) 스크립트 실행이 실패하면 2-1의 analyzer가 두 파일까지 처음부터 전부 작성(기존 동작, 회귀 없음) — 감지된 스택이 있는데 실행에 실패한 경우도 동일하게 폴백.
+- `selected-paths`면 선택한 상대경로들을 `include_paths`에 넣는다 (인덱서가 그 밖의 소스는 읽지 않는다).
+- 모노레포면 모듈마다 `workspaces[]` 항목을 하나씩 두고 `stack`은 `00_stack_precheck.json`의 값을 쓴다.
 
-> 이 두 파일 외 sql_usage/schema/transactions/external_io/env_branches/dead_code/owasp_top10은 이번 범위 밖 — 지금처럼 analyzer가 계속 작성한다.
+**Step C — 인덱싱**
+
+```powershell
+node "$env:CLAUDE_PLUGIN_ROOT/agents/lib/build-index.mjs" --root "[절대경로]" --mode init --tier "[Standard|Full]" --config "_workspace/indexer-config.json"
+```
+
+`_workspace/index/`에 `symbols`·`call_graph`·`sql_usage`·`transactions`·`external_io`·`env_branches`·`schema`·`api_contract`·`dead_code`(해당 사실이 있는 것만) + `_meta.json`·`_analysis_input.json`·`_unresolved.jsonl`을 생성한다. `_workspace/.index-cache/`에 파일 해시 기반 캐시가 남아 이후 `--mode incremental`이 변경분만 다시 읽는다.
+
+기존 인덱스의 `_meta.generator`가 `deterministic-indexer`가 아니면 `--mode incremental` 대신 **`--mode init`을 강제**한다. 생성기마다 노드 id 체계가 달라 섞이면 한 파일에 두 개의 id 네임스페이스가 생긴다.
+
+**Step D — Vue 보강 (해당 시)**
+
+`00_stack_precheck.json`의 `extractors`에 `vue`가 있으면 이어서 실행한다.
+
+```powershell
+python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/index_extractor_vue.py" --root "[절대경로]"
+```
+
+인덱서는 `.vue`를 JS로만 읽어 컴포넌트·Pinia 스토어 노드와 `import`·`inject` 엣지를 만들지 않는다(그러면 wiki-hub의 화면 목록이 빈다). 이 스크립트가 그 부분만 얹는다 — 노드는 id 기준으로 중복 제거되므로 인덱서 결과를 덮어쓰지 않는다.
+
+**Step E — 폴백 사다리**
+
+| 순위 | 조건 | 실행 |
+|---|---|---|
+| 1 | node ≥ 18 | `build-index.mjs` (비정상 종료 시 1회 재시도 — 모든 출력이 원자적 쓰기라 반쪽 파일이 남지 않는다) |
+| 2 | node 없음 또는 2회 실패 | `00_stack_precheck.json`의 `extractors`를 순회하며 스택별 Python 추출기를 **차례로** 실행 (`java_spring`→`index_extractor_java_spring.py`, `csharp_dotnet`→`_csharp.py`, `python_web`→`_python.py`, `vue`→`_vue.py`, `kotlin_android`→`_kotlin.py`). 이 경로는 `symbols.json`·`call_graph.json`만 만든다 |
+| 3 | 감지 스택 없음 또는 2도 실패 | 2-1의 analyzer가 인덱스를 처음부터 전부 작성 (기존 동작, 회귀 없음) |
+
+어느 순위로 실행됐는지 `_workspace/00_stack_precheck.json`에 `indexer` 키로 기록하고 Phase 3 보고에 포함한다 — 성능이 떨어진 채 넘어간 실행이 조용히 묻히지 않게 한다.
+
+> analyzer가 계속 직접 작성하는 인덱스는 `owasp_top10.json`·`data_flow.json`·`client_index.json` 3종이다. 인덱서는 이 파일들을 만들지도 지우지도 않는다.
 
 ### 2-1. analyzer 호출
 
@@ -294,15 +325,27 @@ Agent(
   description="T-A · analyzer · 프로젝트 구조·의존성·레거시 로직 분석",
   prompt="<analyzer 에이전트 지침에 따라 분석. 프로젝트 루트: [절대경로]. mode: init. tier: [Standard/Full].
   init_layout/paths: _workspace/00_init_scope.md 참조 (selected-paths면 해당 상대경로만 분석).
-  2-0.5에서 symbols.json/call_graph.json이 이미 기계 생성됐으면(_workspace/00_stack_precheck.json의 extractors 배열이
-  비어있지 않고 해당 스택 추출기가 정상 실행됨) 두 파일 재작성 금지 — analyzer.md Step 8의
-  '기계 추출 결과가 있을 때' 분기를 따라 검증·모호한 케이스 보강만 수행.
-  결과: _workspace/01_analyzer_report.md + _workspace/index/*.json>",
+  2-0.5가 인덱스를 기계 생성했으면(_workspace/index/_meta.json 존재) 그 파일들 재작성 금지 —
+  _analysis_input.json을 읽고 _unresolved.jsonl을 계약대로 처리해 _ai_patch.json만 출력한다
+  (analyzer.md Step 8 '기계 인덱스가 있을 때' 분기). _meta.json이 없으면 기존대로 직접 작성.
+  결과: _workspace/01_analyzer_report.md + (기계 인덱스 없을 때만) _workspace/index/*.json>",
   model="[sonnet/opus]"
 )
 ```
 
 `.claude/agents/analyzer.md`의 지침 따름. 완료 후 결과 파일 존재 확인.
+
+### 2-1.5. AI 보강 patch 병합 (기계 인덱스가 있을 때만)
+
+`_workspace/index/_ai_patch.json`이 있으면 실행한다.
+
+```powershell
+node "$env:CLAUDE_PLUGIN_ROOT/agents/lib/build-index.mjs" --root "[절대경로]" --apply-ai-patch "_workspace/index/_ai_patch.json"
+```
+
+기존 노드 사이의 엣지만 추가되고, 없는 노드를 참조하는 operation은 사유와 함께 거부된다. 전부 거부되면 비정상 종료하므로 **WARN으로 보고하고 계속 진행**한다(인덱스 자체는 유효하고 보강만 안 된 상태다). 병합 결과는 `_meta.json`의 `ai_enrichment`에 남는다.
+
+analyzer가 `call_graph.json`을 직접 고치지 않고 patch로 내는 이유는 재인덱싱 때문이다. `--mode incremental`은 캐시에서 그래프를 다시 만들므로, 손으로 덧붙인 엣지는 다음 "인덱스만 갱신" 실행에서 **에러 없이 사라진다**. patch는 파일을 쓰기 전에 다시 병합되고 데드 코드도 그에 맞춰 재계산된다.
 
 ### 2-2. writer 호출
 
