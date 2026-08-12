@@ -11,10 +11,12 @@ Read·Glob 도구로 파일을 실제로 읽고 교차 확인한다.
 
 기존 6점 검증 위에 **인덱스 무결성**과 **신규 워크플로우 스킬 등록 확인**을 추가했다.
 
-10개 검증 항목 중 1,2,3,4,6,7,8,9는 file-exists/JSON-parse/regex-grep 뿐이라 LLM 판단이 필요 없다.
+11개 검증 항목 중 1,2,3,4,6,7,8,9는 file-exists/JSON-parse/regex-grep 뿐이라 LLM 판단이 필요 없다.
 `agents/lib/validator_checks.py`가 이 8개를 먼저 계산해 `_workspace/validator_mechanical.json`에
 저장한다 — **먼저 이 파일을 읽고, 체크 1,2,3,4,6,7,8,9는 재검증하지 말고 `report_fragments`를
-그대로 리포트에 전사(轉寫)한다.** validator(LLM)가 직접 판단할 몫은 체크 5(레이어 커버리지)와
+그대로 리포트에 전사(轉寫)한다.** 체크 11(인덱스 스키마 검증)도 마찬가지로
+`agents/lib/validate-harness.mjs`가 `_workspace/validator_schema.json`에 기계 생성하므로
+재검증 없이 그대로 옮긴다. validator(LLM)가 직접 판단할 몫은 체크 5(레이어 커버리지)와
 체크 10 중 스크립트가 `check10_undecided`로 남긴 항목뿐이다.
 
 ---
@@ -23,7 +25,7 @@ Read·Glob 도구로 파일을 실제로 읽고 교차 확인한다.
 
 | 항목 | 내용 |
 |------|------|
-| **수신** | `_workspace/01_analyzer_report.md`, `_workspace/02_writer_files.md`, `_workspace/validator_mechanical.json`, `_workspace/index/*.json`, 프로젝트 루트 절대 경로 |
+| **수신** | `_workspace/01_analyzer_report.md`, `_workspace/02_writer_files.md`, `_workspace/validator_mechanical.json`, `_workspace/validator_schema.json`(있으면), `_workspace/index/*.json`, 프로젝트 루트 절대 경로 |
 | **발신** | `_workspace/03_validator_report.md`에 검증 리포트 작성 |
 | **작업 범위** | 검증·리포트만. 자동 수정·삭제·보안 위험 자동 처리 금지 |
 | **공유 작업** | `TaskUpdate`로 자기 작업 상태 갱신 |
@@ -34,7 +36,7 @@ writer가 상충 패턴을 병기했다면, validator가 분석 리포트와 실
 
 ---
 
-## 검증 항목 (10개 + 신뢰도 점수)
+## 검증 항목 (11개 + 신뢰도 점수)
 
 ### 1. 파일 존재 및 완성도
 
@@ -134,6 +136,14 @@ patterns/ 파일들(skills_builder.py가 스켈레톤 배포)이 *스켈레톤*�
 - 스켈레톤 (pattern-extractor 미실행): "pattern-extractor 호출 권장" 안내
 - 본문 (이미 추출 완료): 정상
 
+### 11. NEW — 인덱스 스키마 검증
+
+`_workspace/validator_schema.json`이 있으면(`agents/lib/validate-harness.mjs`가 기계 생성) 그대로 전사한다 — 재검증하지 않는다. 체크 7(내용 정확성 — 실제 소스와 엣지·SQL 대조)과는 다른 층으로, 이건 `docs/index-schema/*.json` 대조 **형태** 검증(필수 필드·타입·enum·값 범위)이다.
+
+- `checks` 배열의 각 항목을 `level`(FAIL/WARN) + `code` + `message` 그대로 리포트에 옮긴다.
+- `plugin_contract_failures > 0`이면 그 항목들은 **감점하지 않고** 별도로 "플러그인 인덱스 계약 결함 — 프로젝트·analyzer 문제 아님"으로 표기한다. `code === "PLUGIN_INDEX_CONTRACT"`인 항목이 대상.
+- 파일이 없으면(node 미설치 등으로 harness-init이 스킵) "미실행 — node 환경 확인 필요"로 표기하고 감점 없음.
+
 ---
 
 ## 신뢰도 점수 산식
@@ -144,6 +154,7 @@ patterns/ 파일들(skills_builder.py가 스켈레톤 배포)이 *스켈레톤*�
 각 WARN: -3
 보안 위험 1건: -15 (최대 -45)
 인덱스 무결성 FAIL: -15
+인덱스 스키마 검증 FAIL 1건 이상: -15 (단, plugin_contract_failures만 있으면 감점 없이 별도 표기)
 변경 이력 누락: -5
 
 신뢰도 = max(0, 기본 - 차감)
@@ -200,6 +211,11 @@ QA는 자동 후속 실행되지 않는다 — harness-init Phase 3.6 선택 작
 - [파일명]: [SKELETON / FILLED]
 - pattern-extractor 호출 권장 여부
 
+## 11. 인덱스 스키마 검증
+[PASS / WARN / FAIL / 미실행]
+- [level] [code]: [message]
+- (plugin_contract_failures 있으면) 플러그인 인덱스 계약 결함 — 프로젝트·analyzer 문제 아님, 감점 없음
+
 ## 🔒 보안 확인 필요
 [발견된 민감 정보 위치 + 교체 권고 — 자동 수정 X]
 
@@ -215,6 +231,7 @@ QA는 자동 후속 실행되지 않는다 — harness-init Phase 3.6 선택 작
 - WARN × M개: -3M
 - 보안 위험: -15K
 - 인덱스 무결성: -15 (해당 시)
+- 인덱스 스키마 검증: -15 (해당 시, plugin_contract 단독이면 0)
 - 변경 이력 누락: -5 (해당 시)
 
 해석: [등급별 권고]
