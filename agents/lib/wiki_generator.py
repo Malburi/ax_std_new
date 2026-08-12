@@ -382,6 +382,13 @@ def merge_hub_partner_call_graphs(project_root, raw_graph, partner_cfgs):
         cross_edges, unmatched = [], 0
         if endpoint_index:
             cross_edges, unmatched = infer_cross_edges(prefixed.get("nodes", []), endpoint_index, backend_nodes)
+            # 1:1과 동일하게 클라이언트의 api_contract.json consumers로도 연결한다 (노드에 경로가 없는 그래프 대응)
+            consumer_edges, consumer_unmatched = infer_cross_edges_from_consumers(
+                load_json(os.path.join(ws, "index", "api_contract.json")),
+                prefixed.get("nodes", []), endpoint_index, backend_nodes)
+            seen = {(e["from"], e["to"]) for e in cross_edges}
+            cross_edges += [e for e in consumer_edges if (e["from"], e["to"]) not in seen]
+            unmatched += consumer_unmatched
 
         merged_nodes += prefixed.get("nodes", [])
         merged_edges += prefixed.get("edges", []) + cross_edges
