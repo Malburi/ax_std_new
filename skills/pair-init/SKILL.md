@@ -117,6 +117,7 @@ Agent(
 ```
 
 - 현재 진행 중인 harness-init(현재 프로젝트 쪽)이 있다면, 이 Agent 호출을 **같은 메시지에서 현재 프로젝트의 남은 Phase 호출과 병렬로** 실행해 두 하네스 초기화가 동시에 진행되게 한다 (harness-init Phase 3.5 참조).
+- harness-init이 이 절차를 호출하는 시점은 두 가지다 — Phase -1 직후(host가 background Agent를 지원하면, 자기쪽 Phase 2 시작 전에 조기 발사) 또는 Phase 3.5(기존, background 미지원 시 폴백). 어느 쪽에서 오든 이 템플릿 자체는 동일하다 — pair-init은 호출 시점을 신경 쓰지 않는다.
 - 완료 후 파트너 `CLAUDE.md` 존재 확인. 실패 시 → WARN 후 선택지 2(하네스 없이 진행)로 폴백.
 
 ---

@@ -129,6 +129,23 @@ description: 프로젝트를 심층 분석해 맞춤형 하네스(CLAUDE.md, 5+ 
 
 `monorepo`/`selected-paths`의 포함 경로는 root 내부 실제 디렉터리만 허용한다 (`..`, root 밖 절대경로 거부).
 
+### 파트너 하네스 조기 발사 (`paired-roots`/`hub-roots`, 하네스 없는 파트너가 있을 때만)
+
+목적: 파트너 하네스 생성을 자기쪽 Phase 2(analyzer→writer→pattern→validator, 가장 비용이 큰 구간) **시작 전에** 백그라운드로 미리 띄워, upstream의 "두 레인 동시 진행"과 같은 효과(총 소요시간 ≈ `max(자기쪽, 파트너쪽)`)를 얻는다. 지금까지는 Phase 3.5에서야 발사해 자기쪽 Phase 2 전체가 끝난 뒤에야 파트너쪽이 시작됐다.
+
+`init_layout`이 `paired-roots`/`hub-roots`면, 위에서 수집한 `partner_info`/`partner_list`의 각 경로에 `Test-Path <파트너 절대경로>/CLAUDE.md`로 하네스 존재만 확인한다(AI 호출 없음 — pair-init Phase 1의 동일 확인을 조기에 한 번 더 하는 것뿐이라 비용이 거의 없다).
+
+하네스 없는 파트너가 하나라도 있고 **호스트가 background Agent 실행을 지원하면**, `skills/pair-init/SKILL.md`의 "파트너 하네스 자동 생성 (선택 1)" 절에 있는 `Agent()` 템플릿을 그대로 사용해(역할·경로만 이 파트너 값으로 치환, `hub-roots`는 파트너마다 반복) **`run_in_background: true`로 지금 바로 발사**하고 응답을 기다리지 않는다 — 이어서 아래 Phase 0으로 곧장 진행한다.
+
+발사한 각 파트너의 상태를 `00_init_scope.md`의 "기계 실행 값"에 기록한다:
+```
+- partner_generation: [{role_label, path, status: "running"}, ...]
+```
+
+**호스트가 background 실행을 지원하지 않으면 이 단계 전체를 스킵한다** — `partner_generation`을 기록하지 않고 그대로 Phase 0으로 진행한다. 이 경우 Phase 3.5가 기존 방식(지금 시점에 발사)으로 자동 폴백하므로 회귀가 아니라 이 최적화가 적용되지 않을 뿐이다.
+
+**자기쪽 Phase 0~2~4는 이 단계와 완전히 무관하게 오늘과 동일하게 진행한다** — 아래 어떤 Phase도 이 조기 발사 때문에 변경되지 않는다. `skills/pair-init/SKILL.md` 자체도 변경하지 않는다(발사 시점만 앞당길 뿐 절차는 그대로 재사용).
+
 ---
 
 ## Phase 0: 컨텍스트 확인
@@ -579,7 +596,11 @@ pair-init 스킬을 다음 컨텍스트로 실행:
 - 파트너 목록: `partner_list`(N개, 각 `{ role_label, path, api_url, stack }`) 전체를 한 번에 전달
 - pair-init이 파트너별로 순회하며 경로 확인·하네스 존재 확인·`pair_config.md` 생성(hub 쪽은 다중 블록, 각 클라이언트 쪽은 기존 1:1 형식 그대로)을 수행
 
-### 파트너 하네스 없는 경우 — 자동 생성 (harness-init 주도 흐름 한정)
+### 파트너 하네스 없는 경우 — 자동 생성 또는 join
+
+`00_init_scope.md`에 `partner_generation` 기록이 있으면(Phase -1 직후 이미 백그라운드로 발사됨 — 위 "파트너 하네스 조기 발사" 참조): 여기서는 **새로 발사하지 않고 join만 한다.** 아직 완료 안 됐으면 "파트너 하네스 생성 중... (M개 중 완료: k)" 안내 후 전체 완료까지 대기, 이미 완료돼 있으면(자기쪽 Phase 2가 파트너쪽보다 오래 걸린 흔한 경우) 대기 없이 즉시 다음(pair-init 실행)으로 진행한다.
+
+`partner_generation` 기록이 없으면(호스트가 background 실행을 지원하지 않아 조기 발사를 스킵했거나, Phase -1 스킵 등으로 이 경로를 안 거친 경우) **오늘과 같은 방식으로 지금 발사한다**(폴백, 회귀 없음) — 이하 기존 절차:
 
 pair-init Phase 1에서 파트너 `CLAUDE.md`가 없어 3지선다가 뜨는 경우, **harness-init이 이미 멀티레포 의도를 확인한 상태**이므로 사용자에게 다시 묻지 않고 선택지 1(자동 생성)을 기본 적용한다. `hub-roots`는 하네스 없는 클라이언트마다 각각 적용한다(클라이언트별로 독립 판단 — 일부는 이미 하네스가 있고 일부는 없을 수 있음).
 
@@ -593,7 +614,7 @@ pair-init이 실행하는 "파트너 하네스 자동 생성" Agent 호출(파�
 
 모든 호출이 반환되면 다음으로 진행. 파트너 초기화가 evaluator보다 오래 걸리면, 현재 프로젝트의 Phase 4 결과 보고를 먼저 사용자에게 보여주고 "파트너 하네스 생성 중... (M개 중 완료: k)" 안내 후 전체 완료를 기다린다 (join).
 
-> 파트너 초기화 subagent가 실패해도 현재 프로젝트 파이프라인은 막지 않는다 — WARN 기록 후 Phase 3.6에서 통합 wiki 대신 단독 wiki 제안으로 폴백.
+> 파트너 초기화 subagent가 실패해도 현재 프로젝트 파이프라인은 막지 않는다 — WARN 기록 후 Phase 3.6에서 통합 wiki 대신 단독 wiki 제안으로 폴백. 조기 발사한 경우도 동일한 실패 처리를 적용한다.
 
 ### 연동 여부 질문 방식 (Phase -1 스킵 + pair_config.md 없는 경우)
 
