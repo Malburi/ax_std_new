@@ -76,6 +76,11 @@ const EXCLUDED_DIRS = new Set([
   "wiki", "wiki_prev",
 ]);
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
+/* 한 미해결 항목에 후보를 무한정 적지 않는다. 후보가 수백 개면 그 자체가 "판정 불가"라는 뜻이고,
+ * 실측 레거시 프로젝트에서 이 목록이 _unresolved.jsonl을 169MB까지 부풀렸다. */
+const MAX_UNRESOLVED_CANDIDATES = 20;
+/* 이 수를 넘으면 analyzer가 전부 처리한다는 계약 자체가 성립하지 않는다 (analyzer_contract 참고). */
+const UNRESOLVED_FULL_PROCESSING_LIMIT = 2000;
 const CALL_KEYWORDS = new Set([
   "if", "for", "while", "switch", "catch", "return", "throw", "new", "super", "this", "typeof",
   "sizeof", "await", "yield", "require", "import", "function", "class", "def", "func", "when",
@@ -757,6 +762,25 @@ function extractSqlRelations(sql, context) {
   return relations;
 }
 
+/* 키워드만 보지 않고 문장 모양까지 확인한다 — UI 문자열·번역 문구가 SQL로 잡히는 것을 막기 위함. */
+function sqlStatementType(statement) {
+  const normalized = statement.replace(/\\(?:r|n|t)/g, " ").replace(/\s+/g, " ").trim();
+  if (/^select\s+[\s\S]+?\s+from\s+[\w$`"[\].(]+/i.test(normalized)) return "select";
+  if (/^insert\s+into\s+[\w$`"[\].]+(?:\s|\()/i.test(normalized)) return "insert";
+  if (/^update\s+[\w$`"[\].]+\s+set\s+/i.test(normalized)) return "update";
+  if (/^delete\s+from\s+[\w$`"[\].]+(?:\s|$)/i.test(normalized)) return "delete";
+  if (/^merge\s+into\s+[\w$`"[\].]+/i.test(normalized)) return "merge";
+  if (/^(create|alter|drop)\s+/i.test(normalized)) return "ddl";
+  return null;
+}
+
+/*
+ * 쿼리 ID 상수 참조. 위 usage 정규식은 `selectList("ID")`처럼 호출 안에 리터럴이 있는 형태만 잡는데,
+ * 레거시는 `String queryId = "DEMAND_..._S00";`처럼 변수에 담아 쓰는 경우가 더 많다.
+ * 여기서는 모양이 맞는 리터럴을 후보로만 모으고, 실제 SQL id와 일치하는 것만 aggregate에서 남긴다.
+ */
+const SQL_ID_LITERAL_RE = /["']([A-Z][A-Z0-9]*(?:_[A-Z0-9]+){2,})["']/g;
+
 function extractSql(text, rel, methods) {
   const atLine = lineIndex(text);
   const sqls = [];
@@ -765,10 +789,34 @@ function extractSql(text, rel, methods) {
   const mapper = /<(select|insert|update|delete)\b[^>]*\bid\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/\1>/gi;
   const namespace = text.match(/<mapper\b[^>]*namespace\s*=\s*["']([^"']+)["']/i)?.[1] || "";
   for (const match of text.matchAll(mapper)) {
+    /*
+     * HTML/JSP/ASP의 <select id="cmbLanguages"> 드롭다운도 이 정규식에 걸린다.
+     * 레거시 화면이 많은 프로젝트에서 실제로 수백 건이 SQL로 잘못 등록됐다 —
+     * MyBatis 매퍼 파일이 아니면 본문이 SQL 모양일 때만 인정한다.
+     */
+    if (!namespace && !sqlStatementType(match[3])) continue;
     const id = namespace ? `${namespace}.${match[2]}` : match[2];
     sqls.push({ id, file: rel, line: atLine(match.index), type: match[1].toLowerCase(), tables: [...new Set(sqlTables(match[3]))], text_preview: match[3].replace(/\s+/g, " ").trim().slice(0, 240), origin: "deterministic-indexer", confidence: "HIGH" });
     relations.push(...extractSqlRelations(match[3], { sql_id: id, file: rel, line: atLine(match.index) }));
     if (namespace) usages.push({ sql_id: id, file: rel, line: atLine(match.index), method: id, evidence: "MyBatis mapper namespace + statement id", origin: "deterministic-indexer", confidence: "HIGH" });
+  }
+  /*
+   * 국내 SI에서 흔한 자체 쿼리 컨테이너: <query><id>X</id><value><![CDATA[ SELECT ... ]]></value></query>.
+   * MyBatis도 JPA도 아니라 위 어댑터가 전부 놓친다 — 실측(레거시 Java 4,883파일)에서 이 형식이
+   * 전체 SQL의 90%였는데 519건만 잡히고 있었다. 태그명은 프레임워크마다 달라 알려진 이름만 받고,
+   * 본문이 실제 SQL 모양일 때만 인정한다.
+   */
+  const container = /<(query|statement|sql|sqlQuery|queryString)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  for (const block of text.matchAll(container)) {
+    const id = block[2].match(/<id>\s*([^<]+?)\s*<\/id>/i)?.[1];
+    const rawValue = block[2].match(/<value>([\s\S]*?)<\/value>/i)?.[1];
+    if (!id || !rawValue) continue;
+    const statement = rawValue.replace(/<!\[CDATA\[/g, "").replace(/\]\]>/g, "").trim();
+    const type = sqlStatementType(statement);
+    if (!type) continue;
+    const line = atLine(block.index);
+    sqls.push({ id, file: rel, line, type, tables: [...new Set(sqlTables(statement))], text_preview: statement.replace(/\s+/g, " ").trim().slice(0, 240), origin: "deterministic-indexer", confidence: "HIGH" });
+    relations.push(...extractSqlRelations(statement, { sql_id: id, file: rel, line }));
   }
   const annotation = /@(Query|Select|Insert|Update|Delete)\s*\(\s*(["'])([\s\S]*?)\2\s*\)/gi;
   for (const match of text.matchAll(annotation)) {
@@ -794,6 +842,10 @@ function extractSql(text, rel, methods) {
   }
   const usage = /\b(?:selectOne|selectList|insert|update|delete|queryForObject|queryForList)\s*\(\s*["']([^"']+)["']/g;
   for (const match of text.matchAll(usage)) usages.push({ sql_id: match[1], file: rel, line: atLine(match.index), method: nextMethod(methods, atLine(match.index))?.id || "unknown", origin: "deterministic-indexer", confidence: "HIGH" });
+  for (const match of text.matchAll(SQL_ID_LITERAL_RE)) {
+    const line = atLine(match.index);
+    usages.push({ sql_id: match[1], file: rel, line, method: nextMethod(methods, line)?.id || "unknown", evidence: "쿼리 ID 상수 참조", candidate: true, origin: "deterministic-indexer", confidence: "HIGH" });
+  }
   return { sqls, usages, relations };
 }
 
@@ -1052,7 +1104,12 @@ function aggregate(facts, options, config, generatedAt, sourceFileCount, latestM
     }
   }
   const sqls = unique(facts.flatMap((item) => item.sqls), (item) => item.id);
-  const usages = unique(facts.flatMap((item) => item.usages), (item) => `${item.sql_id}:${item.file}:${item.line}`);
+  /* 후보(쿼리 ID 상수 참조)는 실제로 존재하는 SQL id일 때만 사용처로 인정한다 — 그냥 대문자 상수와 구분. */
+  const sqlIds = new Set(sqls.map((item) => item.id));
+  const usages = unique(
+    facts.flatMap((item) => item.usages).filter((item) => !item.candidate || sqlIds.has(item.sql_id)),
+    (item) => `${item.sql_id}:${item.file}:${item.line}`,
+  ).map(({ candidate, ...rest }) => rest);
   const sqlRelations = unique(facts.flatMap((item) => item.relations || []), (item) => `${item.from_table}:${item.from_columns?.join(",")}:${item.to_table}:${item.to_columns?.join(",")}:${item.file}:${item.line}`);
   const boundaries = unique(facts.flatMap((item) => item.boundaries), (item) => item.id);
   const communications = unique(facts.flatMap((item) => item.communications), (item) => item.id);
@@ -1381,7 +1438,16 @@ function buildAnalysisInput(output, globalMeta, unresolved) {
     },
     analyzer_contract: {
       full_source_rescan: false,
-      process_all_unresolved: true,
+      /*
+       * 미해결 관계를 "전부 처리"하는 계약은 규모가 커지면 성립하지 않는다.
+       * 실측(레거시 Java 4,883파일)에서 185,912건이 나왔고, 배치 200건 기준 930회로
+       * analyzer가 완주할 수 없다. 이 경우 계약을 우선순위 부분 처리로 바꾸고
+       * 무엇을 우선하는지 명시한다 — 조용히 잘라내는 대신 계약에 드러낸다.
+       */
+      process_all_unresolved: unresolved.length <= UNRESOLVED_FULL_PROCESSING_LIMIT,
+      unresolved_priority: unresolved.length > UNRESOLVED_FULL_PROCESSING_LIMIT
+        ? { limit: UNRESOLVED_FULL_PROCESSING_LIMIT, order: "candidates_asc", note: "후보 수가 적은 것부터 — 판정 가능성이 높은 순서" }
+        : null,
       unresolved_batch_size: 200,
       require_file_line_evidence: true,
       require_module_coverage: true,
@@ -1486,7 +1552,25 @@ export function buildIndex(options) {
   }
   atomicJson(join(indexDir, "_meta.json"), globalMeta);
   atomicJson(join(indexDir, "_analysis_input.json"), buildAnalysisInput(output, globalMeta, unresolved));
-  writeFileSync(join(indexDir, "_unresolved.jsonl"), unresolved.map((item) => JSON.stringify(item)).join("\n") + (unresolved.length ? "\n" : ""), "utf8");
+  /*
+   * 미해결 항목은 한 건도 빠뜨리지 않고 기록한다(어디가 모호했는지는 전수가 감사 기록이다).
+   * 다만 후보 목록까지 전부 적으면 레거시 규모에서 파일이 139MB까지 커지는데, 그 대부분은
+   * analyzer_contract가 "처리 대상 아님"이라고 명시한 구간이다. 판정 대상(후보가 적은 순
+   * 상위 N건)만 후보를 싣고, 나머지는 위치와 후보 수만 남긴다.
+   */
+  const prioritized = [...unresolved]
+    .map((item, order) => ({ item, order, width: (item.candidates || []).length }))
+    .sort((a, b) => a.width - b.width || a.order - b.order);
+  const cappedUnresolved = prioritized.map(({ item }, rank) => {
+    const candidates = item.candidates || [];
+    if (rank >= UNRESOLVED_FULL_PROCESSING_LIMIT) {
+      const { candidates: _drop, ...rest } = item;
+      return { ...rest, candidate_count: candidates.length, candidates_omitted: true };
+    }
+    if (candidates.length <= MAX_UNRESOLVED_CANDIDATES) return item;
+    return { ...item, candidates: candidates.slice(0, MAX_UNRESOLVED_CANDIDATES), candidates_truncated: candidates.length - MAX_UNRESOLVED_CANDIDATES };
+  });
+  writeFileSync(join(indexDir, "_unresolved.jsonl"), cappedUnresolved.map((item) => JSON.stringify(item)).join("\n") + (unresolved.length ? "\n" : ""), "utf8");
   if (!preservePatch && existsSync(stalePatch)) rmSync(stalePatch);
   atomicJson(join(cacheDir, "manifest.json"), { version: INDEXER_VERSION, generated_at: generatedAt, mode: options.mode, files: files.length, analyzed, reused });
   return { root, files: files.length, analyzed, reused, tier: normalized.tier, complexity, adapter_coverage: coverage, indexes: Object.keys(output), unresolved: unresolved.length };
