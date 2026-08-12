@@ -3,16 +3,16 @@
   "version": "0.10.0",
   "description": "ITO/SI 조직을 위한 확장 메타 하네스 — 17 agents + 17 workflow skills (Spec Gate + Eval Loop + Clean + Wiki Generator + Wiki Hub + Pair Init + Cross Repo Scaffold + Vibe)",
   "author": {
-    "name": "neoruler001",
-    "url": "https://github.com/neoruler001"
+    "name": "Malburi",
+    "url": "https://github.com/Malburi"
   },
-  "homepage": "https://github.com/neoruler001/ax-std-harness",
-  "repository": "https://github.com/neoruler001/ax-std-harness",
+  "homepage": "https://github.com/Malburi/ax_std_new",
+  "repository": "https://github.com/Malburi/ax_std_new",
   "license": "MIT",
   "keywords": ["harness", "agents", "skills", "ito", "si", "legacy", "migration", "code-analysis", "sql-review"],
   "source": {
     "type": "github",
-    "repo": "neoruler001/ax-std-harness",
+    "repo": "Malburi/ax_std_new",
     "ref": "main"
   }
 }
