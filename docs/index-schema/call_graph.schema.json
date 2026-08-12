@@ -33,7 +33,7 @@
         "properties": {
           "from": { "type": "string" },
           "to": { "type": "string" },
-          "type": { "type": "string", "enum": ["call", "inject", "inherit", "reflect", "ui_event", "markup_event", "scheduler", "process_entry"] },
+          "type": { "type": "string", "enum": ["call", "inject", "inherit", "import", "reflect", "ui_event", "markup_event", "scheduler", "process_entry"] },
           "file": { "type": "string" },
           "line": { "type": ["integer", "null"] }
           ,"workspace": { "type": "string" }

@@ -1,5 +1,7 @@
 // 최소 테스트 러너 (무의존). 실행: node agents/lib/tests/run.js
 import { test as registerIndexerTests } from "./build-index.test.mjs";
+import { test as registerBudgetTests } from "./ai-budget.test.mjs";
+import { test as registerValidateHarnessTests } from "./validate-harness.test.mjs";
 
 const tests = [];
 function test(name, fn) {
@@ -16,6 +18,8 @@ const assert = {
 };
 
 await registerIndexerTests(test, assert);
+await registerBudgetTests(test, assert);
+await registerValidateHarnessTests(test, assert);
 
 let passed = 0,
   failed = 0;

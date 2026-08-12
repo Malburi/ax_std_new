@@ -16,7 +16,7 @@
           "file": { "type": "string" },
           "line": { "type": ["integer", "null"] },
           "package": { "type": "string" },
-          "extends": { "type": "string" },
+          "extends": { "type": ["string", "null"] },
           "implements": { "type": "array", "items": { "type": "string" } },
           "annotations": { "type": "array", "items": { "type": "string" } },
           "workspace": { "type": "string" },
