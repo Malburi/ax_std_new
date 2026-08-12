@@ -50,7 +50,7 @@ ax-std-harness는 프로젝트를 **한 번 분석해 Claude가 기억할 수 �
 Claude Code 어느 프로젝트에서나 실행:
 
 ```
-/plugin marketplace add neoruler001/ax-std-harness
+/plugin marketplace add Malburi/ax_std_new
 ```
 
 ### 2단계 — 플러그인 설치

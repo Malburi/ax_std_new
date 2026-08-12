@@ -45,7 +45,7 @@
 Claude Code 어느 프로젝트에서나 실행:
 
 ```
-/plugin marketplace add neoruler001/ax-std-harness
+/plugin marketplace add Malburi/ax_std_new
 /plugin install ax-std-harness@ax-std-harness
 ```
 
@@ -692,4 +692,4 @@ harness-init이 생성하는 프로젝트 전용 가이드. Claude가 매 대화
 
 ---
 
-*ax-std-harness v0.2.1 · [GitHub](https://github.com/neoruler001/ax-std-harness)*
+*ax-std-harness v0.10.0 · [GitHub](https://github.com/Malburi/ax_std_new)*
