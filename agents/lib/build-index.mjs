@@ -336,6 +336,26 @@ function matchingBrace(text, open) {
   return text.length;
 }
 
+/* 파라미터 목록의 끝 괄호 위치. `def f(x = Depends(g)):`처럼 기본값에 괄호가 들어가면
+ * `\([^)]*\)` 같은 정규식은 첫 `)`에서 끊겨 함수 자체를 놓친다. */
+function matchingParen(text, open) {
+  if (open < 0 || text[open] !== "(") return -1;
+  let depth = 0;
+  let quote = "";
+  for (let i = open; i < text.length; i += 1) {
+    const c = text[i];
+    if (quote) {
+      if (c === "\\") i += 1;
+      else if (c === quote) quote = "";
+      continue;
+    }
+    if (c === "\"" || c === "'" || c === "`") quote = c;
+    else if (c === "(") depth += 1;
+    else if (c === ")" && --depth === 0) return i;
+  }
+  return -1;
+}
+
 function packageName(text, ext, rel) {
   if (ext === ".java" || ext === ".kt" || ext === ".kts") return text.match(/\bpackage\s+([\w.]+)/)?.[1] || "";
   if (ext === ".cs") return text.match(/\bnamespace\s+([\w.]+)/)?.[1] || "";
@@ -436,8 +456,21 @@ function extractSymbols(text, clean, rel, workspace) {
     const classMethodRegex = new RegExp(`^\\s*(?:public\\s+|private\\s+|protected\\s+|static\\s+|async\\s+)*(\\w+)\\s*\\([^)]*\\)\\s*${returnType}\\s*\\{`, "gm");
     for (const match of clean.matchAll(classMethodRegex)) if (ownerAt(match.index)) pushMethod(match[1], match.index, clean.indexOf("{", match.index), "unknown");
   } else if (ext === ".py") {
-    const pyRegex = /^(\s*)(?:async\s+)?def\s+(\w+)\s*\([^)]*\)\s*(?:->[^:]+)?:/gm;
-    const all = [...clean.matchAll(pyRegex)];
+    /*
+     * 파라미터는 정규식으로 세지 않고 괄호 깊이로 닫는다.
+     * `def list_users(current_user = Depends(get_current_user)):`처럼 기본값에 괄호가 있으면
+     * 한 줄 정규식이 첫 `)`에서 끊겨 함수가 통째로 누락됐다 — FastAPI 라우트 핸들러가
+     * 전부 이 형태라 호출 그래프에서 엔드포인트가 사라지는 원인이었다.
+     */
+    const pyDefRegex = /^(\s*)(?:async\s+)?def\s+(\w+)\s*\(/gm;
+    const all = [];
+    for (const match of clean.matchAll(pyDefRegex)) {
+      const close = matchingParen(clean, match.index + match[0].length - 1);
+      if (close < 0) continue;
+      const tail = clean.slice(close + 1, clean.indexOf("\n", close) + 1 || undefined);
+      if (!/^\s*(?:->[^:]+)?:/.test(tail)) continue;
+      all.push(match);
+    }
     for (let i = 0; i < all.length; i += 1) {
       const match = all[i];
       const indent = match[1].length;

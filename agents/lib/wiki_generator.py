@@ -160,16 +160,35 @@ def build_endpoint_index(contract):
 
 
 def find_backend_node_for_endpoint(endpoint, backend_nodes):
-    """controller_file/handler로 call_graph 노드를 찾는다 (같은 저장소라 file 경로가 그대로 일치한다)."""
-    cfile = endpoint.get("controller_file", "")
+    """controller_file/handler로 call_graph 노드를 찾는다 (같은 저장소라 file 경로가 그대로 일치한다).
+    결정론적 인덱서는 같은 값을 `file` 키에 넣으므로 양쪽을 다 본다 — 안 그러면 크로스 엣지가 조용히 0건이 된다."""
+    cfile = endpoint.get("controller_file") or endpoint.get("file") or ""
     handler = (endpoint.get("handler") or "").lower()
     if not cfile:
         return None
+    # 핸들러 이름을 못 뽑으면 파일명이 대신 들어온다(결정론적 인덱서). 그걸로 노드 id를 찾으면
+    # 절대 안 맞으므로 파일 매칭만 쓴다 — 안 그러면 크로스 엣지가 통째로 0건이 된다.
+    if handler == os.path.basename(cfile).lower():
+        handler = ""
+    if handler:
+        for n in backend_nodes:
+            nfile = n.get("file", "")
+            if nfile and (nfile in cfile or cfile in nfile):
+                if handler in str(n.get("id", "")).lower() or handler in str(n.get("label", "")).lower():
+                    return n.get("id")
+    # 핸들러 이름이 없으면 위치로 찾는다. 엔드포인트 줄은 보통 데코레이터·애노테이션 줄이고
+    # 실제 함수 선언은 그 몇 줄 아래이므로, 바로 뒤에 오는 노드를 먼저 본다. 그 다음이 감싸는 노드.
+    # (파일의 첫 노드를 집으면 라우트 함수가 아니라 그 위의 DTO 클래스로 연결돼 그래프가 엉뚱해진다.)
+    following = _node_following(backend_nodes, cfile, endpoint.get("line"))
+    if following:
+        return following
+    enclosing = _node_enclosing(backend_nodes, cfile, endpoint.get("line"))
+    if enclosing:
+        return enclosing
     for n in backend_nodes:
         nfile = n.get("file", "")
         if nfile and (nfile in cfile or cfile in nfile):
-            if not handler or handler in str(n.get("id", "")).lower() or handler in str(n.get("label", "")).lower():
-                return n.get("id")
+            return n.get("id")
     return None
 
 
@@ -208,6 +227,68 @@ def infer_cross_edges(frontend_nodes, endpoint_index, backend_nodes):
     return edges, unmatched
 
 
+def _node_enclosing(nodes, file_rel, line):
+    """같은 파일에서 해당 줄을 감싸는 노드(그 줄 이전에 시작한 것 중 가장 가까운 것)를 찾는다."""
+    target = (file_rel or "").replace("\\", "/")
+    if not target:
+        return None
+    best = None
+    for n in nodes:
+        if (n.get("file") or "").replace("\\", "/") != target:
+            continue
+        nline = n.get("line") or 0
+        if line and nline and nline > line:
+            continue
+        if best is None or (nline or 0) > (best.get("line") or 0):
+            best = n
+    return best.get("id") if best else None
+
+
+def _node_following(nodes, file_rel, line, window=6):
+    """같은 파일에서 해당 줄 직후(window줄 이내)에 시작하는 노드. 데코레이터·애노테이션 아래의
+    실제 핸들러 함수를 집기 위한 것이다."""
+    target = (file_rel or "").replace("\\", "/")
+    if not target or not line:
+        return None
+    best = None
+    for n in nodes:
+        if (n.get("file") or "").replace("\\", "/") != target:
+            continue
+        nline = n.get("line") or 0
+        if nline < line or nline > line + window:
+            continue
+        if best is None or nline < (best.get("line") or 0):
+            best = n
+    return best.get("id") if best else None
+
+
+def infer_cross_edges_from_consumers(consumer_contract, frontend_nodes, endpoint_index, backend_nodes):
+    """api_contract.json의 consumers(axios/fetch/HttpClient 호출 지점)로 크로스 엣지를 만든다.
+    노드 텍스트에서 경로를 긁는 방식(infer_cross_edges)은 결정론적 인덱서 산출물처럼 노드에 경로가
+    안 담기는 그래프에서 항상 0건이었다 — 계약에 이미 method·path_pattern·file·line이 있으므로 그걸 쓴다."""
+    edges, unmatched = [], 0
+    for consumer in (consumer_contract or {}).get("consumers", []):
+        npath = normalize_api_path(consumer.get("path_pattern") or consumer.get("path") or "")
+        if not npath:
+            unmatched += 1
+            continue
+        method = (consumer.get("method") or "").upper()
+        endpoint = endpoint_index.get((method, npath))
+        if not endpoint:
+            same_path = [v for (_m, p), v in endpoint_index.items() if p == npath]
+            endpoint = same_path[0] if len(same_path) == 1 else None
+        if not endpoint:
+            unmatched += 1
+            continue
+        src = _node_enclosing(frontend_nodes, consumer.get("file"), consumer.get("line"))
+        dst = find_backend_node_for_endpoint(endpoint, backend_nodes)
+        if src and dst:
+            edges.append({"from": src, "to": dst, "label": f"{endpoint.get('method')} {endpoint.get('path')}", "type": "call"})
+        else:
+            unmatched += 1
+    return edges, unmatched
+
+
 def merge_partner_call_graph(project_root, raw_graph):
     """pair_config.md가 있으면 파트너 call_graph.json을 병합하고, api_contract.json 기반으로
     프론트<->백엔드 크로스 엣지를 추론한다. 전부 결정론적 문자열 매칭 — LLM 미개입.
@@ -226,22 +307,30 @@ def merge_partner_call_graph(project_root, raw_graph):
     own_type = pair_cfg.get("project_type", "")
 
     endpoint_index, backend_nodes, frontend_nodes = {}, [], []
+    consumer_contract = None
     if own_type == "backend":
         backend_nodes = raw_graph.get("nodes", [])
         frontend_nodes = prefixed_partner.get("nodes", [])
         own_contract = load_json(os.path.join(project_root, "_workspace", "index", "api_contract.json"))
         endpoint_index = build_endpoint_index(own_contract)
+        consumer_contract = load_json(os.path.join(pair_cfg["partner_workspace"], "index", "api_contract.json"))
     elif own_type == "frontend":
         backend_nodes = prefixed_partner.get("nodes", [])
         frontend_nodes = raw_graph.get("nodes", [])
         partner_contract_path = pair_cfg.get("partner_api_contract")
         partner_contract = load_json(partner_contract_path) if partner_contract_path else None
         endpoint_index = build_endpoint_index(partner_contract)
+        consumer_contract = load_json(os.path.join(project_root, "_workspace", "index", "api_contract.json"))
 
     cross_edges = []
     unmatched = 0
     if endpoint_index and (backend_nodes or frontend_nodes):
         cross_edges, unmatched = infer_cross_edges(frontend_nodes, endpoint_index, backend_nodes)
+        consumer_edges, consumer_unmatched = infer_cross_edges_from_consumers(
+            consumer_contract, frontend_nodes, endpoint_index, backend_nodes)
+        seen = {(e["from"], e["to"]) for e in cross_edges}
+        cross_edges += [e for e in consumer_edges if (e["from"], e["to"]) not in seen]
+        unmatched += consumer_unmatched
         print(f"Cross-repo merge: partner nodes {len(prefixed_partner.get('nodes', []))}, "
               f"inferred cross edges {len(cross_edges)} (unmatched candidates: {unmatched})")
     else:
@@ -525,7 +614,8 @@ def main():
             vis_type = "function"
             type_mapping = {
                 "view": ["view", "component", "page", "screen", "jsp", "thymeleaf", "vue", "react"],
-                "endpoint": ["controller", "endpoint", "route", "api", "rest"],
+                # trigger = UI 이벤트·스케줄러·main 같은 진입점 노드 (결정론적 인덱서 산출)
+                "endpoint": ["controller", "endpoint", "route", "api", "rest", "trigger"],
                 "dao": ["dao", "repository", "mapper", "store", "jpa"],
                 "external": ["external", "client", "feign", "soap", "sap", "mq", "kafka", "redis"],
                 "db_table": ["db", "table", "mssql", "oracle", "mysql", "postgres", "sqlite"],

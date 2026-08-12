@@ -198,7 +198,8 @@ def _api_endpoints_table(contract_json):
     if endpoints:
         rows = ["| Method | Path | Handler | Auth |", "|--------|------|---------|------|"]
         for ep in endpoints:
-            auth = "✅" if ep.get("auth_required") else ""
+            # 키 자체가 없으면 "인증 불필요"가 아니라 "확인 안 됨"이다 (결정론적 인덱서는 이 값을 판정하지 않는다)
+            auth = "✅" if ep.get("auth_required") else ("" if "auth_required" in ep else "-")
             rows.append(
                 f"| {ep.get('method', '')} | {ep.get('path', '')} | "
                 f"{ep.get('handler', '')} | {auth} |"
