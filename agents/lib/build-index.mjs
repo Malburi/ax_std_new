@@ -72,6 +72,8 @@ const EXCLUDED_DIRS = new Set([
   ".git", "node_modules", "vendor", "dist", "build", "target", "out", ".next", ".nuxt",
   "coverage", "_workspace", "_workspace_prev", ".claude", ".idea", ".vscode", "bin", "obj",
   ".venv", "venv", "env", ".tox", "site-packages", "__pycache__", ".pytest_cache", ".mypy_cache",
+  /* generate-wiki가 프로젝트 루트에 쓰는 산출물. .html이 소스 확장자라 제외하지 않으면 자기 출력을 다시 인덱싱한다. */
+  "wiki", "wiki_prev",
 ]);
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
 const CALL_KEYWORDS = new Set([
@@ -139,7 +141,8 @@ function sha256(value) {
 
 function readJson(path, fallback = null) {
   try {
-    return JSON.parse(readFileSync(path, "utf8"));
+    /* PowerShell로 만든 JSON에는 BOM이 붙는다. 이 저장소의 Python 쪽은 전부 utf-8-sig로 읽으므로 여기서도 벗긴다. */
+    return JSON.parse(readFileSync(path, "utf8").replace(/^﻿/, ""));
   } catch {
     return fallback;
   }
@@ -930,6 +933,14 @@ function unique(items, key) {
   });
 }
 
+/*
+ * 인덱스 _meta의 시각은 KST(+09:00)로 기록한다 — agents/lib/now_kst.py와 같은 규약.
+ * validator_checks._meta_field_issues가 UTC 'Z' 표기를 "지어낸 값 의심"으로 WARN하기 때문이다.
+ */
+function kstIso(date = new Date()) {
+  return new Date(date.getTime() + 9 * 60 * 60 * 1000).toISOString().replace(/\.\d+Z$/, "+09:00");
+}
+
 function gitCommit(root) {
   try {
     return execFileSync("git", ["-C", root, "log", "-1", "--format=%H"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
@@ -953,7 +964,7 @@ function pairConfig(root) {
   const contracts = all("partner_api_contract");
   const partners = roots.map((partnerRoot, index) => ({
     partner_root: partnerRoot,
-    partner_api_contract: contracts[index] || join(partnerRoot, "_workspace", "index", "api_contracts.json"),
+    partner_api_contract: contracts[index] || join(partnerRoot, "_workspace", "index", "api_contract.json"),
   }));
   return {
     /* 하위호환: 기존 소비자는 단일 필드를 그대로 읽는다. */
@@ -999,6 +1010,23 @@ function aggregate(facts, options, config, generatedAt, sourceFileCount, latestM
     if (candidates.length === 1) edges.push({ from: injection.owner, to: candidates[0].id, type: "inject", file: injection.file, line: injection.line, workspace: injection.workspace, origin: "deterministic-indexer", confidence: "HIGH" });
     else if (candidates.length > 1) unresolved.push({ kind: "ambiguous_injection", from: injection.owner, target_name: injection.targetName, candidates: candidates.map((item) => item.id), file: injection.file, line: injection.line, workspace: injection.workspace });
   }
+  /*
+   * 상속 관계는 심볼의 extends/implements에만 기록돼 있고 엣지로는 해석되지 않았다.
+   * 그래서 클래스가 있는 프로젝트에서 validator_checks가 "class 노드 N개 존재하나 inherit edge 0개"를
+   * 항상 WARN했다. 호출·주입과 같은 규칙(후보 정확히 1개일 때만 엣지)으로 해석한다.
+   */
+  for (const symbol of symbols) {
+    for (const baseName of [symbol.extends, ...(symbol.implements || [])].filter(Boolean)) {
+      const simple = String(baseName).split(".").at(-1).replace(/<.*/, "").trim();
+      if (!simple) continue;
+      const candidates = (nodeBySimple.get(simple) || []).filter((item) => item.type !== "method" && item.type !== "trigger" && item.id !== symbol.id);
+      if (candidates.length === 1) {
+        edges.push({ from: symbol.id, to: candidates[0].id, type: "inherit", file: symbol.file, line: symbol.line, workspace: symbol.workspace, origin: "deterministic-indexer", confidence: "HIGH" });
+      } else if (candidates.length > 1) {
+        unresolved.push({ kind: "ambiguous_inherit", from: symbol.id, target_name: simple, candidates: candidates.map((item) => item.id), file: symbol.file, line: symbol.line, workspace: symbol.workspace });
+      }
+    }
+  }
 
   let endpoints = unique(composeFastApiEndpoints(facts, facts.flatMap((item) => item.endpoints)), (item) => item.id);
   let consumers = unique(facts.flatMap((item) => item.consumers), (item) => item.id);
@@ -1038,12 +1066,28 @@ function aggregate(facts, options, config, generatedAt, sourceFileCount, latestM
     origin: foreignKey.origin || "deterministic-indexer", confidence: foreignKey.confidence || "HIGH",
   })));
   const schemaRelations = unique([...foreignKeyRelations, ...sqlRelations], (item) => `${item.type}:${item.from_table}:${item.from_columns?.join(",")}:${item.to_table}:${item.to_columns?.join(",")}:${item.file}:${item.line}`);
-  const { inDegree } = degreeMaps(nodes, edges);
+  /*
+   * 중복 제거를 in-degree 계산보다 먼저 한다.
+   * 예전에는 _meta.edge_count만 중복 포함 배열 길이로 기록돼 실제 edges 배열과 어긋났고
+   * (validator_checks가 count 불일치로 FAIL), in-degree도 같은 관계를 여러 번 세고 있었다.
+   */
+  const uniqueEdges = unique(edges, (item) => `${item.from}:${item.to}:${item.type}`);
+  const { inDegree } = degreeMaps(nodes, uniqueEdges);
   /* 데드 코드 후보는 전 Tier에서 계산한다. Full 전용이면 Lite/Standard 분석이 유지보수 위험을 볼 근거를 잃는다. */
-  const unusedMethods = deadCodeCandidates(nodes, inDegree);
-  const common = { generated_at: generatedAt, generator: "deterministic-indexer", version: INDEXER_VERSION, source_root: options.root, mode: options.mode };
+  const unusedMethods = deadCodeCandidates(nodes, inDegree, uniqueEdges, endpoints);
+  /*
+   * _meta 9필드는 이 저장소의 계약이다(docs/index-spec.md, validator_checks._meta_field_issues).
+   * files_scanned/files_total은 analyzer_index_summary가 "분석 커버리지 N/M" 줄로 렌더한다.
+   * 인덱서는 발견한 소스를 전수 파싱하므로 둘이 같고 sampled는 항상 false다.
+   */
+  const commit = gitCommit(options.root);
+  const common = {
+    generated_at: generatedAt, generator: "deterministic-indexer", version: INDEXER_VERSION,
+    source_root: options.root, mode: options.mode,
+    git_commit: commit, sampled: false, files_scanned: sourceFileCount, files_total: sourceFileCount,
+  };
   const globalMeta = {
-    ...common, source_file_count: sourceFileCount, latest_source_commit: gitCommit(options.root), latest_source_mtime: latestMtime,
+    ...common, source_file_count: sourceFileCount, latest_source_commit: commit, latest_source_mtime: latestMtime,
     tier: options.tier, indexes: [], init_layout: config.init_layout, include_paths: config.include_paths.map((item) => item || "."), workspace_mode: config.workspace_mode, workspaces: config.workspaces,
     unresolved_count: unresolved.length,
     complexity: {
@@ -1061,7 +1105,7 @@ function aggregate(facts, options, config, generatedAt, sourceFileCount, latestM
   };
   const output = {
     symbols: { _meta: { ...common, node_count: symbols.length }, symbols },
-    call_graph: { _meta: { ...common, node_count: nodes.length, edge_count: edges.length }, nodes, edges: unique(edges, (item) => `${item.from}:${item.to}:${item.type}`) },
+    call_graph: { _meta: { ...common, node_count: nodes.length, edge_count: uniqueEdges.length }, nodes, edges: uniqueEdges },
   };
   if (sqls.length || usages.length) output.sql_usage = { _meta: common, sqls, usages };
   if (boundaries.length) output.transactions = { _meta: common, boundaries };
@@ -1073,7 +1117,8 @@ function aggregate(facts, options, config, generatedAt, sourceFileCount, latestM
    * 이전에는 workspace_mode/pair일 때만 emit해서 모놀리스는 API 인덱스를 아예 갖지 못했다.
    * matches는 producer와 consumer가 함께 존재할 때만 채워지므로 단일 저장소에서 빈 배열이 정상이다.
    */
-  if (endpoints.length || consumers.length) output.api_contracts = {
+  /* 파일명은 단수 api_contract.json이다 — 이미 배포된 pair_config.md들이 이 경로를 절대경로로 박고 있다. */
+  if (endpoints.length || consumers.length) output.api_contract = {
     _meta: common, endpoints, consumers, matches,
     unmatched_endpoints: endpoints.filter((item) => !matchedEndpoints.has(item.id)).map((item) => item.id),
     unmatched_consumers: consumers.filter((item) => !matchedConsumers.has(item.id)).map((item) => item.id),
@@ -1093,10 +1138,41 @@ function degreeMaps(nodes, edges) {
   return { inDegree, outDegree };
 }
 
-function deadCodeCandidates(nodes, inDegree) {
+/* 트리거에서 시작되는 관계. 이 엣지의 도착점은 아무도 "호출"하지 않아도 진입점이다. */
+const TRIGGER_EDGE_TYPES = new Set(["ui_event", "markup_event", "scheduler", "process_entry"]);
+
+/*
+ * in-degree 0만으로 데드 코드를 고르면 진입점이 전부 후보로 잡힌다
+ * (실측: Vue 프로젝트 61노드 중 51개). agents/analyzer.md Step 15가 요구하는 진입점
+ * 화이트리스트를 여기서 적용한다 — 확실한 진입점은 제외하고, 파일만 겹쳐 애매한 것은
+ * 버리지 않고 entrypoint_suspect로 표시해 판단을 사람/LLM에게 남긴다.
+ */
+function deadCodeCandidates(nodes, inDegree, edges, endpoints) {
+  const triggerTargets = new Set(edges.filter((item) => TRIGGER_EDGE_TYPES.has(item.type)).map((item) => item.to));
+  const handlerKeys = new Set();
+  const handlerFiles = new Set();
+  for (const endpoint of endpoints || []) {
+    if (endpoint.file && endpoint.handler) handlerKeys.add(`${endpoint.file}::${endpoint.handler}`);
+    if (endpoint.file) handlerFiles.add(endpoint.file);
+  }
   return nodes
     .filter((item) => item.type === "method" && item.visibility !== "private" && (inDegree.get(item.id) || 0) === 0)
-    .map((item) => ({ id: item.id, file: item.file, line: item.line, reason: "call graph in-degree=0; 동적·외부 호출 검토 필요", confidence: "LOW", origin: "deterministic-indexer" }));
+    .filter((item) => {
+      const name = item.id.split(".").at(-1);
+      if (triggerTargets.has(item.id)) return false;
+      if (name === "main" || name === "Main") return false;
+      return !handlerKeys.has(`${item.file}::${name}`);
+    })
+    .map((item) => {
+      const suspect = handlerFiles.has(item.file);
+      return {
+        id: item.id, file: item.file, line: item.line,
+        reason: suspect
+          ? "call graph in-degree=0; 다만 같은 파일에 API 핸들러가 있어 진입점일 수 있음"
+          : "call graph in-degree=0; 동적·외부 호출 검토 필요",
+        entrypoint_suspect: suspect, confidence: "LOW", origin: "deterministic-indexer",
+      };
+    });
 }
 
 /* 상한을 적용하고 잘린 개수를 함께 돌려준다. digest는 전체 덤프가 아니라 정직하게 잘린 요약이다. */
@@ -1168,7 +1244,7 @@ function moduleDigest(output, limits = DIGEST_LIMITS) {
   };
   for (const item of output.symbols?.symbols || []) touch(item.file, "symbols");
   for (const item of output.sql_usage?.sqls || []) touch(item.file, "sqls");
-  for (const item of output.api_contracts?.endpoints || []) touch(item.file, "endpoints");
+  for (const item of output.api_contract?.endpoints || []) touch(item.file, "endpoints");
   for (const item of output.call_graph?.nodes || []) touch(item.file, null);
   const sorted = [...modules.values()]
     .map((item) => ({ path: item.path, files: item.files.size, symbols: item.symbols, sqls: item.sqls, endpoints: item.endpoints }))
@@ -1207,7 +1283,7 @@ function buildDigest(output, globalMeta, limits = DIGEST_LIMITS) {
     limits.tables,
   );
   const endpoints = capped(
-    (output.api_contracts?.endpoints || []).map((item) => ({
+    (output.api_contract?.endpoints || []).map((item) => ({
       id: item.id, method: item.method, path: item.path_pattern, file: item.file, line: item.line,
       prefix_resolved: item.prefix_resolved !== false,
     })),
@@ -1263,7 +1339,7 @@ function buildAnalysisInput(output, globalMeta, unresolved) {
   for (const [name, key] of [
     ["symbols", "symbols"], ["call_graph", "edges"], ["sql_usage", "sqls"],
     ["transactions", "boundaries"], ["external_io", "communications"],
-    ["env_branches", "branches"], ["api_contracts", "endpoints"], ["api_contracts", "consumers"],
+    ["env_branches", "branches"], ["api_contract", "endpoints"], ["api_contract", "consumers"],
   ]) collectFiles(name, key);
   const representativeLimit = REPRESENTATIVE_FILE_LIMITS[globalMeta.tier] || REPRESENTATIVE_FILE_LIMITS.Standard;
   return {
@@ -1289,9 +1365,9 @@ function buildAnalysisInput(output, globalMeta, unresolved) {
       transactions: count("transactions", "boundaries"),
       external_io: count("external_io", "communications"),
       environment_branches: count("env_branches", "branches"),
-      endpoints: count("api_contracts", "endpoints"),
-      consumers: count("api_contracts", "consumers"),
-      api_matches: count("api_contracts", "matches"),
+      endpoints: count("api_contract", "endpoints"),
+      consumers: count("api_contract", "consumers"),
+      api_matches: count("api_contract", "matches"),
       dead_code_candidates: count("dead_code", "unused_methods"),
     },
     workspaces: globalMeta.workspaces,
@@ -1328,7 +1404,7 @@ function validateOutput(name, value) {
   const required = {
     symbols: ["_meta", "symbols"], call_graph: ["_meta", "nodes", "edges"], sql_usage: ["_meta", "sqls", "usages"],
     transactions: ["_meta", "boundaries"], external_io: ["_meta", "communications"], env_branches: ["_meta", "branches"],
-    schema: ["_meta", "tables"], api_contracts: ["_meta", "endpoints", "consumers", "matches", "unmatched_endpoints", "unmatched_consumers"],
+    schema: ["_meta", "tables"], api_contract: ["_meta", "endpoints", "consumers", "matches", "unmatched_endpoints", "unmatched_consumers"],
     dead_code: ["_meta", "unused_methods", "unused_sql_ids", "unused_jsps"],
   }[name] || [];
   const missing = required.filter((key) => !(key in value));
@@ -1365,8 +1441,8 @@ export function buildIndex(options) {
     facts.push(result); analyzed += 1;
   }
   for (const entry of readdirSync(cacheFiles)) if (entry.endsWith(".json") && !activeCache.has(entry)) rmSync(join(cacheFiles, entry));
-  const generatedAt = new Date().toISOString();
-  const latestMtime = files.length ? new Date(Math.max(...files.map((item) => item.stats.mtimeMs))).toISOString() : generatedAt;
+  const generatedAt = kstIso();
+  const latestMtime = files.length ? kstIso(new Date(Math.max(...files.map((item) => item.stats.mtimeMs)))) : generatedAt;
   const complexity = calculateComplexity(facts, config, files.length);
   const coverage = adapterCoverage(facts, unsupportedFiles);
   normalized.tier = normalized.requestedTier === "Auto" ? complexity.recommended_tier : normalized.requestedTier;
@@ -1393,10 +1469,18 @@ export function buildIndex(options) {
       globalMeta.ai_enrichment = { applied_at: generatedAt, applied: 0, rejected: 0, error: error.message, patch: slash(relative(root, stalePatch)) };
     }
   }
-  const managed = new Set(["symbols", "call_graph", "sql_usage", "transactions", "external_io", "env_branches", "schema", "api_contracts", "dead_code"]);
+  const managed = new Set(["symbols", "call_graph", "sql_usage", "transactions", "external_io", "env_branches", "schema", "api_contract", "dead_code"]);
   for (const name of managed) {
     const path = join(indexDir, `${name}.json`);
-    if (!output[name]) { if (existsSync(path)) rmSync(path); continue; }
+    /*
+     * 이번 회차에 만들지 못한 인덱스라도, 그 파일을 analyzer(LLM)가 썼다면 지우지 않는다.
+     * 프레임워크를 인식하지 못한 프로젝트의 api_contract.json이나 라이브 DB에서 뜬 schema.json이
+     * 재인덱싱 한 번에 조용히 사라지기 때문이다. 인덱서가 쓴 것만 인덱서가 회수한다.
+     */
+    if (!output[name]) {
+      if (existsSync(path) && readJson(path, {})?._meta?.generator === "deterministic-indexer") rmSync(path);
+      continue;
+    }
     validateOutput(name, output[name]);
     atomicJson(path, output[name]);
   }

@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+﻿import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { applyAiPatch, buildIndex } from "../build-index.mjs";
@@ -47,12 +47,12 @@ class Repository { public void remove() {} }
 
       const first = buildIndex({ root, mode: "init", tier: "Standard", config: null });
       assert.ok(first.indexes.includes("symbols"), "symbols index");
-      assert.ok(first.indexes.includes("api_contracts"), "api contracts index");
+      assert.ok(first.indexes.includes("api_contract"), "api contracts index");
       assert.ok(first.indexes.includes("sql_usage"), "sql usage index");
       assert.ok(json(root, "symbols.json").symbols.some((item) => item.id === "com.acme.OrderController"), "OrderController symbol");
       const callGraph = json(root, "call_graph.json");
       assert.ok(callGraph.edges.some((item) => item.type === "call" && item.to.endsWith("OrderService.cancel")), `service.cancel call edge: ${JSON.stringify(callGraph)}`);
-      assert.equal(json(root, "api_contracts.json").matches.length, 1);
+      assert.equal(json(root, "api_contract.json").matches.length, 1);
       assert.equal(json(root, "sql_usage.json").sqls[0].id, "OrderMapper.cancel");
       assert.equal(json(root, "_meta.json").init_layout, "monorepo");
 
@@ -236,8 +236,8 @@ class Repository { public void remove() {} }
       assert.equal(input.analyzer_contract.digest_guided_selective_read, true);
       // Standard에서도 데드 코드 후보와 API 인덱스를 갖는다 (이전에는 Full/pair 전용이었다).
       assert.ok(digest.dead_code_candidates.some((item) => item.id.endsWith("OrderService.neverCalled")), `데드 코드 후보: ${JSON.stringify(digest.dead_code_candidates)}`);
-      assert.ok(json(root, "_meta.json").indexes.includes("api_contracts"), "단일 저장소도 api_contracts 생성");
-      assert.equal(json(root, "api_contracts.json").matches.length, 0, "consumer가 없으면 매칭은 빈 배열");
+      assert.ok(json(root, "_meta.json").indexes.includes("api_contract"), "단일 저장소도 api_contract 생성");
+      assert.equal(json(root, "api_contract.json").matches.length, 0, "consumer가 없으면 매칭은 빈 배열");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

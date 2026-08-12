@@ -24,8 +24,22 @@ SECURITY_PATTERNS = [
     ("INTERNAL_DOMAIN", re.compile(r"\.(corp|internal|local|lan)\b")),
 ]
 
-CORE_INDEX_FILES = ["call_graph.json", "symbols.json", "transactions.json", "external_io.json"]
+# 어떤 프로젝트에서도 있어야 하는 인덱스. transactions/external_io 등은 해당 사실이 없으면
+# 생성기가 아예 만들지 않는 것이 정상이라(예: @Transactional 없는 SPA) 필수에서 뺐다 —
+# 대신 아래 OPTIONAL은 _meta.json의 indexes 선언과 대조해 "만들었다고 해놓고 없는" 경우만 잡는다.
+CORE_INDEX_FILES = ["call_graph.json", "symbols.json"]
+OPTIONAL_INDEX_FILES = [
+    "transactions.json", "external_io.json", "sql_usage.json", "schema.json",
+    "api_contract.json", "dead_code.json", "env_branches.json",
+]
+# `_`로 시작하는 파일은 인덱스 페이로드가 아니라 제어 파일이다(_meta.json = 전역 매니페스트,
+# _analysis_input.json = analyzer 입력 digest, _ai_patch.json = LLM 보강 patch).
+# 이들은 _meta 블록을 갖지 않는 것이 정상이라 9필드 규칙 대상에서 제외한다.
 SKELETON_MARKER = "pattern-extractor 에이전트가 채울 예정입니다"
+SOURCE_EXT_HINTS = (
+    ".java", ".kt", ".kts", ".cs", ".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
+    ".vue", ".go", ".php", ".rb", ".jsp", ".asp", ".aspx", ".html", ".htm", ".xml", ".sql",
+)
 
 # docs/index-spec.md 공통 규칙의 _meta 필수 필드 (node_count/edge_count는 call_graph.json
 # 등 그래프형 파일에만 의미가 있어 별도로 검사한다 — 여기엔 모든 인덱스 파일 공통분만 둔다)
@@ -43,10 +57,28 @@ PROJECT_PATH_PREFIXES = (
 def _read(path):
     if not os.path.isfile(path):
         return None
+    # 레거시 한국어 소스는 CP949(EUC-KR)인 경우가 흔하다. 예전에는 UnicodeDecodeError가
+    # 그대로 올라와 스팟체크가 프로젝트 하나 때문에 통째로 죽었다 — 읽기는 항상 성공시킨다.
+    for encoding in ("utf-8-sig", "cp949"):
+        try:
+            with open(path, "r", encoding=encoding) as f:
+                return f.read()
+        except UnicodeDecodeError:
+            continue
+        except OSError:
+            return None
     try:
-        with open(path, "r", encoding="utf-8-sig") as f:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
             return f.read()
     except OSError:
+        return None
+
+
+def _read_json(path):
+    try:
+        with open(path, "r", encoding="utf-8-sig") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
         return None
 
 
@@ -319,6 +351,18 @@ def _call_graph_integrity_issues(data, decisions):
             f"- call_graph.json: FAIL (dangling edge {len(dangling)}건 — nodes에 없는 from/to 참조, 예: {sample})"
         )
 
+    # 노드 중복. 여러 생성기의 결과를 병합할 때(예: 결정론적 인덱서 위에 Vue 추출기를 얹을 때)
+    # id 기준 dedupe를 빠뜨리면 in-degree·허브 랭킹·데드코드 집계가 조용히 왜곡된다.
+    if len(ids) != len(nodes):
+        dup = len(nodes) - len(ids)
+        seen, dup_ids = set(), []
+        for n in nodes:
+            nid = n.get("id")
+            if nid in seen and nid not in dup_ids:
+                dup_ids.append(str(nid))
+            seen.add(nid)
+        fail_lines.append(f"- call_graph.json: FAIL (중복 node id {dup}건, 예: {', '.join(dup_ids[:5])})")
+
     meta = data.get("_meta") or {}
     if "node_count" in meta and meta.get("node_count") != len(nodes):
         fail_lines.append(f"- call_graph.json: FAIL (_meta.node_count={meta.get('node_count')} ≠ 실제 노드 {len(nodes)})")
@@ -330,11 +374,9 @@ def _call_graph_integrity_issues(data, decisions):
         t = e.get("type")
         edge_types[t] = edge_types.get(t, 0) + 1
 
-    files_total = meta.get("files_total") or 0
-    if files_total and files_total > 1 and edge_types.get("import", 0) == 0:
-        warn_notes.append(
-            f"call_graph.json: 파일 {files_total}개인데 import edge 0개 — 임포트 그래프 추출 누락 의심 (analyzer.md Step 8 참고)"
-        )
+    # import edge 부재는 결함이 아니다. 결정론적 인덱서(build-index.mjs)는 파일 노드가 없는
+    # 순수 심볼 그래프라 import 엣지를 만들지 않는다 — 만들면 to가 노드가 아니라서 전부
+    # dangling이 된다. 파일 단위 관계를 내는 생성기(index_extractor_vue.py 등)만 이 엣지를 쓴다.
 
     class_count = len([n for n in nodes if n.get("type") == "class"])
     if class_count == 0:
@@ -394,10 +436,27 @@ def check7_index_integrity(root, analyzer_report_text, decisions=None):
         else:
             lines.append(f"- {name}: PASS")
 
-    # _meta 필수 필드 확인 — 존재하는 인덱스 파일 전부 (core 4종에 한정하지 않음)
+    # 선택 인덱스는 없어도 정상이지만, _meta.json이 "생성했다"고 선언한 것이 실제로 없으면 FAIL이다.
+    declared_missing = []
+    manifest = _read_json(os.path.join(index_dir, "_meta.json"))
+    declared = manifest.get("indexes") if isinstance(manifest, dict) else None
+    if isinstance(declared, list):
+        for key in declared:
+            path = os.path.join(index_dir, f"{key}.json")
+            if not os.path.isfile(path):
+                declared_missing.append(f"{key}.json")
+        if declared_missing:
+            lines.append(f"- _meta.json: FAIL (indexes에 선언됐으나 파일 없음: {', '.join(declared_missing)})")
+    present_optional = [n for n in OPTIONAL_INDEX_FILES if os.path.isfile(os.path.join(index_dir, n))]
+    if present_optional:
+        lines.append(f"- 선택 인덱스 존재: {', '.join(present_optional)}")
+
+    # _meta 필수 필드 확인 — 존재하는 인덱스 파일 전부 (core에 한정하지 않음, 제어 파일은 제외)
     all_index_files = sorted(glob.glob(os.path.join(index_dir, "*.json"))) if os.path.isdir(index_dir) else []
     for path in all_index_files:
         name = os.path.basename(path)
+        if name.startswith("_"):
+            continue
         try:
             with open(path, "r", encoding="utf-8-sig") as f:
                 data = json.load(f)
@@ -416,8 +475,8 @@ def check7_index_integrity(root, analyzer_report_text, decisions=None):
         lines.append("- 신뢰도 불일치: 분석 신뢰도 MEDIUM 이상인데 call_graph가 비어있음")
 
     fail = (
-        missing_core >= 2 or parse_failures > 0 or call_graph_empty
-        or stale_mismatch or meta_fail or cg_issue_fail
+        missing_core >= 1 or parse_failures > 0 or call_graph_empty
+        or stale_mismatch or meta_fail or cg_issue_fail or bool(declared_missing)
     )
     return fail, "\n".join(lines), warn_notes
 
@@ -441,6 +500,34 @@ def _evenly_spaced(items, n):
 
 
 NODE_TYPE_PREFIX_RE = re.compile(r"^[a-z][a-z_-]*:(?!//)")
+
+
+SYNTHETIC_SQL_ID_RE = re.compile(r".+:\d+:(raw|literal|inline)$", re.IGNORECASE)
+
+
+def _sql_probe(entry):
+    """SQL 항목을 소스와 대조할 때 실제로 찾아볼 문자열을 고른다.
+    MyBatis 매퍼처럼 이름 있는 id는 그 id가 파일에 그대로 있지만, 문자열 리터럴에서 뽑은
+    SQL은 id가 'app/api/x.py:62:raw'처럼 위치 기반이라 소스에 있을 리가 없다 — 이때는
+    id 대신 대상 테이블명이나 SQL 본문 앞부분을 찾는다."""
+    sql_id = str(entry.get("id") or "")
+    if sql_id and not SYNTHETIC_SQL_ID_RE.match(sql_id):
+        return sql_id, "id"
+    tables = [t for t in (entry.get("tables") or []) if isinstance(t, str) and t.strip()]
+    if tables:
+        return tables[0].split(".")[-1].strip(), "테이블명"
+    preview = str(entry.get("text_preview") or entry.get("text") or "").strip()
+    if preview:
+        return " ".join(preview.split()[:3]), "SQL 본문"
+    return "", "대조 기준"
+
+
+def _looks_like_path(target):
+    """'src/stores/theme.js' → True, 'src.stores.theme' / 'com.example.Foo' → False.
+    import edge의 to는 생성기마다 파일 경로형과 심볼 id형으로 갈린다."""
+    if "/" in target or "\\" in target:
+        return True
+    return target.lower().endswith(SOURCE_EXT_HINTS)
 
 
 def _simple_name(symbol_id):
@@ -506,23 +593,34 @@ def check7b_spotcheck(root):
             if import_edges:
                 ihits = ichecked = 0
                 imisses = []
+                node_ids = set(node_file)
                 for e in _evenly_spaced(import_edges, SPOTCHECK_EDGE_SAMPLES):
-                    to_rel = NODE_TYPE_PREFIX_RE.sub("", str(e.get("to")), count=1)
+                    target = str(e.get("to"))
+                    to_rel = NODE_TYPE_PREFIX_RE.sub("", target, count=1)
                     ichecked += 1
-                    if os.path.isfile(os.path.join(root, to_rel)):
+                    if _looks_like_path(to_rel):
+                        # 파일 경로형 to — 실제 파일이 있어야 한다
+                        ok = os.path.isfile(os.path.join(root, to_rel))
+                        reason = "대상 파일 없음"
+                    else:
+                        # 심볼 id형 to (예: com.example.OrderService, src.stores.theme) — 노드로 존재해야 한다.
+                        # 예전엔 이것도 파일로 찾아서 Java·Kotlin·C# 인덱스가 상시 오탐 FAIL이었다.
+                        ok = target in node_ids
+                        reason = "대상 노드 없음"
+                    if ok:
                         ihits += 1
                     else:
-                        imisses.append(f"{e.get('from')} → {e.get('to')}")
+                        imisses.append(f"{e.get('from')} → {e.get('to')} ({reason})")
                 if ichecked >= SPOTCHECK_MIN_CHECKABLE:
                     irate = ihits / ichecked
                     istatus = "PASS" if irate >= SPOTCHECK_PASS_RATE else "FAIL"
                     if istatus == "FAIL":
                         fail = True
-                    lines.append(f"- call_graph import 엣지 대상 파일 존재 확인: {istatus} ({ihits}/{ichecked}, 기준 {int(SPOTCHECK_PASS_RATE*100)}%)")
+                    lines.append(f"- call_graph import 엣지 대상 존재 확인: {istatus} ({ihits}/{ichecked}, 기준 {int(SPOTCHECK_PASS_RATE*100)}%)")
                     for m in imisses[:5]:
-                        lines.append(f"  - 대상 파일 없음: {m}")
+                        lines.append(f"  - 불일치: {m}")
                 else:
-                    lines.append(f"- call_graph import 엣지 대상 파일 존재 확인: 판정 불가 (대조 가능 {ichecked}개 < {SPOTCHECK_MIN_CHECKABLE})")
+                    lines.append(f"- call_graph import 엣지 대상 존재 확인: 판정 불가 (대조 가능 {ichecked}개 < {SPOTCHECK_MIN_CHECKABLE})")
             if missing_files:
                 lines.append(f"  - 소스 파일 자체가 없는 엣지 {missing_files}개 (경로 오류 또는 stale 인덱스 의심)")
 
@@ -548,10 +646,11 @@ def check7b_spotcheck(root):
                     checked += 1
                     continue
                 checked += 1
-                if str(s["id"]) in text:
+                probe, label = _sql_probe(s)
+                if probe and re.search(re.escape(probe), text, re.IGNORECASE):
                     hits += 1
                 else:
-                    misses.append(f"{s['id']} ({s['file']}에 미존재)")
+                    misses.append(f"{s['id']} ({s['file']}에 {label} 미존재)")
             if checked >= SPOTCHECK_MIN_CHECKABLE:
                 rate = hits / checked
                 status = "PASS" if rate >= SPOTCHECK_PASS_RATE else "FAIL"

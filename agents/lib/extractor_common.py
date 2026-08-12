@@ -162,43 +162,75 @@ def _load_json(path):
         return None
 
 
+def _dedupe_by_id(items):
+    """id 기준 first-writer-wins. 반환: (병합 목록, 충돌 건수)."""
+    seen, result, collisions = set(), [], 0
+    for item in items:
+        key = item.get("id")
+        if key in seen:
+            collisions += 1
+            continue
+        seen.add(key)
+        result.append(item)
+    return result, collisions
+
+
+def _dump_atomic(path, payload):
+    """같은 회차에 여러 추출기가 같은 파일을 이어 쓰므로, 중간에 죽어도 반쪽 JSON이 남지 않게 한다."""
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+    os.replace(tmp, path)
+
+
 def write_outputs(root, generator, symbols, nodes, edges, files_scanned, files_total):
     """symbols.json + call_graph.json을 _workspace/index/에 표준 스키마로 저장한다.
-    이미 파일이 있으면(모노레포 등에서 다른 스택 추출기가 같은 회차에 먼저 실행된 경우)
-    덮어쓰지 않고 병합한다 — harness-init 2-0.5는 감지된 스택마다 이 함수를 순서대로
-    호출하므로, 병합하지 않으면 나중에 실행된 추출기가 앞선 결과를 지워버린다."""
+    이미 파일이 있으면(모노레포에서 다른 스택 추출기가 먼저 실행됐거나, build-index.mjs가
+    만든 인덱스 위에 Vue 결과를 얹는 경우) 덮어쓰지 않고 병합한다 — 병합하지 않으면 나중에
+    실행된 쪽이 앞선 결과를 지워버린다. 노드·심볼은 id 기준으로 중복을 제거한다(두 생성기가
+    같은 메서드를 각자 노드화하므로, 안 하면 in-degree·허브·데드코드 집계가 왜곡된다)."""
     index_dir = os.path.join(root, "_workspace", "index")
     os.makedirs(index_dir, exist_ok=True)
     symbols_path = os.path.join(index_dir, "symbols.json")
     cg_path = os.path.join(index_dir, "call_graph.json")
 
     existing_symbols = _load_json(symbols_path)
-    prev_scanned, prev_total = 0, 0
+    prev_scanned, prev_total, prev_generator = 0, 0, ""
+    symbol_collisions = node_collisions = 0
     if existing_symbols and isinstance(existing_symbols.get("symbols"), list):
-        symbols = existing_symbols["symbols"] + symbols
+        symbols, symbol_collisions = _dedupe_by_id(existing_symbols["symbols"] + symbols)
         prev_meta = existing_symbols.get("_meta") or {}
         prev_scanned = prev_meta.get("files_scanned") or 0
         prev_total = prev_meta.get("files_total") or 0
+        prev_generator = prev_meta.get("generator") or ""
 
     existing_cg = _load_json(cg_path)
     if existing_cg and isinstance(existing_cg.get("nodes"), list):
-        nodes = existing_cg["nodes"] + nodes
+        nodes, node_collisions = _dedupe_by_id(existing_cg["nodes"] + nodes)
         edges = dedupe_edges(existing_cg.get("edges", []) + edges)
 
-    total_scanned = prev_scanned + files_scanned
-    total_files = prev_total + files_total
+    # 스택별 추출기끼리는 서로 다른 파일을 보므로 합계가 맞다. 반면 build-index.mjs는 이미
+    # 프로젝트 전체를 세었으므로 그 위에 얹을 때 더하면 실제 파일 수를 넘는다 — 이때는 최댓값.
+    if prev_generator == "deterministic-indexer":
+        total_scanned = max(prev_scanned, files_scanned)
+        total_files = max(prev_total, files_total)
+    else:
+        total_scanned = prev_scanned + files_scanned
+        total_files = prev_total + files_total
 
     symbols_meta = base_meta(root, generator, total_scanned, total_files)
     symbols_meta["node_count"] = len(symbols)
     symbols_meta["edge_count"] = 0
-    with open(symbols_path, "w", encoding="utf-8") as f:
-        json.dump({"_meta": symbols_meta, "symbols": symbols}, f, indent=2, ensure_ascii=False)
+    if symbol_collisions:
+        symbols_meta["merge_collisions"] = symbol_collisions
+    _dump_atomic(symbols_path, {"_meta": symbols_meta, "symbols": symbols})
 
     cg_meta = base_meta(root, generator, total_scanned, total_files)
     cg_meta["node_count"] = len(nodes)
     cg_meta["edge_count"] = len(edges)
-    with open(cg_path, "w", encoding="utf-8") as f:
-        json.dump({"_meta": cg_meta, "nodes": nodes, "edges": edges}, f, indent=2, ensure_ascii=False)
+    if node_collisions:
+        cg_meta["merge_collisions"] = node_collisions
+    _dump_atomic(cg_path, {"_meta": cg_meta, "nodes": nodes, "edges": edges})
 
 
 def print_summary(symbols, nodes, edges, files_scanned, files_total):

@@ -120,11 +120,14 @@ def _section_dead_code(data):
         return None
     methods = data.get("unused_methods") or []
     sql_ids = data.get("unused_sql_ids") or []
-    low_conf = sum(1 for m in methods if isinstance(m, dict) and m.get("confidence") == "low")
+    # 생성기마다 "low"/"LOW"로 갈린다 (스키마 enum은 대문자, analyzer는 소문자로 써 왔음)
+    low_conf = sum(1 for m in methods if isinstance(m, dict) and str(m.get("confidence") or "").lower() == "low")
     low_note = f" (그중 confidence=low {low_conf}개 — 샘플링 그래프 파생)" if low_conf else ""
+    suspect = sum(1 for m in methods if isinstance(m, dict) and m.get("entrypoint_suspect"))
+    suspect_note = f"\n- 그중 진입점 의심 {suspect}개 (같은 파일에 API 핸들러 존재 — 데드 코드가 아닐 수 있음)" if suspect else ""
     return (
         "## B. 데드 코드 후보\n"
-        f"- 미사용 public 메서드 후보: {len(methods)}개{low_note} (확정 아님, 리플렉션/동적 호출 확인 필요)\n"
+        f"- 미사용 public 메서드 후보: {len(methods)}개{low_note} (확정 아님, 리플렉션/동적 호출 확인 필요){suspect_note}\n"
         f"- 미사용 SQL ID 후보: {len(sql_ids)}개\n"
         "- 인덱스: _workspace/index/dead_code.json\n"
     )

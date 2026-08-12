@@ -15,7 +15,8 @@
           "file": { "type": "string" },
           "line": { "type": ["integer", "null"] },
           "visibility": { "type": "string" },
-          "reason": { "type": "string" }
+          "reason": { "type": "string" },
+          "entrypoint_suspect": { "type": "boolean" }
         }
       }
     },
