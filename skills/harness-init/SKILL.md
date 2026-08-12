@@ -212,7 +212,11 @@ _workspace/04_qa_report.md            ← qa
 _workspace/05_patterns_extracted.md   ← pattern-extractor
 _workspace/06_eval_report.md          ← harness-evaluator (Phase 4)
 _workspace/index/*.json               ← analyzer (인덱스)
+_workspace/ai-budget.json             ← ai-budget.mjs (2-0.5 Step F)
+_workspace/validator_schema.json      ← validate-harness.mjs (2-4)
 ```
+
+`ai_budget_session` 값을 이 단계에서 한 번 생성한다 — `now_kst.py` 결과에 `init-` 접두사를 붙인 문자열(예: `init-2026-08-12-143000`). `00_init_scope.md`의 "기계 실행 값"에 `tier:`와 나란히 `- ai_budget_session: [값]` 행으로 추가 기록하고, 부분 재실행·인덱스 리프레시는 이미 기록된 값을 재사용한다(재초기화 시 예산이 조용히 리셋되는 것을 막기 위함 — `ai-budget.mjs init`은 같은 session이면 멱등).
 
 ---
 
@@ -301,6 +305,18 @@ python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/index_extractor_vue.py" --root "[절�
 
 > analyzer가 계속 직접 작성하는 인덱스는 `owasp_top10.json`·`data_flow.json`·`client_index.json` 3종이다. 인덱서는 이 파일들을 만들지도 지우지도 않는다.
 
+**Step F — AI 호출 예산 초기화**
+
+node ≥ 18일 때만 (Step A 프로브 결과 재사용):
+
+```powershell
+node "$env:CLAUDE_PLUGIN_ROOT/agents/lib/ai-budget.mjs" init --root "[절대경로]" --session "[ai_budget_session]" --initial 3 --retries 2
+```
+
+`--initial 3`은 analyzer+writer+pattern-extractor(Lite 폐지로 Tier 무관 항상 3역할), `--retries 2`는 Phase 4 한 라운드가 `T-A-RETRY`+`T-W-RETRY`를 동시에 낼 수 있어서다(upstream 원본의 1로는 부족). 이후 2-1/2-2/2-3의 각 `Agent()` 호출 직전과 Phase 4의 각 재실행 직전에 `claim`을 거쳐야 한다 — `claim`이 실패(exit 1)하면 그 `Agent()` 호출을 하지 않고 레인을 중단한다(예산 소진은 이 저장소의 일반적인 "WARN 후 계속" 관례의 예외 — 하드 스톱이 의도다).
+
+node 없으면 이 Step 전체를 스킵하고 `_workspace/00_stack_precheck.json`에 "AI 예산 강제 미적용(node 없음)"으로 기록한다(기존 폴백 표시 관례와 동일) — 그 경우 2-1/2-2/2-3/Phase 4의 `claim` 호출도 전부 생략하고 오늘처럼 무제한 진행한다.
+
 ### 2-1. analyzer 호출
 
 부분 재실행 + `_workspace/01_analyzer_report.md` 존재 시 스킵.
@@ -311,6 +327,12 @@ Tier별 mode/model 결정:
 | Standard | `init` (A + 스택 해당 Phase B만) | sonnet |
 | Full | `init` (A + B 전체) | opus |
 | 업데이트·인덱스 리프레시 (Step 3 표) | `incremental` (변경 파일만 재분석 + stale 엣지 무효화) | sonnet (Tier 무관) |
+
+AI 예산이 초기화됐으면(Step F) claim 먼저:
+```powershell
+node "$env:CLAUDE_PLUGIN_ROOT/agents/lib/ai-budget.mjs" claim --root "[절대경로]" --session "[ai_budget_session]" --role analyzer --kind initial
+```
+(exit 1이면 이 Agent 호출을 하지 않고 레인 중단 — Step F 참조)
 
 ```
 Agent(
@@ -345,6 +367,8 @@ analyzer가 `call_graph.json`을 직접 고치지 않고 patch로 내는 이유�
 `_workspace/01_analyzer_report.md` 존재 확인 후.
 
 model: 모든 Tier에서 sonnet (2026-07-14 하이브리드 빌더 도입으로 writer 작업이 스킬 3종 + JSON 2개로 줄어 opus 불필요 — 2026-07-23 변경).
+
+AI 예산이 초기화됐으면 claim 먼저: `node "$env:CLAUDE_PLUGIN_ROOT/agents/lib/ai-budget.mjs" claim --root "[절대경로]" --session "[ai_budget_session]" --role writer --kind initial` (exit 1이면 중단).
 
 ```
 Agent(
@@ -383,6 +407,8 @@ python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/skills_builder.py" --root "[절대경
 
 2-2.3(skills_builder.py)이 patterns/ 스켈레톤을 생성한 뒤에만 호출한다 — 스켈레톤은 writer(2-2)가 아니라 skills_builder.py(2-2.3)의 산출물이므로, T-P를 TaskCreate 의존성만으로 착수시키지 말고 2-2.3 완료를 확인하고 시작한다.
 
+AI 예산이 초기화됐으면 claim 먼저: `node "$env:CLAUDE_PLUGIN_ROOT/agents/lib/ai-budget.mjs" claim --root "[절대경로]" --session "[ai_budget_session]" --role pattern-extractor --kind initial` (exit 1이면 중단).
+
 ```
 Agent(
   subagent_type="general-purpose",
@@ -405,11 +431,19 @@ python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/validator_checks.py" --root "[절대�
 
 실패 시(python 미설치 등) WARN 후 계속 진행 — validator가 해당 체크를 직접 수행하는 기존 방식으로 폴백.
 
+node ≥ 18일 때 이어서(node 없으면 스킵, WARN 후 계속):
+
+```powershell
+node "$env:CLAUDE_PLUGIN_ROOT/agents/lib/validate-harness.mjs" --root "[절대경로]" --plugin-root "$env:CLAUDE_PLUGIN_ROOT" --tier "[Standard|Full]" --out "_workspace/validator_schema.json"
+```
+
+`_workspace/index/*.json`을 `docs/index-schema/*.json` 대조로 스키마 검증한다 — `validator_checks.py`의 check7/7b(내용 정확성, 실제 소스 대조)와 겹치지 않는 별개 층(형태 검증)이라 병행 실행한다. exit 1이면 스키마 FAIL이 있다는 뜻이지 스크립트 실패가 아니다(`_out` 파일은 정상적으로 쓰여진다) — Phase 4의 인덱스 무결성 게이트가 이 결과를 읽는다.
+
 ```
 Agent(
   subagent_type="general-purpose",
   description="T-V · validator · 하네스 구조와 근거 검증",
-  prompt="<validator 에이전트 지침. 프로젝트 루트: [절대경로]. tier: [Standard/Full]. 입력: _workspace/01_analyzer_report.md, _workspace/02_writer_files.md, _workspace/validator_mechanical.json(있으면), (있으면) _workspace/index/. 출력: _workspace/03_validator_report.md>",
+  prompt="<validator 에이전트 지침. 프로젝트 루트: [절대경로]. tier: [Standard/Full]. 입력: _workspace/01_analyzer_report.md, _workspace/02_writer_files.md, _workspace/validator_mechanical.json(있으면), _workspace/validator_schema.json(있으면), (있으면) _workspace/index/. 출력: _workspace/03_validator_report.md>",
   model="sonnet"
 )
 ```
@@ -471,6 +505,9 @@ Agent(
 
 구조 검증 (validator):
 [신뢰도 점수 + 보완 권장 항목]
+[validator_schema.json 있으면: 인덱스 스키마 검증 PASS/WARN/FAIL, plugin_contract_failures 있으면 "플러그인 인덱스 계약 결함" 별도 표기]
+
+AI 예산 증적 (ai-budget.json 있으면): [session] · initial [used]/[limit] · retries [used]/[limit]
 
 패턴 추출 (pattern-extractor):
 - 처리한 패턴 파일: N개
@@ -658,7 +695,12 @@ harness-evaluator의 4개 차원은 harness *파일*이 인덱스를 "참조하�
 - `warns` 배열에 "analyzer.md Step 8 참고" 문구가 포함된 항목 1개 이상 (call_graph 추출 누락 의심 휴리스틱 — import/inherit/inject 편중 감지)
 - `warns` 배열에 "generated_at" 문구가 포함된 항목 1개 이상 (실제 시각 미조회 의심)
 
-위 중 하나라도 해당하면, harness-evaluator 점수가 PASS여도 **`analyzer` 강제 재실행**을 fix_targets에 추가한다 — task-id `T-A-RETRY`, scope는 `report_fragments["7"]`(및 해당 warn 라인) 원문 그대로, instruction은 "다음 기계 검증 결과의 FAIL/WARN 항목을 전부 해소하라(analyzer.md '작성 후 자체 검증' 절 기준으로 dangling 0건·`_meta` 9필드·edge 종류 완전성을 스스로 재확인할 것): [report_fragments['7'] 및 관련 warn 원문]". harness-evaluator가 이미 `analyzer` fix_target을 반환했으면 이 게이트의 scope/instruction을 그 행에 병합하고, 없으면 새 행을 추가한다(행 자체는 하나만 — 같은 회차에 analyzer를 두 번 부르지 않는다).
+`_workspace/validator_schema.json`(있으면, 2-4에서 이미 생성됨)도 함께 확인한다:
+
+- `failures > 0 && plugin_contract_failures === 0` — 스키마 FAIL이 있고 원인이 플러그인 계약 결함이 아니면 위와 같은 방식으로 analyzer 재실행 대상.
+- `plugin_contract_failures > 0` — **AI로 재시도하지 않는다.** `checks` 중 `code === "PLUGIN_INDEX_CONTRACT"`인 항목은 `build-index.mjs`/`docs/index-schema/*.json` 자체의 계약 결함(analyzer나 프로젝트 소스 문제가 아님)이다. Phase 3 보고에 "플러그인 인덱스 계약 결함 — build-index.mjs/docs/index-schema 확인 필요"로 그대로 명시하고 fix_targets에 추가하지 않는다.
+
+위 중 하나라도 해당하면(`plugin_contract_failures` 단독 제외), harness-evaluator 점수가 PASS여도 **`analyzer` 강제 재실행**을 fix_targets에 추가한다 — task-id `T-A-RETRY`, scope는 `report_fragments["7"]`(및 해당 warn 라인, 있으면 `validator_schema.json`의 FAIL 메시지도 포함) 원문 그대로, instruction은 "다음 기계 검증 결과의 FAIL/WARN 항목을 전부 해소하라(analyzer.md '작성 후 자체 검증' 절 기준으로 dangling 0건·`_meta` 9필드·edge 종류 완전성을 스스로 재확인할 것): [report_fragments['7'] 및 관련 warn 원문 + validator_schema.json FAIL 메시지]". harness-evaluator가 이미 `analyzer` fix_target을 반환했으면 이 게이트의 scope/instruction을 그 행에 병합하고, 없으면 새 행을 추가한다(행 자체는 하나만 — 같은 회차에 analyzer를 두 번 부르지 않는다).
 
 이 게이트로 추가된 analyzer 재실행도 아래 "타겟 재생성 실행"과 같은 흐름으로 한 번에 처리한다 — PASS인데 이 게이트만 걸린 경우에도 재생성 1회 + harness-evaluator 재평가 1회는 그대로 실행한다(무한 루프 없음, 아래와 동일).
 
@@ -675,6 +717,11 @@ analyzer 재실행 완료 후 `validator_checks.py`를 1회 재실행해 게이�
 ### 타겟 재생성 실행 (PARTIAL/RETRY, 또는 PASS여도 위 기계 게이트가 걸린 경우)
 
 `_workspace/06_eval_report.md`의 fix_targets(+ 기계 게이트가 추가/병합한 analyzer 행)를 읽어 각 에이전트 재실행. fix_target.agent는 `analyzer` 또는 `writer`만 반환된다 — task-id는 `analyzer→T-A`, `writer→T-W` 매핑을 따른다:
+
+AI 예산이 초기화됐으면 각 fix_target마다 재실행 전 claim(exit 1이면 그 fix_target은 건너뛰고 Phase 3 보고에 "예산 소진으로 미실행" 명시, 다른 fix_target은 계속 진행):
+```powershell
+node "$env:CLAUDE_PLUGIN_ROOT/agents/lib/ai-budget.mjs" claim --root "[절대경로]" --session "[ai_budget_session]" --role "[fix_target.agent]" --kind retry --reason "[fix_target.instruction, 100자로 트림]"
+```
 
 ```
 for each fix_target in eval_report.fix_targets (우선순위 순):
@@ -741,6 +788,9 @@ Eval 품질 점수: 63/100 → 84/100 (+21, PARTIAL→PASS)
 | harness-evaluator 실패 | eval 없이 Phase 3 결과만 보고. "eval 미실행" 안내 |
 | eval 재생성 후 점수 하락 | 재생성 결과 무시, 초기 harness 유지. 1차·2차 점수 모두 사용자에게 보고 |
 | 인덱스 무결성 기계 게이트가 analyzer 재실행 후에도 미해소 | 추가 재시도 없음. Phase 3 보고에 "인덱스 무결성 잔존 이슈"로 남은 FAIL/WARN 그대로 명시 |
+| AI 예산 claim 실패(exit 1) | 해당 Agent 호출을 하지 않고 레인 중단(2-1/2-2/2-3) 또는 그 fix_target만 건너뜀(Phase 4) — 다른 예외처럼 WARN 후 계속하지 않는다, 하드 스톱이 의도 |
+| `validate-harness.mjs` 실행 자체 실패(node 없음/python 미설치급 환경 문제) | WARN 후 계속 진행 — 스키마 검증 없이 validator_checks.py/validator Agent만으로 진행(기존 방식) |
+| `validator_schema.json`의 `plugin_contract_failures > 0` | AI 재시도하지 않음. Phase 3 보고에 "플러그인 인덱스 계약 결함"으로 명시 |
 
 상충 데이터: writer가 두 패턴 발견 시 출처 병기, validator/qa가 우선순위 권고 (자동 결정 X).
 
