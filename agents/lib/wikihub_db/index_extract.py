@@ -30,7 +30,9 @@ def normalize_api_path(p):
 
 
 def extract_api_endpoints(workspace_dir):
-    data = _load(os.path.join(workspace_dir, "index", "api_contract.json"))
+    # 생성기에 따라 파일명이 api_contract.json / api_contracts.json 로 갈린다 (스키마는 동일).
+    data = (_load(os.path.join(workspace_dir, "index", "api_contract.json"))
+            or _load(os.path.join(workspace_dir, "index", "api_contracts.json")))
     rows = []
     for ep in (data or {}).get("endpoints", []):
         path = ep.get("path", "")
