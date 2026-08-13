@@ -77,7 +77,7 @@
     <div class="filter-spacer"></div>
     <button id="findBtn" class="tool-btn">찾기</button>
     <button id="resetHighlightBtn" class="tool-btn">강조 초기화</button>
-    <button id="physicsToggle" class="tool-btn active">물리엔진 ON</button>
+    <button id="physicsToggle" class="tool-btn">물리엔진</button>
   </div>
 
   <div class="main">
@@ -145,7 +145,7 @@
 
     const EDGE_TYPE_LABEL = {
       call: '호출', inject: 'DI 주입', inherit: '상속/구현',
-      reflect: '리플렉션(추정)', depends: '의존'
+      reflect: '리플렉션(추정)', depends: '의존', query: 'DB 쿼리'
     };
 
     const edgesData = {{EDGES_DATA}};
@@ -154,17 +154,35 @@
     const container = document.getElementById('graph');
     const nodes = new vis.DataSet(nodesData);
     const edges_ds = new vis.DataSet(edgesData);
-    let physicsOn = true;
+    // 노드·엣지가 많으면(임계값은 wiki_generator.py에서 결정) 기본 물리엔진 OFF + 동적 엣지
+    // 스무딩(가장 비싼 렌더 옵션) OFF — 대형 그래프에서 로딩이 급격히 느려지는 걸 막는다.
+    // 물리엔진은 토글 버튼으로 언제든 켤 수 있고, 켰다가 안정화가 끝나면 자동으로 다시 꺼서
+    // (stabilizationIterationsDone) 드래그·줌 중 불필요한 시뮬레이션 재계산을 막는다.
+    let physicsOn = {{PHYSICS_DEFAULT}};
     const network = new vis.Network(container, { nodes, edges: edges_ds }, {
       physics: {
-        enabled: true, solver: 'forceAtlas2Based',
+        enabled: physicsOn, solver: 'forceAtlas2Based',
         forceAtlas2Based: { gravitationalConstant: -60, centralGravity: 0.005, springLength: 120, springConstant: 0.04, damping: 0.4 },
         stabilization: { iterations: 250 }
       },
-      interaction: { hover: true, tooltipDelay: 200, navigationButtons: false, keyboard: false },
-      edges: { width: 1.2, smooth: { type: 'dynamic' } },
+      interaction: { hover: true, tooltipDelay: 200, navigationButtons: false, keyboard: false, hideEdgesOnDrag: true, hideEdgesOnZoom: true },
+      edges: { width: 1.2, smooth: {{EDGE_SMOOTH_DYNAMIC}} ? { type: 'dynamic' } : false },
       nodes: { borderWidth: 2, shadow: true },
       layout: { improvedLayout: true }
+    });
+
+    function syncPhysicsBtn() {
+      const btn = document.getElementById('physicsToggle');
+      btn.textContent = '물리엔진 ' + (physicsOn ? 'ON' : 'OFF');
+      btn.classList.toggle('active', physicsOn);
+    }
+    syncPhysicsBtn();
+
+    network.on('stabilizationIterationsDone', () => {
+      if (!physicsOn) return;
+      network.setOptions({ physics: { enabled: false } });
+      physicsOn = false;
+      syncPhysicsBtn();
     });
 
     function getLabel(id) {
@@ -241,8 +259,7 @@
 
     document.getElementById('physicsToggle').addEventListener('click', function() {
       physicsOn = !physicsOn;
-      this.textContent = '물리엔진 ' + (physicsOn ? 'ON' : 'OFF');
-      this.classList.toggle('active', physicsOn);
+      syncPhysicsBtn();
       network.setOptions({ physics: { enabled: physicsOn } });
     });
 

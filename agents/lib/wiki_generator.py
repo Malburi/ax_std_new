@@ -417,6 +417,57 @@ def _partner_paths(pair_cfg):
     }
 
 
+def merge_db_tables_into_graph(raw_graph, schema_json, sql_usage_json):
+    """schema.json의 테이블 + sql_usage.json의 DAO 호출 관계를 call_graph에 병합해
+    db_table 노드와 DAO→테이블 엣지를 합성한다. call_graph.json 자체에는 이 정보가 없다 —
+    결정론적 인덱서(build-index.mjs)가 테이블 정보를 schema.json에만 쓰고 call_graph 노드로는
+    만들지 않기 때문(설계상 분리). wiki 렌더링용 메모리 그래프에만 반영하고 call_graph.json
+    원본 파일은 건드리지 않는다. 전부 결정론적 매칭 — LLM 미개입.
+    반환: (병합된 그래프, db_merge_info dict — 07_wiki_build.md 보고용)"""
+    tables = (schema_json or {}).get("tables") or []
+    if not tables:
+        return raw_graph, {"table_nodes": 0, "query_edges": 0}
+
+    nodes = list(raw_graph.get("nodes") or [])
+    edges = list(raw_graph.get("edges") or [])
+    existing_ids = {n.get("id") for n in nodes}
+
+    table_node_ids = {}
+    for t in tables:
+        name = t.get("name")
+        if not name or name in table_node_ids:
+            continue
+        tid = f"db_table:{name}"
+        table_node_ids[name] = tid
+        if tid in existing_ids:
+            continue
+        col_count = len(t.get("columns") or [])
+        pk = t.get("primary_key") or []
+        note = f"컬럼 {col_count}개" + (f" · PK {', '.join(pk)}" if pk else "")
+        nodes.append({"id": tid, "label": name, "type": "table", "note": note})
+        existing_ids.add(tid)
+
+    sqls = (sql_usage_json or {}).get("sqls") or []
+    usages = (sql_usage_json or {}).get("usages") or []
+    sql_tables = {s.get("id"): (s.get("tables") or []) for s in sqls if s.get("id")}
+    sql_type = {s.get("id"): s.get("type", "") for s in sqls if s.get("id")}
+
+    seen_edges = set()
+    for u in usages:
+        method = u.get("method")
+        sql_id = u.get("sql_id")
+        if not method or method == "unknown" or method not in existing_ids:
+            continue
+        for table_name in sql_tables.get(sql_id, []):
+            tid = table_node_ids.get(table_name)
+            if not tid or (method, tid) in seen_edges:
+                continue
+            seen_edges.add((method, tid))
+            edges.append({"from": method, "to": tid, "label": sql_type.get(sql_id, ""), "type": "query"})
+
+    return {"nodes": nodes, "edges": edges}, {"table_nodes": len(table_node_ids), "query_edges": len(seen_edges)}
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description="Zero-LLM Wiki Generator — _workspace/.claude 산출물을 그대로 wiki 페이지로")
@@ -555,6 +606,8 @@ def main():
 
     # 10. Generate call-graph.html (100% Python program-side binding, 파트너 그래프 병합 포함)
     merge_info = {"merged": False}
+    db_merge_info = {"table_nodes": 0, "query_edges": 0}
+    graph_capped = None
     call_graph_path = os.path.join(project_root, "_workspace", "index", "call_graph.json")
     cg_template = read_file(os.path.join(LIB_DIR, "call-graph.template.html"))
     nodes_data, edges_data = [], []
@@ -565,6 +618,8 @@ def main():
             raw_graph, merge_info = merge_hub_partner_call_graphs(project_root, raw_graph, hub_partner_cfgs)
         else:
             raw_graph, merge_info = merge_partner_call_graph(project_root, raw_graph)
+
+        raw_graph, db_merge_info = merge_db_tables_into_graph(raw_graph, own_schema_json, own_sql_usage_json)
 
         detected_types = set()
         nodes_data = []
@@ -600,6 +655,32 @@ def main():
             # dead_code.json 스키마 키는 unused_methods (docs/index-spec.md) — "dead_code"가 아님.
             for item in dead_code_json.get("unused_methods", []):
                 dead_code[item.get("id")] = item.get("reason", "")
+
+        # 노드·엣지가 너무 많으면 브라우저 렌더링(전체 인라인 삽입 + 물리 시뮬레이션)이 급격히
+        # 느려진다 — 연결이 많은(허브) 노드·데드코드 후보·DB 테이블을 우선해 상한선까지만 표시하고,
+        # 잘렸다는 사실은 반드시 화면에 드러낸다("no silent caps" — build-index.mjs의
+        # REPRESENTATIVE_FILE_LIMITS/DIGEST_LIMITS와 동일한 원칙).
+        MAX_RENDER_NODES = 2000
+        if total_nodes > MAX_RENDER_NODES:
+            all_nodes = raw_graph.get("nodes", [])
+            def _priority(n):
+                nid = n.get("id")
+                is_priority = nid in dead_code or n.get("type") == "table"
+                return (not is_priority, -(in_degree.get(nid, 0) + out_degree.get(nid, 0)))
+            kept_nodes = sorted(all_nodes, key=_priority)[:MAX_RENDER_NODES]
+            kept_ids = {n.get("id") for n in kept_nodes}
+            kept_edges = [e for e in raw_graph.get("edges", []) if e.get("from") in kept_ids and e.get("to") in kept_ids]
+            graph_capped = {
+                "total_nodes": total_nodes, "shown_nodes": len(kept_nodes),
+                "total_edges": len(raw_graph.get("edges", [])), "shown_edges": len(kept_edges),
+            }
+            raw_graph = {"nodes": kept_nodes, "edges": kept_edges}
+            in_degree, out_degree = {}, {}
+            for edge_item in raw_graph["edges"]:
+                in_degree[edge_item.get("to")] = in_degree.get(edge_item.get("to"), 0) + 1
+                out_degree[edge_item.get("from")] = out_degree.get(edge_item.get("from"), 0) + 1
+            total_nodes = len(raw_graph["nodes"])
+            hub_threshold = max(5, int(total_nodes * 0.15))
 
         seen_node_ids = {}
         for node in raw_graph.get("nodes", []):
@@ -717,10 +798,19 @@ def main():
 
         hub_count = sum(1 for n in nodes_data if n["extra"].get("size") == 28)
         dead_count = sum(1 for n in nodes_data if n["id"] in dead_code)
+        cap_notice_html = ""
+        if graph_capped:
+            cap_notice_html = (
+                f'<div class="stat-sub" style="color:#ffb454">⚠ 전체 {graph_capped["total_nodes"]}개 노드 중 '
+                f'상위 {graph_capped["shown_nodes"]}개만 표시 (연결 많은 노드·데드코드·DB 테이블 우선) — '
+                f'엣지도 {graph_capped["total_edges"]}개 중 {graph_capped["shown_edges"]}개만 표시. '
+                f'전체는 _workspace/index/call_graph.json 참고</div>'
+            )
         stat_summary_html = (
             f'<div class="stat-hero"><div class="stat-num">{len(nodes_data)}</div>'
             f'<div class="stat-caption">노드 · {len(edges_data)} 엣지</div>'
             f'<div class="stat-sub">허브 {hub_count} · 데드코드 후보 {dead_count}</div></div>'
+            f'{cap_notice_html}'
         )
 
         js_nodes = []
@@ -734,6 +824,12 @@ def main():
         js_nodes_array_str = "[\n      " + ",\n      ".join(js_nodes) + "\n    ]"
         js_edges_array_str = "[\n      " + ",\n      ".join(js_edges) + "\n    ]"
 
+        # 노드/엣지 수가 많으면 기본 물리 시뮬레이션·동적 엣지 스무딩을 꺼서 초기 로딩을 가볍게 한다
+        # (사용자가 필요하면 화면의 "물리엔진 ON" 토글로 직접 켤 수 있음 — 상세 근거는
+        # call-graph.template.html 헤더 주석 참조).
+        physics_default = len(nodes_data) <= 300
+        edge_smooth_dynamic = len(edges_data) <= 500
+
         cg_html = cg_template\
             .replace("{{VIS_NETWORK_JS}}", vis_network_js)\
             .replace("{{VIS_NETWORK_CSS}}", vis_network_css)\
@@ -745,7 +841,9 @@ def main():
             .replace("{{COLORS}}", json.dumps(COLORS, indent=2))\
             .replace("{{NODES_DATA}}", js_nodes_array_str)\
             .replace("{{EDGES_DATA}}", js_edges_array_str)\
-            .replace("{{META}}", json.dumps(meta_data, indent=2))
+            .replace("{{META}}", json.dumps(meta_data, indent=2))\
+            .replace("{{PHYSICS_DEFAULT}}", "true" if physics_default else "false")\
+            .replace("{{EDGE_SMOOTH_DYNAMIC}}", "true" if edge_smooth_dynamic else "false")
 
         write_file(os.path.join(wiki_dir, "call-graph.html"), cg_html)
         print("Generated call-graph.html successfully.")
@@ -839,6 +937,22 @@ def main():
         )
     elif "reason" in merge_info:
         report_content += f"\n크로스 리포 병합 (call-graph.html): ⏭ 스킵 — {merge_info['reason']}\n"
+
+    if db_merge_info.get("table_nodes"):
+        report_content += (
+            f"\nDB 테이블 병합 (call-graph.html): ✅ schema.json 기반 db_table 노드 {db_merge_info['table_nodes']}개, "
+            f"sql_usage.json 기반 DAO→테이블 쿼리 엣지 {db_merge_info['query_edges']}개 합성\n"
+        )
+    else:
+        report_content += "\nDB 테이블 병합 (call-graph.html): ⏭ 스킵 — schema.json에 테이블 없음/파일 없음\n"
+
+    if graph_capped:
+        report_content += (
+            f"\n대량 그래프 표시 상한 (call-graph.html): ⚠ 노드 {graph_capped['total_nodes']}개 중 "
+            f"{graph_capped['shown_nodes']}개만 표시(연결 많은 노드·데드코드·DB 테이블 우선), "
+            f"엣지 {graph_capped['total_edges']}개 중 {graph_capped['shown_edges']}개만 표시 — "
+            f"화면에도 동일하게 안내됨. 전체 데이터는 _workspace/index/call_graph.json 참고\n"
+        )
 
     if partner:
         merged_pages = []
