@@ -17,7 +17,7 @@ logic-tracer가 "흐름 추적"이라면, feature-finder는 "위치 탐색" — 
 | 항목 | 내용 |
 |------|------|
 | **수신** | 기능명/키워드 + 프로젝트 루트 + (선택) 범위 제한 (레이어·패키지·파일 타입) |
-| **발신** | `_workspace/found_<slug>.md` + 인라인 요약 |
+| **발신** | `_workspace/reports/found_<slug>.md` + 인라인 요약 |
 | **작업 범위** | 탐색·목록화만. 코드 수정 금지 |
 | **공유 작업** | `TaskUpdate` |
 
@@ -82,7 +82,7 @@ MyBatis XML / SQL 파일에서:
   - 파일:줄  설정 키
 ```
 
-결과가 20개 초과 시 → 레이어별 상위 5개만 표시 + "전체 N개 → _workspace/found_<slug>.md 참조" 안내.
+결과가 20개 초과 시 → 레이어별 상위 5개만 표시 + "전체 N개 → _workspace/reports/found_<slug>.md 참조" 안내.
 결과가 0개 시 → 유사 키워드 제안 (철자 변형·영한 혼용 시도).
 
 ---
@@ -116,7 +116,7 @@ src/main/resources/mapper/OrderMapper.xml:88
 ── UI ──────────────────────────────────
 src/main/webapp/WEB-INF/views/order/cancel.jsp:1
 
-전체 목록: _workspace/found_<slug>.md
+전체 목록: _workspace/reports/found_<slug>.md
 
 다음 단계:
 - 흐름을 따라가려면: "주문취소 로직 흐름 추적해줘" (trace-logic)

@@ -169,7 +169,7 @@ URL 정규화: `` `/api/orders/${id}/cancel` `` → `/api/orders/{id}/cancel`
 
 ### Step 4: drift 리포트 출력
 
-`[프론트엔드 루트]/_workspace/api_drift_report.md`:
+`[프론트엔드 루트]/_workspace/reports/api_drift_report.md`:
 
 ```
 === API DRIFT REPORT ===

@@ -72,9 +72,10 @@ const EXCLUDED_DIRS = new Set([
   ".git", "node_modules", "vendor", "dist", "build", "target", "out", ".next", ".nuxt",
   "coverage", "_workspace", "_workspace_prev", ".claude", ".idea", ".vscode", "bin", "obj",
   ".venv", "venv", "env", ".tox", "site-packages", "__pycache__", ".pytest_cache", ".mypy_cache",
-  /* generate-wiki가 프로젝트 루트에 쓰는 산출물. .html이 소스 확장자라 제외하지 않으면 자기 출력을 다시 인덱싱한다. */
-  "wiki", "wiki_prev",
 ]);
+/* generate-wiki 산출물(wiki/, wiki_prev/)은 2026-08-14부터 _workspace/ 아래로 옮겨져
+ * "_workspace" 제외만으로 이미 커버된다 — 더 이상 "wiki"/"wiki_prev"를 여기 따로 둘 필요가 없다
+ * (남겨두면 대상 프로젝트가 우연히 자기 소스에 "wiki"라는 이름의 폴더를 쓸 때 잘못 제외될 수 있었다). */
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
 /* 한 미해결 항목에 후보를 무한정 적지 않는다. 후보가 수백 개면 그 자체가 "판정 불가"라는 뜻이고,
  * 실측 레거시 프로젝트에서 이 목록이 _unresolved.jsonl을 169MB까지 부풀렸다. */

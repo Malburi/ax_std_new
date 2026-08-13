@@ -38,7 +38,7 @@ description: 특정 기능·API·화면의 처리 흐름을 진입점부터 DB�
 Agent(
   subagent_type="general-purpose",
   description="로직 흐름 추적",
-  prompt="<logic-tracer 에이전트 지침. 추적 대상: [추출된 대상]. 프로젝트 루트: [절대경로]. 출력: _workspace/trace_<slug>.md>",
+  prompt="<logic-tracer 에이전트 지침. 추적 대상: [추출된 대상]. 프로젝트 루트: [절대경로]. 출력: _workspace/reports/trace_<slug>.md>",
   model="sonnet"
 )
 ```
@@ -49,7 +49,7 @@ slug: 추적 대상의 안전한 파일명 형태 (예: `order_cancel`, `payment
 
 ## Phase 3: 결과 전달
 
-`_workspace/trace_<slug>.md` 읽어 사용자에게 출력.
+`_workspace/reports/trace_<slug>.md` 읽어 사용자에게 출력.
 
 결과 끝에 다음 단계 안내:
 - 변경 계획이 있으면 → "analyze-impact로 영향도 확인 권고"

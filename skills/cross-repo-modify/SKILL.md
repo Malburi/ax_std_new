@@ -46,7 +46,7 @@ hub 쪽에서 시작하고 클라이언트가 2개 이상이면:
 
 선택된 항목만 `modify_targets = [{ label, root: partner_root, api_contract: partner_api_contract }, ...]`에 담는다 (실제로 파일까지 고칠지는 Phase 2의 영향 확인 결과와 Phase 3 게이트에서 각 타깃별로 다시 결정 — 이 체크리스트는 "확인 후보"를 좁히는 것뿐).
 
-`wiki/architecture.md`(통합본, `generate-wiki`로 생성된 경우)가 있으면 먼저 훑어 시스템 전체 구조를
+`_workspace/wiki/architecture.md`(통합본, `generate-wiki`로 생성된 경우)가 있으면 먼저 훑어 시스템 전체 구조를
 빠르게 파악하는 데 참고할 수 있다 — 단, 생성 시점 스냅샷이라 최신성이 보장되지 않으므로 실제 영향
 분석·드리프트 검증은 반드시 아래 Phase 1/2/6의 라이브 재분석(`impact-analyzer`/`api-bridge`)으로 수행한다.
 
@@ -60,7 +60,7 @@ safe-modify Phase 0과 동일한 키워드 표 적용 (`production`/`hotfix`/`le
 ## Phase 1: 시작 측 영향 분석
 
 변경 대상이 명확하면 → `impact-analyzer`를 `initiating_root`에서 실행 (analyze-impact와 동일):
-- 변경 대상 정규화 → 영향 리포트 `_workspace/impact_<slug>.md`
+- 변경 대상 정규화 → 영향 리포트 `_workspace/reports/impact_<slug>.md`
 
 리포트에서 변경 대상이 **API 엔드포인트/컨트롤러/DTO/서비스 계층 중 파트너 노출 대상**인지 판별:
 - 해당하면 → Phase 2로.
@@ -156,12 +156,12 @@ Agent(
   - TODO로 남길 부분은 명시적으로 // TODO 표기 (cross-repo-scaffold 원칙과 동일)
   - git commit 금지 — 파일 작성까지만
 
-  결과를 [target.root]/_workspace/cross_modify_partner.md에 저장.",
+  결과를 [target.root]/_workspace/reports/cross_modify_partner.md에 저장.",
   model="sonnet"
 )
 ```
 
-완료 후 각 `[target.root]/_workspace/cross_modify_partner.md` 존재 확인. 일부 대상이 실패해도 나머지는 계속 진행 — 실패 목록은 Phase 7 보고에 명시.
+완료 후 각 `[target.root]/_workspace/reports/cross_modify_partner.md` 존재 확인. 일부 대상이 실패해도 나머지는 계속 진행 — 실패 목록은 Phase 7 보고에 명시.
 
 ---
 
@@ -174,7 +174,7 @@ Agent(
 Agent(
   subagent_type="general-purpose",
   description="변경 안전성 평가 (시작 측)",
-  prompt="<change-safety 에이전트 지침. 변경 파일: [Phase 4 목록]. mode: [Phase 0 감지 모드]. impact 리포트: _workspace/impact_<slug>.md. 출력: _workspace/safety_<slug>.md>",
+  prompt="<change-safety 에이전트 지침. 변경 파일: [Phase 4 목록]. mode: [Phase 0 감지 모드]. impact 리포트: _workspace/reports/impact_<slug>.md. 출력: _workspace/reports/safety_<slug>.md>",
   model="sonnet"
 )
 ```
@@ -184,7 +184,7 @@ Agent(
 Agent(
   subagent_type="general-purpose",
   description="[target.label] 변경 안전성 평가",
-  prompt="<change-safety 에이전트 지침. 프로젝트 루트: [target.root]. 변경 파일: [target.root]/_workspace/cross_modify_partner.md 목록. mode: [Phase 0 감지 모드]. 출력: [target.root]/_workspace/safety_<slug>.md>",
+  prompt="<change-safety 에이전트 지침. 프로젝트 루트: [target.root]. 변경 파일: [target.root]/_workspace/reports/cross_modify_partner.md 목록. mode: [Phase 0 감지 모드]. 출력: [target.root]/_workspace/reports/safety_<slug>.md>",
   model="sonnet"
 )
 ```

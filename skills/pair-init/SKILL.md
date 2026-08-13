@@ -282,7 +282,7 @@ Agent(
   mode: validate.
   프론트엔드 루트: [프론트엔드 절대경로].
   파트너 api_contract: [백엔드 절대경로]/_workspace/index/api_contract.json.
-  출력: [프론트엔드 절대경로]/_workspace/api_drift_report.md.",
+  출력: [프론트엔드 절대경로]/_workspace/reports/api_drift_report.md.",
   model="sonnet"
 )
 ```
@@ -297,7 +297,7 @@ Phase 4-A와 동일한 Agent 호출을 **하네스 있는 클라이언트 전부
 발행한다 (`프론트엔드 루트`만 클라이언트마다 다르게, `파트너 api_contract`는 전부 동일한 hub의
 `api_contract.json`을 가리킴). 하네스 없는 클라이언트는 검증에서 제외.
 
-각 클라이언트의 결과는 그 클라이언트 루트의 `_workspace/api_drift_report.md`에 개별 저장된다
+각 클라이언트의 결과는 그 클라이언트 루트의 `_workspace/reports/api_drift_report.md`에 개별 저장된다
 (공유 파일 아님 — 클라이언트마다 자기 드리프트만 본다).
 
 ---
@@ -400,7 +400,7 @@ API 드리프트 검증: [실행됨/스킵]
   🔴 MISSING: N건
   🟡 MISMATCH: N건
   🟢 UNUSED: N건
-  상세: [프론트엔드]/_workspace/api_drift_report.md
+  상세: [프론트엔드]/_workspace/reports/api_drift_report.md
 
 이제 가능한 작업:
   "주문 취소 기능 전체 만들어줘"  →  cross-repo-scaffold (백엔드+프론트 동시)

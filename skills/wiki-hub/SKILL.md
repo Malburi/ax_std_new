@@ -24,13 +24,13 @@ harness가 만드는 wiki는 저장 위치에 따라 보는 방법이 다르다.
 
 | | 폴더 wiki | DB(중앙 허브) wiki |
 |---|---|---|
-| 저장 위치 | 이 프로젝트의 `wiki/` 폴더 | wiki-hub의 중앙 DB (여러 프로젝트 공유) |
-| 보는 방법 | `wiki/serve.bat` 실행 → `http://localhost:3501` | `wiki-hub-serve` 실행 → `http://localhost:8800` |
+| 저장 위치 | 이 프로젝트의 `_workspace/wiki/` 폴더 | wiki-hub의 중앙 DB (여러 프로젝트 공유) |
+| 보는 방법 | `_workspace/wiki/serve.bat` 실행 → `http://localhost:3501` | `wiki-hub-serve` 실행 → `http://localhost:8800` |
 | 범위 | 이 프로젝트 하나 | 발행된 모든 시스템 (시스템·컴포넌트로 구조화, API/DB/화면/외부연동까지 별도 인덱스 테이블로 세분 저장) |
 | 버전 이력 | 없음 (매번 덮어씀) | 있음 (비교·되돌리기 가능) |
 | 만드는 스킬 | `generate-wiki` | `generate-wiki` 다음 `publish-wiki` |
 
-**"이 프로젝트 wiki만 보고 싶다"** → `generate-wiki`가 이미 만든 `wiki/serve.bat` 안내로 끝. 이 스킬은
+**"이 프로젝트 wiki만 보고 싶다"** → `generate-wiki`가 이미 만든 `_workspace/wiki/serve.bat` 안내로 끝. 이 스킬은
 필요 없다.
 **"여러 시스템을 한 곳에서 보고 싶다" / "버전 이력을 보고 싶다"** → 이 스킬(`wiki-hub-serve`)로 진행.
 
@@ -102,7 +102,7 @@ wiki-hub-serve --root "[절대경로]" --port 8800
 
 ```powershell
 python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/wikihub_db/publish.py" --root "[절대경로]" `
-  --system-key "[시스템키]" --component-key "[컴포넌트키]" --pull --wiki-dir "[절대경로]/wiki"
+  --system-key "[시스템키]" --component-key "[컴포넌트키]" --pull --wiki-dir "[절대경로]/_workspace/wiki"
 ```
 
 > 다음 `generate-wiki`를 실행하면 harness 산출물 기준으로 다시 덮어써진다. 되돌리기는 문서 이력

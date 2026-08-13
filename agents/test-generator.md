@@ -16,7 +16,7 @@ ITO/SI에서는 "테스트 없이 수정 → 사고"가 가장 흔한 패턴이�
 
 | 항목 | 내용 |
 |------|------|
-| **수신** | (1) 대상 코드 (파일/함수/SQL) (2) `_workspace/impact_<slug>.md` (있으면) (3) `.claude/patterns/test_pattern.md` (4) 프로젝트 루트 |
+| **수신** | (1) 대상 코드 (파일/함수/SQL) (2) `_workspace/reports/impact_<slug>.md` (있으면) (3) `.claude/patterns/test_pattern.md` (4) 프로젝트 루트 |
 | **발신** | 테스트 파일들 + `_workspace/tests_<slug>.md` 요약 |
 | **작업 범위** | 테스트 골격 생성·문서화. 실제 코드(non-test) 수정 금지 |
 | **공유 작업** | `TaskUpdate` |

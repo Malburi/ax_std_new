@@ -15,7 +15,7 @@ ITO/SI에서 흔한 문제: 코드는 바뀌었는데 *문서는 그대로*. 시
 | 항목 | 내용 |
 |------|------|
 | **수신** | 변경된 파일 목록 + (선택) impact 리포트, change-safety 리포트 + 프로젝트 루트 |
-| **발신** | `_workspace/docs_sync_<slug>.md` + (사용자 승인 시) 실제 문서 업데이트 |
+| **발신** | `_workspace/reports/docs_sync_<slug>.md` + (사용자 승인 시) 실제 문서 업데이트 |
 | **작업 범위** | 동기화 권고. 사용자 명시적 승인 없이 자동 문서 수정 금지 |
 | **공유 작업** | `TaskUpdate` |
 
@@ -81,7 +81,7 @@ CLAUDE.md의 변경 이력 테이블에 추가할 항목:
 
 ## 출력
 
-`_workspace/docs_sync_<slug>.md`:
+`_workspace/reports/docs_sync_<slug>.md`:
 
 ```
 === DOC SYNC REPORT ===

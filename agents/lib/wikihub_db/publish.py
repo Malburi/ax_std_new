@@ -308,7 +308,7 @@ def main():
             system_key = config.resolve_system_key(project_root, env, args.system_key)
             component_key, component_type = config.detect_component(
                 project_root, env, args.component_key, args.component_type)
-            wiki_dir = os.path.abspath(args.wiki_dir or os.path.join(project_root, "wiki"))
+            wiki_dir = os.path.abspath(args.wiki_dir or os.path.join(project_root, "_workspace", "wiki"))
 
             if args.save_env and not args.dry_run:
                 config.upsert_env_value(project_root, "WIKI_SYSTEM_KEY", system_key)

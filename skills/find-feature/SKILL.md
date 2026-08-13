@@ -38,7 +38,7 @@ description: 기능명·키워드·도메인 용어로 관련 파일·클래스�
 Agent(
   subagent_type="general-purpose",
   description="기능 위치 탐색",
-  prompt="<feature-finder 에이전트 지침. 키워드: [추출된 키워드]. 범위: [레이어/패키지 제한]. 프로젝트 루트: [절대경로]. 출력: _workspace/found_<slug>.md>",
+  prompt="<feature-finder 에이전트 지침. 키워드: [추출된 키워드]. 범위: [레이어/패키지 제한]. 프로젝트 루트: [절대경로]. 출력: _workspace/reports/found_<slug>.md>",
   model="sonnet"
 )
 ```
@@ -49,7 +49,7 @@ slug: 키워드의 안전한 파일명 형태 (예: `payment`, `coupon`, `member
 
 ## Phase 3: 결과 전달
 
-`_workspace/found_<slug>.md` 읽어 사용자에게 요약 출력.
+`_workspace/reports/found_<slug>.md` 읽어 사용자에게 요약 출력.
 
 결과 끝에 다음 단계 안내:
 - 흐름이 궁금하면 → "trace-logic으로 실행 흐름 추적 권고"

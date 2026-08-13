@@ -17,8 +17,8 @@ ITO/SI에서는 한 번의 잘못된 수정이 야간 콜·SLA 위반·고객 �
 
 | 항목 | 내용 |
 |------|------|
-| **수신** | (1) git diff 또는 변경된 파일 목록 (2) `_workspace/impact_<slug>.md` (있으면) (3) 프로젝트 루트 |
-| **발신** | `_workspace/safety_<slug>.md` (GO/HOLD/STOP + 근거) |
+| **수신** | (1) git diff 또는 변경된 파일 목록 (2) `_workspace/reports/impact_<slug>.md` (있으면) (3) 프로젝트 루트 |
+| **발신** | `_workspace/reports/safety_<slug>.md` (GO/HOLD/STOP + 근거) |
 | **작업 범위** | 평가·리포트만. 코드 자동 수정 금지 |
 | **공유 작업** | `TaskUpdate` |
 
@@ -122,7 +122,7 @@ git diff <branch>..<branch>  # 브랜치 간 비교
 
 ### Step 2: impact 리포트 로드
 
-`_workspace/impact_<slug>.md`가 있으면 영향 정보를 그대로 활용.  
+`_workspace/reports/impact_<slug>.md`가 있으면 영향 정보를 그대로 활용.  
 없으면 → 변경 파일에서 export된 심볼을 변경 대상으로 간주하고 impact-analyzer 결과를 요약 수행.
 
 ### Step 3: 6개 차원 평가
@@ -145,7 +145,7 @@ git diff <branch>..<branch>  # 브랜치 간 비교
 
 ## 출력: 안전성 리포트
 
-`_workspace/safety_<slug>.md` 형식:
+`_workspace/reports/safety_<slug>.md` 형식:
 
 ```
 === CHANGE SAFETY REPORT ===

@@ -633,7 +633,7 @@ harness-init이 생성하는 프로젝트 전용 가이드. Claude가 매 대화
 | `index/symbols.json` | 클래스·메서드 위치 | ❌ |
 | `index/transactions.json` | 트랜잭션 경계 | ❌ |
 | `index/external_io.json` | 외부 시스템 연결 | ❌ |
-| `impact_<slug>.md` | 영향도 분석 결과 | ✅ |
+| `reports/impact_<slug>.md` | 영향도 분석 결과 (온디맨드 작업 리포트) | ✅ |
 
 > `_workspace/index/` 는 영향도 분석·안전 변경 속도에 영향을 주므로 남겨두는 것을 권장합니다.
 

@@ -45,7 +45,7 @@ SQL 입력 형식 자동 감지:
 Agent(
   subagent_type="general-purpose",
   description="SQL 종합 리뷰",
-  prompt="<sql-reviewer 지침. SQL: [원문 또는 ID]. mode: [감지된 모드]. 프로젝트 루트: [...]. 인덱스: _workspace/index/sql_usage.json, schema.json. 출력: _workspace/sql_review_<slug>.md>",
+  prompt="<sql-reviewer 지침. SQL: [원문 또는 ID]. mode: [감지된 모드]. 프로젝트 루트: [...]. 인덱스: _workspace/index/sql_usage.json, schema.json. 출력: _workspace/reports/sql_review_<slug>.md>",
   model="sonnet"
 )
 ```
@@ -94,7 +94,7 @@ SQL 리뷰 완료
 - [대안 1]
 - [대안 2]
 
-전체 리포트: _workspace/sql_review_<slug>.md
+전체 리포트: _workspace/reports/sql_review_<slug>.md
 ```
 
 ---

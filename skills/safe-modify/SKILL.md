@@ -42,7 +42,7 @@ mode는 change-safety에 전달되어 가중치 조정에 사용된다.
 변경 대상이 명확하면 → `analyze-impact` 호출 (위의 analyze-impact 스킬 그대로):
 - 변경 대상 정규화
 - 인덱스 준비
-- impact-analyzer 실행 → `_workspace/impact_<slug>.md`
+- impact-analyzer 실행 → `_workspace/reports/impact_<slug>.md`
 
 영향도 결과를 사용자에게 보여주고 *진행 여부 확인*:
 
@@ -80,7 +80,7 @@ CRITICAL 등급이면 옵션 2를 권장 + 추가 확인.
 Agent(
   subagent_type="general-purpose",
   description="변경 안전성 평가",
-  prompt="<change-safety 에이전트 지침. 변경 파일: [목록]. mode: [감지된 모드]. impact 리포트: _workspace/impact_<slug>.md. 출력: _workspace/safety_<slug>.md>",
+  prompt="<change-safety 에이전트 지침. 변경 파일: [목록]. mode: [감지된 모드]. impact 리포트: _workspace/reports/impact_<slug>.md. 출력: _workspace/reports/safety_<slug>.md>",
   model="sonnet"
 )
 ```
@@ -89,7 +89,7 @@ Agent(
 
 ## Phase 4: 결정 + 후속 조치
 
-`_workspace/safety_<slug>.md` 읽고 사용자에게 보고:
+`_workspace/reports/safety_<slug>.md` 읽고 사용자에게 보고:
 
 ```
 변경 안전성 평가 완료
@@ -124,7 +124,7 @@ Agent(
 - [...]
 권장: 변경 철회 또는 재설계
 
-전체 리포트: _workspace/safety_<slug>.md
+전체 리포트: _workspace/reports/safety_<slug>.md
 ```
 
 ---

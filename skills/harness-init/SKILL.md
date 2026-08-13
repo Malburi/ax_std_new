@@ -628,7 +628,7 @@ Phase 2에서 B-V(및 hub-roots면 전체 C*-V)가 모두 `status: done`으로 �
 
 ### P-REFRESH: API 계약과 미매칭 호출 갱신
 
-P-PAIR의 1차 드리프트 검증 결과(`_workspace/api_drift_report.md`, 1:N은 클라이언트별)에서 UNUSED/MISMATCH로 잡힌 "미매칭 호출"이 있으면, pair-init Phase 4(API 드리프트 검증)를 **1회 더** 실행해 최신 산출물 기준으로 재확인한다(레인 실행 중 파트너 쪽 writer가 막 생성한 서비스 스텁·엔드포인트가 1차 검증 시점엔 반영 안 됐을 수 있음). 미매칭 건수가 줄지 않아도 추가 재시도는 하지 않고 그대로 다음으로 진행 — 최종 드리프트 요약을 Phase 3 보고에 포함한다.
+P-PAIR의 1차 드리프트 검증 결과(`_workspace/reports/api_drift_report.md`, 1:N은 클라이언트별)에서 UNUSED/MISMATCH로 잡힌 "미매칭 호출"이 있으면, pair-init Phase 4(API 드리프트 검증)를 **1회 더** 실행해 최신 산출물 기준으로 재확인한다(레인 실행 중 파트너 쪽 writer가 막 생성한 서비스 스텁·엔드포인트가 1차 검증 시점엔 반영 안 됐을 수 있음). 미매칭 건수가 줄지 않아도 추가 재시도는 하지 않고 그대로 다음으로 진행 — 최종 드리프트 요약을 Phase 3 보고에 포함한다.
 
 ```
 [P-REFRESH] API 계약·미매칭 호출 재확인

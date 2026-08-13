@@ -39,7 +39,7 @@ description: 페어 연동된 백엔드+프론트엔드(1:1) 또는 백엔드+�
 
 `backend_root`는 hub-roots에서 항상 현재 프로젝트(hub)다.
 
-`wiki/architecture.md`(통합본, `generate-wiki`로 생성된 경우)가 있으면 먼저 훑어 기존 시스템 구조를
+`_workspace/wiki/architecture.md`(통합본, `generate-wiki`로 생성된 경우)가 있으면 먼저 훑어 기존 시스템 구조를
 빠르게 파악하는 데 참고할 수 있다 — 단, 생성 시점 스냅샷이므로 실제 API 계약·패턴은 아래처럼
 반드시 `_workspace/index/api_contract.json`·패턴 파일을 라이브로 다시 확인한다.
 
@@ -120,12 +120,12 @@ Agent(
   cross-repo 모드: true
   → Phase 3-6 (설정/라우팅 등록)까지만 수행.
   → Phase 4 (사후 안전성)는 cross-repo-scaffold가 Phase 6에서 통합 실행.
-  → 생성된 파일 목록을 [backend_root]/_workspace/cross_scaffold_backend.md에 저장.",
+  → 생성된 파일 목록을 [backend_root]/_workspace/reports/cross_scaffold_backend.md에 저장.",
   model="sonnet"
 )
 ```
 
-완료 후 `_workspace/cross_scaffold_backend.md` 존재 확인.
+완료 후 `_workspace/reports/cross_scaffold_backend.md` 존재 확인.
 
 ---
 
@@ -188,12 +188,12 @@ Agent(
     - 모바일(예: iOS/Android 네이티브, React Native, Flutter)이면 해당 스택의 화면 등록 관행을 분석 리포트에서 확인 후 그에 맞게
     - 기존 파일 덮어쓰지 말고 항목만 추가
 
-  결과를 [target.root]/_workspace/cross_scaffold_frontend.md에 저장.",
+  결과를 [target.root]/_workspace/reports/cross_scaffold_frontend.md에 저장.",
   model="sonnet"
 )
 ```
 
-완료 후 각 `[target.root]/_workspace/cross_scaffold_frontend.md` 존재 확인. 일부 실패해도 나머지는 계속 — 실패 목록은 Phase 7 보고에 명시.
+완료 후 각 `[target.root]/_workspace/reports/cross_scaffold_frontend.md` 존재 확인. 일부 실패해도 나머지는 계속 — 실패 목록은 Phase 7 보고에 명시.
 
 ---
 
@@ -210,7 +210,7 @@ Agent(
   프론트엔드 루트: [target.root].
   파트너 api_contract: [backend_root]/_workspace/index/api_contract.json.
   
-  검증 범위: 방금 생성된 파일([target.root]/_workspace/cross_scaffold_frontend.md 목록)만.
+  검증 범위: 방금 생성된 파일([target.root]/_workspace/reports/cross_scaffold_frontend.md 목록)만.
   출력: 콘솔 요약 (drift 없으면 '정합성 OK', 있으면 항목 나열). 파일 저장 불필요.",
   model="sonnet"
 )

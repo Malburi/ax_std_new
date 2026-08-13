@@ -28,7 +28,7 @@ harness 프로젝트가 쓴 같은 DB를 한 사이트에서 통합해서 보여
 harness 플러그인 (여러 프로젝트에 각각 설치)          wiki-hub (별도 서버, 운영 계획 수립 중)
 ──────────────────────────────────                ─────────────────────────
 generate-wiki                                      wiki-hub-serve  (열람·검색·버전관리, view 전용)
-  → wiki/ 폴더 생성 (zero-LLM)                           ▲
+  → _workspace/wiki/ 폴더 생성 (zero-LLM)                ▲
                                                           │ (같은 DB를 읽기만 함)
 publish-wiki 스킬                                        │
   → agents/lib/wikihub_db/publish.py 직접 실행 ─────────►│
@@ -44,7 +44,7 @@ harness가 이미 써 둔 데이터를 그대로 읽어 보여줄 수 있다. �
 갱신해야 한다(현재는 수동 동기화 — 자동 동기화 방안은 없음).
 
 `_workspace/**/*.json`(call_graph·schema·sql_usage 등 harness index + writer_decisions.json
-등)도 `wiki/*.md`·`*.html`과 동일하게 발행·버전관리된다. 여러 인원이 한 프로젝트를 나눠
+등)도 `_workspace/wiki/*.md`·`*.html`과 동일하게 발행·버전관리된다. 여러 인원이 한 프로젝트를 나눠
 맡을 때, 한 사람이 harness-init을 돌려 만든 분석 인덱스 원본을 발행해두면 다른
 팀원은 harness-init을 다시 돌리지 않고 `--pull`로 그 JSON을 자기 로컬
 `_workspace/`의 원래 경로로 받아 impact-analyzer 등 에이전트에 바로 재사용할 수 있다 —
@@ -57,8 +57,8 @@ harness-init 재실행 비용(토큰)을 아끼기 위한 용도다.
 | | 폴더 wiki | DB(중앙 저장) wiki |
 |---|---|---|
 | 만드는 명령 | `generate-wiki` (harness) | `generate-wiki` 다음 `publish-wiki` (harness 내장, wiki-hub 설치 불필요) |
-| 저장 위치 | 이 프로젝트의 `wiki/` 폴더 | 조직 공용 DB(`wikihub_*` 테이블) |
-| 보는 명령 | `wiki/serve.bat` → `:3501` | `wiki-hub-serve`(별도 서버, 운영 계획 수립 중) → 서버 배포 시 URL 안내 예정 |
+| 저장 위치 | 이 프로젝트의 `_workspace/wiki/` 폴더 | 조직 공용 DB(`wikihub_*` 테이블) |
+| 보는 명령 | `_workspace/wiki/serve.bat` → `:3501` | `wiki-hub-serve`(별도 서버, 운영 계획 수립 중) → 서버 배포 시 URL 안내 예정 |
 | 범위 | 이 프로젝트 하나 | 발행된 모든 시스템(시스템·컴포넌트로 구조화) |
 | 버전 이력 | 없음 | 있음 (비교·되돌리기 — 서버 배포 후 조회 가능, 저장 자체는 지금도 됨) |
 
@@ -81,7 +81,7 @@ TOP/LIMIT/FETCH FIRST)는 `.with_variant()`와 `select().limit()`으로 흡수�
 |--------|--------|
 | `wikihub_systems` | 시스템 마스터 — 표시이름·설명·담당·태그·보관 여부 |
 | `wikihub_components` | 시스템 안의 레이어 — backend/frontend/fullstack/batch/mobile/common |
-| `wikihub_pages` | 현재 본문 (시스템·컴포넌트·경로 3키, 체크섬·현재버전). `wiki/*.md`·`*.html`과 `_workspace/**/*.json`이 같은 테이블에 저장되며, 경로가 항상 `_workspace/`로 시작하는 쪽이 JSON 원본이다 |
+| `wikihub_pages` | 현재 본문 (시스템·컴포넌트·경로 3키, 체크섬·현재버전). `_workspace/wiki/*.md`·`*.html`과 `_workspace/**/*.json`이 같은 테이블에 저장되며, 저장된 경로 문자열이 `_workspace/`로 시작하는 쪽(위키 문서는 접두사 없이 `Home.md`처럼 wiki_dir 기준 상대경로)이 JSON 원본이다 |
 | `wikihub_page_versions` | 버전 이력 — 체크섬이 바뀔 때만 새 행 (JSON도 동일) |
 | `wikihub_api_endpoints` / `wikihub_db_objects` / `wikihub_frontend_routes` / `wikihub_external_links` | 백엔드·프론트엔드 정보를 문서와 별도로 분리한 구조화 인덱스 |
 | `wikihub_publish_log` | 발행 실행 기록 |

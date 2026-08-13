@@ -51,7 +51,7 @@ description: 변경 대상(파일/함수/클래스/SQL/엔드포인트/DB 컬럼
 Agent(
   subagent_type="general-purpose",
   description="변경 영향도 분석",
-  prompt="<impact-analyzer 에이전트 지침. 변경 대상: [정규화된 식별자]. 프로젝트 루트: [절대경로]. 출력: _workspace/impact_<slug>.md>",
+  prompt="<impact-analyzer 에이전트 지침. 변경 대상: [정규화된 식별자]. 프로젝트 루트: [절대경로]. 출력: _workspace/reports/impact_<slug>.md>",
   model="opus"
 )
 ```
@@ -62,7 +62,7 @@ slug 생성: 변경 대상의 안전한 파일명 형태 (예: `OrderService_can
 
 ## Phase 3: 결과 보고
 
-`_workspace/impact_<slug>.md` 읽고 사용자에게 다음 형식:
+`_workspace/reports/impact_<slug>.md` 읽고 사용자에게 다음 형식:
 
 ```
 영향도 분석 완료: [변경 대상]
@@ -100,7 +100,7 @@ DB 스키마 영향: [있음/없음]
 - 회귀 테스트 추가: "test-generator" 호출 ("영향받는 코드 테스트 만들어줘")
 - 마이그레이션이라면: "plan-migration" 으로 단계화
 
-전체 리포트: _workspace/impact_<slug>.md
+전체 리포트: _workspace/reports/impact_<slug>.md
 ```
 
 ---

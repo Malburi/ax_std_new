@@ -17,7 +17,7 @@ ITO/SI 현장에서 가장 흔한 질문: "이 버튼 누르면 뭐가 실행돼
 | 항목 | 내용 |
 |------|------|
 | **수신** | 추적 대상 (기능명/API/화면명/버튼) + 프로젝트 루트 + (선택) 인덱스 |
-| **발신** | `_workspace/trace_<slug>.md` |
+| **발신** | `_workspace/reports/trace_<slug>.md` |
 | **작업 범위** | 탐색·분석만. 코드 수정 금지 |
 | **공유 작업** | `TaskUpdate` |
 
@@ -110,7 +110,7 @@ SQL 레이어에 도달하면:
 
 ## 출력 형식
 
-`_workspace/trace_<slug>.md` 에 저장 + 사용자에게 요약 출력:
+`_workspace/reports/trace_<slug>.md` 에 저장 + 사용자에게 요약 출력:
 
 ```
 로직 흐름 추적: [추적 대상]
@@ -147,7 +147,7 @@ ID: ORDER_CANCEL_U01
 [파일:줄] OrderCancelInterceptor.preHandle
 
 ⚠️ 동적 호출(리플렉션/AOP)·런타임 분기는 정적 분석 한계로 누락될 수 있습니다.
-전체 리포트: _workspace/trace_<slug>.md
+전체 리포트: _workspace/reports/trace_<slug>.md
 ```
 
 ---

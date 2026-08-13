@@ -17,7 +17,7 @@ ITO/SI에서 가장 큰 사고 원인은 "이 변경이 어디에 영향 미치�
 | 항목 | 내용 |
 |------|------|
 | **수신** | 오케스트레이터(analyze-impact 또는 safe-modify)로부터 변경 대상 + 프로젝트 루트 |
-| **발신** | `_workspace/impact_<slug>.md` (slug = 변경 대상 식별자) |
+| **발신** | `_workspace/reports/impact_<slug>.md` (slug = 변경 대상 식별자) |
 | **작업 범위** | 영향 분석·리포트만. 코드 수정·삭제 금지 |
 | **공유 작업** | `TaskUpdate` |
 
@@ -165,7 +165,7 @@ ITO/SI에서 가장 큰 사고 원인은 "이 변경이 어디에 영향 미치�
 
 ## 출력: 영향도 리포트
 
-`_workspace/impact_<slug>.md` 형식:
+`_workspace/reports/impact_<slug>.md` 형식:
 
 ```
 === IMPACT ANALYSIS REPORT ===

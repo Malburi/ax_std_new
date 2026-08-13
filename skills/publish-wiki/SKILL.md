@@ -5,7 +5,7 @@ description: 생성된 폴더 wiki를 중앙 DB(MSSQL/PostgreSQL/Oracle/SQLite)�
 
 # Publish Wiki (오케스트레이터)
 
-`generate-wiki`가 만든 `wiki/` 폴더 + `_workspace/**/*.json`을 중앙 DB에 발행한다.
+`generate-wiki`가 만든 `_workspace/wiki/` 폴더 + `_workspace/**/*.json`을 중앙 DB에 발행한다.
 **DB 저장(쓰기)은 harness 플러그인에 내장된 `agents/lib/wikihub_db/`가 직접 수행한다** — 별도
 프로젝트 wiki-hub를 pip install 하지 않아도 된다(대부분의 PC에는 wiki-hub가 설치돼 있지
 않으므로, 저장 기능 자체가 그 설치 여부에 좌우되면 안 된다).
@@ -20,7 +20,7 @@ DB 테이블(`wikihub_*`)에 같은 방식으로 쓰기 때문에, 나중에 wik
 |----|---------|
 | 시스템 | `wikihub_systems` 마스터에 등록. 시스템 키로 완전히 분리 |
 | 컴포넌트 | `wikihub_components` — 같은 시스템 안에서 백엔드·프론트엔드를 나눠 저장 |
-| 페이지 | `wikihub_pages` — (시스템, 컴포넌트, 경로) 단위, 체크섬이 바뀔 때만 새 버전. `wiki/*.md`·`*.html` 뿐 아니라 `_workspace/**/*.json`(call_graph·schema·sql_usage 등 harness index + writer_decisions.json 등) 원본도 같은 테이블에 함께 발행된다 |
+| 페이지 | `wikihub_pages` — (시스템, 컴포넌트, 경로) 단위, 체크섬이 바뀔 때만 새 버전. `_workspace/wiki/*.md`·`*.html` 뿐 아니라 `_workspace/**/*.json`(call_graph·schema·sql_usage 등 harness index + writer_decisions.json 등) 원본도 같은 테이블에 함께 발행된다 |
 | 버전 | `wikihub_page_versions` — JSON도 동일하게 버전 관리됨 |
 | 구조화 정보 | `wikihub_api_endpoints` · `wikihub_db_objects` · `wikihub_frontend_routes` · `wikihub_external_links` |
 
@@ -67,7 +67,7 @@ MSSQL을 쓸 경우 드라이버도 추가로 필요합니다: pip install pymss
 설치 후 다시 요청해주세요.
 ```
 
-`wiki/` 폴더 자체가 없으면 "먼저 `generate-wiki`로 wiki를 생성하세요" 안내 후 중단.
+`_workspace/wiki/` 폴더 자체가 없으면 "먼저 `generate-wiki`로 wiki를 생성하세요" 안내 후 중단.
 
 ---
 
@@ -145,7 +145,7 @@ python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/wikihub_db/publish.py" --root "[절�
 | `--dry-run` | DB를 건드리지 않고 대상 페이지만 확인 |
 | `--no-index` | 구조화 인덱스 추출을 건너뜀 |
 | `--no-workspace-json` | `_workspace/**/*.json` 원본 발행을 건너뜀 (위키 문서만 발행) |
-| `--pull` | 반대 방향. 위키 문서는 `wiki/`로, `_workspace/`로 시작하는 페이지는 프로젝트 루트 기준 **원래 경로**로 복원 |
+| `--pull` | 반대 방향. 위키 문서는 `_workspace/wiki/`로, `_workspace/`로 시작하는 페이지(워크스페이스 JSON)는 프로젝트 루트 기준 **원래 경로**로 복원 |
 | `--list` | 등록된 시스템·컴포넌트 확인 |
 | `--migrate-v1` | 예전 harness의 단일 테이블(`harness_wiki_pages`) 데이터를 새 스키마로 이관 |
 

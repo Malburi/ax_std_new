@@ -281,7 +281,11 @@ _workspace/                            ← 🔧 분석 산출물 (.gitignore 권
 │   ├── external_io.json               ← 외부 시스템 연결
 │   ├── client_index.json              ← JS↔JSP 매핑 (Legacy Static JS 탐지 시)
 │   └── ...
-└── impact_<slug>.md                   ← 영향도 분석 결과 (작업별 생성)
+├── reports/                            ← 📋 온디맨드 작업 리포트(스킬별 1회성 산출물)
+│   ├── impact_<slug>.md               ← 영향도 분석 결과
+│   ├── safety_<slug>.md               ← 안전성 평가 결과
+│   └── ...                            ← trace_/found_/sql_review_/docs_sync_/api_drift_report 등
+└── wiki/                               ← 🌐 generate-wiki 산출물 (2026-08-14부터 프로젝트 루트 대신 여기)
 ```
 
 > 💡 `CLAUDE.md`와 `.claude/`는 팀원과 공유하기 위해 git에 커밋하세요.

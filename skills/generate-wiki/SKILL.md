@@ -23,12 +23,12 @@ description: harness 산출물(_workspace + .claude)을 기반으로 프로젝�
 
 ### 기존 wiki 감지
 
-`wiki/` 폴더가 이미 존재하면:
+`_workspace/wiki/` 폴더가 이미 존재하면:
 
 ```
-기존 wiki가 발견되었습니다 (wiki/ 폴더).
+기존 wiki가 발견되었습니다 (_workspace/wiki/ 폴더).
 덮어쓰시겠습니까? (Y/N)
-  Y: 기존 wiki/ → wiki_prev/ 로 백업 후 재생성
+  Y: 기존 _workspace/wiki/ → _workspace/wiki_prev/ 로 백업 후 재생성
   N: 중단
 ```
 
@@ -45,11 +45,13 @@ description: harness 산출물(_workspace + .claude)을 기반으로 프로젝�
 ## Phase 2: wiki_generator.py 실행
 
 LLM 호출 없이, 다음 터미널 명령 한 번으로 wiki 페이지 + 인터랙티브 호출 그래프를 생성한다.
-저장은 항상 폴더(`wiki/`)다 — 질문 없이 바로 진행. 여러 시스템을 DB에 모아 보고 싶으면
-완료 후 Phase 3.5에서 물어보는 wiki-hub 발행을 이용한다.
+저장은 항상 `_workspace/wiki/`다(다른 harness 산출물과 같은 재생성 가능/`.gitignore` 권장
+루트 아래로 통일 — 2026-08-14부터, 이전엔 프로젝트 루트의 별도 `wiki/` 폴더였다) — 질문 없이
+바로 진행. 여러 시스템을 DB에 모아 보고 싶으면 완료 후 Phase 3.5에서 물어보는 wiki-hub 발행을
+이용한다.
 
 ```powershell
-python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/wiki_generator.py" --root "[절대경로]" --wiki-dir "[절대경로]/wiki"
+python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/wiki_generator.py" --root "[절대경로]" --wiki-dir "[절대경로]/_workspace/wiki"
 ```
 
 (스크립트는 플러그인 설치 루트에 있다 — PowerShell `$env:CLAUDE_PLUGIN_ROOT`, bash `$CLAUDE_PLUGIN_ROOT`. 비어 있으면 이 SKILL.md가 위치한 플러그인 디렉터리 절대경로로 대체. cwd 상대경로 `agents/lib/...` 금지.)
@@ -63,11 +65,11 @@ python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/wiki_generator.py" --root "[절대경
 ```
 wiki 생성 완료
 
-출력 위치: wiki/
-열기 방법: wiki/serve.bat 실행 후 브라우저로 http://localhost:3501 접속 (Docsify 기반 — 인터넷 CDN 필요, file:// 직접 열기는 미지원)
-  - wiki/_sidebar.md, wiki/_navbar.md: Docsify 네비게이션
-  - wiki/_html/*.html: Home·architecture·workflows 등 페이지의 서버 없는 열람용 렌더 사본 (원본은 wiki/*.md 그대로 유지)
-  - wiki/call-graph.html: 데이터가 파일 안에 인라인으로 포함된 완전 독립 페이지 (file://로 직접 열람 가능)
+출력 위치: _workspace/wiki/
+열기 방법: _workspace/wiki/serve.bat 실행 후 브라우저로 http://localhost:3501 접속 (Docsify 기반 — 인터넷 CDN 필요, file:// 직접 열기는 미지원)
+  - _workspace/wiki/_sidebar.md, _workspace/wiki/_navbar.md: Docsify 네비게이션
+  - _workspace/wiki/_html/*.html: Home·architecture·workflows 등 페이지의 서버 없는 열람용 렌더 사본 (원본은 _workspace/wiki/*.md 그대로 유지)
+  - _workspace/wiki/call-graph.html: 데이터가 파일 안에 인라인으로 포함된 완전 독립 페이지 (file://로 직접 열람 가능)
 ```
 
 `pair_config.md`가 있으면 `07_wiki_build.md`의 "크로스 리포 병합" 줄 2개(call-graph.html 노드/엣지 병합 + architecture/api-endpoints/database/external-systems markdown 페이지 병합)를 그대로 포함해 보고 (병합 성공 시 파트너 노드/추론된 크로스 엣지 수 또는 병합된 페이지 목록, 스킵 시 사유).

@@ -32,20 +32,23 @@ harness 흔적이 없으면: "이 디렉토리에 harness가 설치되어 있지
 - .claude/skills/trace.md
 - .claude/skills/scaffolder.md
 - .claude/skills/find-logic.md
-- .claude/skills/analyze-impact.md
-- .claude/skills/safe-modify.md
-- .claude/skills/scaffold-feature.md
-- .claude/skills/plan-migration.md
-- .claude/skills/review-sql.md
 - .claude/skills/trace-logic.md
 - .claude/skills/find-feature.md
+- .claude/skills/cross-repo-scaffold.md   ← 파트너 연동 시만
+- .claude/skills/cross-repo-modify.md     ← 파트너 연동 시만
 - .claude/agents/domain-expert.md
+- .claude/ito-guide.md
 - .claude/patterns/                  ← 하위 파일 전체
 - .claude/backup/                    ← 하위 파일 전체
 
 [분석 산출물]
-- _workspace/                        ← 하위 파일 전체
+- _workspace/                        ← 하위 파일 전체 (2026-08-14부터 _workspace/wiki/도 이 안에 포함됨)
 ```
+
+> `analyze-impact`/`safe-modify`/`scaffold-feature`/`vibe`/`plan-migration`/`review-sql`은 2026-08-13부터
+> 프로젝트에 로컬 배포되지 않는 플러그인 전역 스킬이라 위 목록에서 제외했다 — 다만 그 이전에 초기화된
+> 레거시 프로젝트에 잔존 사본이 있을 수 있으므로, Step 2의 Glob 탐지에서 `.claude/skills/*.md` 중 위
+> 목록에 없는 파일이 발견되면 "레거시 잔존 사본으로 추정, 함께 삭제할지" 별도 확인 항목으로 제시한다.
 
 **CLAUDE.md 주의:** "## 변경 이력" 섹션에 harness-fin 항목이 있으면 harness가 생성한 것으로 판단. 없으면 사용자 작성 파일일 수 있으므로 CLAUDE.md는 별도 확인 항목으로 분리.
 

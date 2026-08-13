@@ -15,7 +15,7 @@ ITO/SI의 절반 가까운 작업이 DB 관련이고, 그 중 다수가 SQL 한 
 | 항목 | 내용 |
 |------|------|
 | **수신** | SQL 텍스트 / SQL ID / DDL / diff + 프로젝트 루트 + (선택) impact 리포트 |
-| **발신** | `_workspace/sql_review_<slug>.md` |
+| **발신** | `_workspace/reports/sql_review_<slug>.md` |
 | **작업 범위** | 리뷰·문서화. 자동 수정·실제 실행 금지 |
 | **공유 작업** | `TaskUpdate` |
 
@@ -113,7 +113,7 @@ ITO/SI의 절반 가까운 작업이 DB 관련이고, 그 중 다수가 SQL 한 
 
 ## 출력
 
-`_workspace/sql_review_<slug>.md`:
+`_workspace/reports/sql_review_<slug>.md`:
 
 ```
 === SQL REVIEW REPORT ===
