@@ -607,7 +607,6 @@ def main():
     # 10. Generate call-graph.html (100% Python program-side binding, 파트너 그래프 병합 포함)
     merge_info = {"merged": False}
     db_merge_info = {"table_nodes": 0, "query_edges": 0}
-    graph_capped = None
     call_graph_path = os.path.join(project_root, "_workspace", "index", "call_graph.json")
     cg_template = read_file(os.path.join(LIB_DIR, "call-graph.template.html"))
     nodes_data, edges_data = [], []
@@ -655,32 +654,6 @@ def main():
             # dead_code.json 스키마 키는 unused_methods (docs/index-spec.md) — "dead_code"가 아님.
             for item in dead_code_json.get("unused_methods", []):
                 dead_code[item.get("id")] = item.get("reason", "")
-
-        # 노드·엣지가 너무 많으면 브라우저 렌더링(전체 인라인 삽입 + 물리 시뮬레이션)이 급격히
-        # 느려진다 — 연결이 많은(허브) 노드·데드코드 후보·DB 테이블을 우선해 상한선까지만 표시하고,
-        # 잘렸다는 사실은 반드시 화면에 드러낸다("no silent caps" — build-index.mjs의
-        # REPRESENTATIVE_FILE_LIMITS/DIGEST_LIMITS와 동일한 원칙).
-        MAX_RENDER_NODES = 2000
-        if total_nodes > MAX_RENDER_NODES:
-            all_nodes = raw_graph.get("nodes", [])
-            def _priority(n):
-                nid = n.get("id")
-                is_priority = nid in dead_code or n.get("type") == "table"
-                return (not is_priority, -(in_degree.get(nid, 0) + out_degree.get(nid, 0)))
-            kept_nodes = sorted(all_nodes, key=_priority)[:MAX_RENDER_NODES]
-            kept_ids = {n.get("id") for n in kept_nodes}
-            kept_edges = [e for e in raw_graph.get("edges", []) if e.get("from") in kept_ids and e.get("to") in kept_ids]
-            graph_capped = {
-                "total_nodes": total_nodes, "shown_nodes": len(kept_nodes),
-                "total_edges": len(raw_graph.get("edges", [])), "shown_edges": len(kept_edges),
-            }
-            raw_graph = {"nodes": kept_nodes, "edges": kept_edges}
-            in_degree, out_degree = {}, {}
-            for edge_item in raw_graph["edges"]:
-                in_degree[edge_item.get("to")] = in_degree.get(edge_item.get("to"), 0) + 1
-                out_degree[edge_item.get("from")] = out_degree.get(edge_item.get("from"), 0) + 1
-            total_nodes = len(raw_graph["nodes"])
-            hub_threshold = max(5, int(total_nodes * 0.15))
 
         seen_node_ids = {}
         for node in raw_graph.get("nodes", []):
@@ -798,19 +771,10 @@ def main():
 
         hub_count = sum(1 for n in nodes_data if n["extra"].get("size") == 28)
         dead_count = sum(1 for n in nodes_data if n["id"] in dead_code)
-        cap_notice_html = ""
-        if graph_capped:
-            cap_notice_html = (
-                f'<div class="stat-sub" style="color:#ffb454">⚠ 전체 {graph_capped["total_nodes"]}개 노드 중 '
-                f'상위 {graph_capped["shown_nodes"]}개만 표시 (연결 많은 노드·데드코드·DB 테이블 우선) — '
-                f'엣지도 {graph_capped["total_edges"]}개 중 {graph_capped["shown_edges"]}개만 표시. '
-                f'전체는 _workspace/index/call_graph.json 참고</div>'
-            )
         stat_summary_html = (
             f'<div class="stat-hero"><div class="stat-num">{len(nodes_data)}</div>'
             f'<div class="stat-caption">노드 · {len(edges_data)} 엣지</div>'
             f'<div class="stat-sub">허브 {hub_count} · 데드코드 후보 {dead_count}</div></div>'
-            f'{cap_notice_html}'
         )
 
         js_nodes = []
@@ -945,14 +909,6 @@ def main():
         )
     else:
         report_content += "\nDB 테이블 병합 (call-graph.html): ⏭ 스킵 — schema.json에 테이블 없음/파일 없음\n"
-
-    if graph_capped:
-        report_content += (
-            f"\n대량 그래프 표시 상한 (call-graph.html): ⚠ 노드 {graph_capped['total_nodes']}개 중 "
-            f"{graph_capped['shown_nodes']}개만 표시(연결 많은 노드·데드코드·DB 테이블 우선), "
-            f"엣지 {graph_capped['total_edges']}개 중 {graph_capped['shown_edges']}개만 표시 — "
-            f"화면에도 동일하게 안내됨. 전체 데이터는 _workspace/index/call_graph.json 참고\n"
-        )
 
     if partner:
         merged_pages = []
