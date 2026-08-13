@@ -1,4 +1,4 @@
-# harness 산출물(스킬 5종·도메인 에이전트·패턴·CLAUDE.md)을 프로그램식으로 배포하는 zero-LLM 빌더
+# harness 산출물(도메인 에이전트·패턴·CLAUDE.md·ito-guide)을 프로그램식으로 배포하는 zero-LLM 빌더
 import os
 import re
 import sys
@@ -10,22 +10,27 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
 
-# 정적 워크플로우 스킬(analyze-impact/safe-modify/scaffold-feature/plan-migration/review-sql)은
-# 프로젝트별 변수가 없는 고정 텍스트다 (agents/writer.md 참조). LLM이 매번 손으로 옮겨 적을 필요 없이
-# 이 스크립트가 agents/lib/skills/*.md.template 를 그대로 대상 프로젝트에 복사한다.
+# 정적 워크플로우 스킬(analyze-impact/safe-modify/scaffold-feature/vibe/plan-migration/review-sql)은
+# 프로젝트별 변수가 없는 고정 텍스트라 플러그인 전역판(skills/<name>/SKILL.md)만 두고, 대상
+# 프로젝트에는 로컬 사본을 배포하지 않는다 — 플러그인이 설치된 이상 전역판이 어느 프로젝트에서든
+# 그대로 트리거되므로 로컬 사본은 내용 동기화 부담만 늘리는 중복이다(2026-08-13 제거).
+# 이 스크립트는 대신 이 6개가 "이 프로젝트에 적용 가능한지"만 판단해 CLAUDE.md 자동 워크플로우
+# 표·ito-guide.md·02_writer_files.md에 이름으로 반영한다 — 4개(analyze-impact/safe-modify/
+# scaffold-feature/vibe)는 항상 적용, plan-migration/review-sql은 writer_decisions.json의
+# 판단(decision_for())을 따른다.
 # CLAUDE.md는 골격(고정 워크플로우 표·변경이력 헤더)만 템플릿화하고 writer가 채운 소수 필드를
 # claude_md_fields.json으로 넘겨받아 조립한다. domain-expert.md는 analyzer_report 그대로 복사.
 # patterns/ 스켈레톤 헤더(레이어명/프로젝트명 외 고정 문구)와 02_writer_files.md 완료 보고서
 # 서식도 고정 구조라 이 스크립트가 조립한다 — writer는 _workspace/writer_decisions.json
-# (조건부 스킬 생성 여부+사유, 패턴 파일명 목록, 탐지 스택, 적용 결정 사유)만 출력한다.
+# (조건부 스킬 적용 여부+사유, 패턴 파일명 목록, 탐지 스택, 적용 결정 사유)만 출력한다.
 # trace.md / scaffolder.md / find-logic.md 및 각 패턴 파일의 실제 본문(pattern-extractor 소관)은
 # 프로젝트별 내용이 실제로 달라지므로 계속 LLM이 직접 작성한다 (이 스크립트 대상 아님).
 
 LIB_DIR = os.path.dirname(os.path.abspath(__file__))
-TEMPLATE_DIR = os.path.join(LIB_DIR, "skills")
 
-ALWAYS_DEPLOY = ["analyze-impact", "safe-modify", "scaffold-feature", "vibe"]
-CONDITIONAL_DEPLOY = ["plan-migration", "review-sql"]
+# "배포 목록"이 아니라 "가용성 판단 목록" — 로컬 파일을 만들지 않고 이름만 CLAUDE.md/ito-guide에 반영한다.
+ALWAYS_AVAILABLE_SKILLS = {"analyze-impact", "safe-modify", "scaffold-feature", "vibe"}
+CONDITIONAL_SKILLS = {"plan-migration": "plan_migration", "review-sql": "review_sql"}
 
 SKELETON_MARKER = "pattern-extractor 에이전트가 채울 예정입니다"
 
@@ -97,11 +102,11 @@ def render_writer_files_report(root, decisions):
     pattern_files = decisions.get("pattern_files") or []
     pattern_list_md = "\n".join(f"- .claude/patterns/{name}" for name in pattern_files) or "- (없음)"
 
-    def _decision_line(skill_file, key):
+    def _decision_line(skill_name, key):
         entry = decisions.get(key) or {}
-        verdict = "생성" if entry.get("generate") else "미생성"
+        verdict = "적용" if entry.get("generate") else "미적용"
         reason = (entry.get("reason") or "").strip() or "(사유 없음)"
-        return f"- {skill_file}: {verdict} — {reason}"
+        return f"- {skill_name}: {verdict} — {reason}"
 
     cross_scaffold_exists = os.path.isfile(os.path.join(root, ".claude", "skills", "cross-repo-scaffold.md"))
     cross_modify_exists = os.path.isfile(os.path.join(root, ".claude", "skills", "cross-repo-modify.md"))
@@ -120,13 +125,12 @@ def render_writer_files_report(root, decisions):
         "[skills_builder.py가 뒤이어 배포 — 여기 안 씀]\n"
         "- CLAUDE.md                                 (claude_md_fields.json + 템플릿 조립)\n"
         "- .claude/agents/domain-expert.md           (analyzer_report 복사)\n"
-        "- .claude/skills/analyze-impact.md\n"
-        "- .claude/skills/safe-modify.md\n"
-        "- .claude/skills/scaffold-feature.md\n"
-        "- .claude/skills/vibe.md\n"
-        "- .claude/skills/plan-migration.md          (생성 조건 충족 시 — 아래 판단 참조)\n"
-        "- .claude/skills/review-sql.md              (DB 사용 확인 시 — 아래 판단 참조)\n"
-        "- .claude/patterns/[목록]                    (스켈레톤 — skills_builder.py가 조립, 아래 목록 참조)\n\n"
+        "- .claude/patterns/[목록]                    (스켈레톤 — skills_builder.py가 조립, 아래 목록 참조)\n"
+        "- .claude/ito-guide.md                      (사용 설명서 조립)\n\n"
+        "[워크플로우 스킬 — 플러그인 전역판만 사용, 로컬 배포 없음]\n"
+        "- analyze-impact / safe-modify / scaffold-feature / vibe (항상 사용 가능)\n"
+        f"{_decision_line('plan-migration', 'plan_migration')}\n"
+        f"{_decision_line('review-sql', 'review_sql')}\n\n"
         "[Workflow Skills — writer 직접 작성]\n"
         f"- .claude/skills/cross-repo-scaffold.md     ({'생성됨' if cross_scaffold_exists else '미생성 — pair_config.md 없음'})\n"
         f"- .claude/skills/cross-repo-modify.md       ({'생성됨' if cross_modify_exists else '미생성 — pair_config.md 없음'})\n\n"
@@ -134,11 +138,10 @@ def render_writer_files_report(root, decisions):
         f"{pattern_list_md}\n\n"
         f"탐지 스택: {decisions.get('detected_stack', '미상')}\n"
         f"분석 신뢰도: {decisions.get('confidence', '미상')}\n\n"
-        "선택적 스킬 생성 결정:\n"
-        f"{_decision_line('plan-migration.md', 'plan_migration')}\n"
-        f"{_decision_line('review-sql.md', 'review_sql')}\n"
+        "선택적 스킬 적용 결정:\n"
         f"- cross-repo-scaffold.md: {'생성' if cross_scaffold_exists else '미생성'} — pair_config.md 존재 여부\n"
-        f"- cross-repo-modify.md: {'생성' if cross_modify_exists else '미생성'} — pair_config.md 존재 여부\n\n"
+        f"- cross-repo-modify.md: {'생성' if cross_modify_exists else '미생성'} — pair_config.md 존재 여부\n"
+        "(plan-migration/review-sql 적용 여부는 위 \"워크플로우 스킬\" 블록 참조)\n\n"
         "적용 결정 사유:\n"
         f"{applied_md}\n\n"
         "다음 권장 단계:\n"
@@ -384,7 +387,7 @@ def _build_scenarios(root, decisions, pair_cfg):
         ("기존 코드 수정 전 영향 확인", "수정 대상의 호출처·트랜잭션·외부 통신 영향을 인덱스로 먼저 확인한 뒤 안전하게 적용합니다.",
          "analyze-impact → safe-modify", '"이 함수 수정하면 어디 영향 있어?" → "이 변경 안전하게 적용해줘"'),
     ]
-    if os.path.isfile(os.path.join(root, ".claude", "skills", "review-sql.md")):
+    if decision_for("review-sql", decisions):
         scenarios.append(("SQL 수정·리뷰", "SQL 사용처 역추적, N+1, 인젝션, 트랜잭션 적정성을 한 번에 점검합니다.",
                           "review-sql", '"이 쿼리 리뷰해줘"'))
     pattern_files = (decisions or {}).get("pattern_files") or []
@@ -427,7 +430,13 @@ def deploy_ito_guide(root, decisions):
     for name in ITO_SKILL_ORDER:
         if name not in blocks:
             continue
-        if not os.path.isfile(os.path.join(root, ".claude", "skills", f"{name}.md")):
+        if name in ALWAYS_AVAILABLE_SKILLS:
+            available = True
+        elif name in CONDITIONAL_SKILLS:
+            available = decision_for(name, decisions)
+        else:
+            available = os.path.isfile(os.path.join(root, ".claude", "skills", f"{name}.md"))
+        if not available:
             continue
         n += 1
         block = blocks[name].replace("{{N}}", str(n))
@@ -477,7 +486,7 @@ def deploy_ito_guide(root, decisions):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Harness 정적 워크플로우 스킬 + domain-expert.md + CLAUDE.md + 패턴 스켈레톤 + ito-guide.md + 02_writer_files.md 배포기")
+    parser = argparse.ArgumentParser(description="Harness domain-expert.md + CLAUDE.md + 패턴 스켈레톤 + ito-guide.md + 02_writer_files.md 배포기")
     parser.add_argument("--root", required=True, help="프로젝트 루트 절대 경로")
     parser.add_argument("--summary", default=None,
                         help="writer_decisions.json 경로 (기본: [root]/_workspace/writer_decisions.json)")
@@ -485,35 +494,23 @@ def main():
     if not args.summary:
         args.summary = os.path.join(args.root, "_workspace", "writer_decisions.json")
 
-    skills_dir = os.path.join(args.root, ".claude", "skills")
-    os.makedirs(skills_dir, exist_ok=True)
-
     decisions = None
     if os.path.isfile(args.summary):
         with open(args.summary, "r", encoding="utf-8-sig") as f:
             try:
                 decisions = json.load(f)
             except json.JSONDecodeError:
-                print(f"WARN: {args.summary} JSON 파싱 실패 — 조건부 스킬/패턴 스켈레톤/02_writer_files.md 스킵", file=sys.stderr)
+                print(f"WARN: {args.summary} JSON 파싱 실패 — 조건부 스킬 적용 판단/패턴 스켈레톤/02_writer_files.md 스킵", file=sys.stderr)
     else:
-        print(f"WARN: 요약 파일 없음 ({args.summary}) — 조건부 스킬(plan-migration/review-sql)·패턴 스켈레톤·02_writer_files.md는 스킵", file=sys.stderr)
+        print(f"WARN: 요약 파일 없음 ({args.summary}) — 조건부 스킬(plan-migration/review-sql) 적용 판단·패턴 스켈레톤·02_writer_files.md는 스킵", file=sys.stderr)
 
-    deployed, skipped = [], []
-
-    for name in ALWAYS_DEPLOY:
-        _deploy(name, skills_dir)
-        deployed.append(name)
-
-    for name in CONDITIONAL_DEPLOY:
-        if decision_for(name, decisions):
-            _deploy(name, skills_dir)
-            deployed.append(name)
-        else:
-            skipped.append(name)
-
-    print(f"배포 완료: {', '.join(deployed)}")
+    print(f"사용 가능(플러그인 전역, 로컬 배포 없음): {', '.join(sorted(ALWAYS_AVAILABLE_SKILLS))}")
+    applicable = [n for n in CONDITIONAL_SKILLS if decision_for(n, decisions)]
+    skipped = [n for n in CONDITIONAL_SKILLS if n not in applicable]
+    if applicable:
+        print(f"적용 대상(플러그인 전역, 로컬 배포 없음): {', '.join(applicable)}")
     if skipped:
-        print(f"조건 미충족으로 스킵: {', '.join(skipped)}")
+        print(f"조건 미충족: {', '.join(skipped)}")
 
     if deploy_domain_expert(args.root):
         print("배포 완료: domain-expert.md (analyzer_report 복사)")
@@ -547,18 +544,6 @@ def main():
             print("배포 완료: .claude/ito-guide.md (템플릿 조립, zero-LLM)")
     except Exception as e:
         print(f"WARN: ito-guide.md 조립 실패 — {e}", file=sys.stderr)
-
-
-def _deploy(name, skills_dir):
-    src = os.path.join(TEMPLATE_DIR, f"{name}.md.template")
-    if not os.path.isfile(src):
-        print(f"WARN: 템플릿 없음 — {src}", file=sys.stderr)
-        return
-    with open(src, "r", encoding="utf-8-sig") as f:
-        content = f.read()
-    dst = os.path.join(skills_dir, f"{name}.md")
-    with open(dst, "w", encoding="utf-8") as f:
-        f.write(content)
 
 
 if __name__ == "__main__":

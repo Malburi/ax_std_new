@@ -250,12 +250,10 @@ flowchart LR
 ├── CLAUDE.md                          ← 🧠 이 프로젝트의 핵심 가이드 (git 커밋 권장)
 └── .claude/
     ├── ito-guide.md                   ← 📖 하네스 사용 설명서 (초기화 시 자동 생성)
-    ├── skills/                        ← ⚙️ 워크플로우 스킬 (git 커밋 권장)
-    │   ├── analyze-impact.md
-    │   ├── safe-modify.md
-    │   ├── scaffold-feature.md
-    │   ├── plan-migration.md          ← 마이그레이션 필요 시에만 생성
-    │   └── review-sql.md              ← DB 사용 시에만 생성
+    ├── skills/                        ← ⚙️ 프로젝트 전용 스킬 (git 커밋 권장)
+    │   ├── trace.md
+    │   ├── scaffolder.md
+    │   └── find-logic.md
     ├── agents/
     │   └── domain-expert.md           ← 🎓 이 프로젝트의 도메인 지식
     └── patterns/                      ← 📐 코드 컨벤션 패턴
@@ -264,7 +262,13 @@ flowchart LR
         ├── dao_pattern.md
         ├── client_pattern.md          ← Legacy Static JS 탐지 시에만 생성
         └── ...
+```
 
+> `analyze-impact`/`safe-modify`/`scaffold-feature`/`vibe`/`plan-migration`/`review-sql`은 프로젝트별로
+> 내용이 달라지지 않는 스킬이라 로컬 파일을 만들지 않는다 — 플러그인이 설치된 이상 바로 사용 가능하며,
+> CLAUDE.md의 자동 워크플로우 표에 이름이 등록된다.
+
+```
 _workspace/                            ← 🔧 분석 산출물 (.gitignore 권장)
 ├── 00_init_scope.md                   ← 구성 확인 리포트 (Phase -1)
 ├── 01_analyzer_report.md              ← 분석 리포트

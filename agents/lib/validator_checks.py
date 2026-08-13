@@ -157,28 +157,23 @@ def check1_file_existence(root):
 # ---------------------------------------------------------------------------
 
 def check2_skill_registration(root, decisions, claude_md_text):
+    """이 6개는 프로젝트에 로컬 파일로 배포되지 않는다(플러그인 전역 스킬, 2026-08-13부터) —
+    가용성은 CLAUDE.md 자동 워크플로우 표에 이름이 등록됐는지로만 판정한다."""
     results = []
-    skills_dir = os.path.join(root, ".claude", "skills")
+    text = claude_md_text or ""
 
-    for name in ("analyze-impact", "safe-modify", "scaffold-feature"):
-        exists = os.path.isfile(os.path.join(skills_dir, f"{name}.md"))
-        if not exists:
-            results.append(("FAIL", f"{name}.md 미생성 (항상 존재해야 함)"))
+    for name in ("analyze-impact", "safe-modify", "scaffold-feature", "vibe"):
+        if name in text:
+            results.append(("PASS", f"CLAUDE.md에 {name} 등록"))
         else:
-            results.append(("PASS", f"{name}.md 존재"))
+            results.append(("FAIL", f"CLAUDE.md 자동 워크플로우 표에 {name} 미등록 (플러그인 전역 스킬, 항상 등록돼야 함)"))
 
     for name, key in (("plan-migration", "plan_migration"), ("review-sql", "review_sql")):
-        should_generate = bool((decisions or {}).get(key, {}).get("generate"))
-        exists = os.path.isfile(os.path.join(skills_dir, f"{name}.md"))
-        if should_generate and not exists:
-            results.append(("WARN", f"{name}.md 생성 결정되었으나 파일 없음 — 배포 실패 의심"))
-        elif exists:
-            results.append(("PASS", f"{name}.md 존재"))
-
-    if claude_md_text:
-        for name in ("analyze-impact", "safe-modify", "scaffold-feature"):
-            if os.path.isfile(os.path.join(skills_dir, f"{name}.md")) and name not in claude_md_text:
-                results.append(("WARN", f"CLAUDE.md 자동 워크플로우 테이블에 {name} 미등록"))
+        should_apply = bool((decisions or {}).get(key, {}).get("generate"))
+        if should_apply and name not in text:
+            results.append(("WARN", f"{name} 적용 대상으로 판단되었으나 CLAUDE.md에 미등록"))
+        elif name in text:
+            results.append(("PASS", f"CLAUDE.md에 {name} 등록"))
 
     return results
 
@@ -190,8 +185,11 @@ def check2_skill_registration(root, decisions, claude_md_text):
 KOREAN_QUOTE_RE = re.compile(r'"([^"]*[가-힣][^"]*)"')
 ASCII_QUOTE_RE = re.compile(r'"([a-zA-Z][a-zA-Z \-]*)"')
 
-# 정적 배포 스킬(agents/lib/skills/*.md.template, 프로젝트별 변수 없음)은 매 프로젝트마다 새로
-# 판단할 트리거 품질이 없다 — check 3은 writer가 실제로 새로 작성한 per-project 스킬
+# 정적 스킬 6종(analyze-impact/safe-modify/scaffold-feature/vibe/plan-migration/review-sql)은
+# 2026-08-13부터 대상 프로젝트에 로컬 배포되지 않는다(플러그인 전역판만 사용) — 새로 배포되는
+# 프로젝트에서는 애초에 `.claude/skills/*.md` 글롭 스캔에 걸리지 않으므로 이 목록은 사실상
+# no-op이다. 2026-08-13 이전에 배포됐던 레거시 프로젝트에 잔존 사본이 있을 경우를 위한
+# 하위호환 목적으로만 남겨둔다 — check 3은 writer가 실제로 새로 작성한 per-project 스킬
 # (trace/scaffolder/find-logic/cross-repo-*)에만 적용. harness-init.md는 2026-07-23부터
 # 프로젝트에 배포하지 않으므로(메타/툴링 스킬 — 하네스 재초기화용이지 개발 워크플로우가 아님)
 # 이 목록에서 제외했다. 혹시 과거 세션에서 수동 배포된 사본이 남아있어도 이 목록에 없으면

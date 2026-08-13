@@ -137,9 +137,12 @@ claude
 
 생성된 파일:
   CLAUDE.md
-  .claude/skills/analyze-impact.md
-  .claude/skills/safe-modify.md
+  .claude/skills/trace.md
+  .claude/agents/domain-expert.md
   ...
+
+사용 가능한 워크플로우 스킬 (플러그인 전역, 로컬 파일 없음):
+  analyze-impact / safe-modify / scaffold-feature / vibe
 
 Eval 품질 점수: 91/100 ✅
 ```
@@ -640,14 +643,15 @@ harness-init이 생성하는 프로젝트 전용 가이드. Claude가 매 대화
 
 | 경로 | 내용 | git 커밋? |
 |------|------|---------|
-| `skills/analyze-impact.md` | 영향도 분석 트리거 | ✅ 권장 |
-| `skills/safe-modify.md` | 안전 변경 트리거 | ✅ 권장 |
-| `skills/scaffold-feature.md` | 신규 기능 생성 트리거 | ✅ 권장 |
-| `skills/plan-migration.md` | 마이그레이션 트리거 | ✅ 권장 |
-| `skills/review-sql.md` | SQL 리뷰 트리거 | ✅ 권장 |
+| `skills/trace.md` | 처리 흐름 추적 (프로젝트 전용) | ✅ 권장 |
+| `skills/scaffolder.md` | 신규 기능 스캐폴딩 (프로젝트 전용) | ✅ 권장 |
+| `skills/find-logic.md` | 기능·키워드 코드 위치 탐색 (프로젝트 전용) | ✅ 권장 |
 | `agents/domain-expert.md` | 도메인 지식 주입 | ✅ 권장 |
 | `patterns/*.md` | 코딩 컨벤션 패턴 | ✅ 권장 |
 | `backup/` | 재초기화 전 백업 | ❌ gitignore 권장 |
+
+> `analyze-impact`/`safe-modify`/`scaffold-feature`/`vibe`/`plan-migration`/`review-sql`은 로컬 파일이
+> 없다(플러그인 전역 스킬) — 커밋할 대상 자체가 없다.
 
 ---
 

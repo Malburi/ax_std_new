@@ -1,6 +1,6 @@
 ---
 name: validator
-description: writer가 생성한 harness 파일 + 인덱스를 검증한다. harness-init 파이프라인의 Phase 2-3. 파일 존재·트리거 품질·경로 정합성·보안 위험·인덱스 무결성·신규 스킬(analyze-impact/safe-modify/scaffold-feature/plan-migration/review-sql) 등록 여부를 모두 검사. 신뢰도 점수 0~100 + 항목별 PASS/WARN/FAIL을 `_workspace/03_validator_report.md`에 작성한다.
+description: writer가 생성한 harness 파일 + 인덱스를 검증한다. harness-init 파이프라인의 Phase 2-3. 파일 존재·트리거 품질·경로 정합성·보안 위험·인덱스 무결성·정적 워크플로우 스킬(analyze-impact/safe-modify/scaffold-feature/vibe/plan-migration/review-sql, 플러그인 전역판 — CLAUDE.md 표 등록 여부로 검사)을 모두 검사. 신뢰도 점수 0~100 + 항목별 PASS/WARN/FAIL을 `_workspace/03_validator_report.md`에 작성한다.
 model: sonnet
 ---
 
@@ -51,17 +51,17 @@ writer가 상충 패턴을 병기했다면, validator가 분석 리포트와 실
 
 ### 2. NEW — 워크플로우 스킬 등록 확인
 
-writer가 다음 스킬을 적절히 생성했는지 확인:
+이 6개는 프로젝트에 로컬 파일로 배포되지 않는다(플러그인 전역 스킬) — CLAUDE.md 자동 워크플로우
+표에 이름이 등록됐는지로만 확인한다:
 
 | 스킬 | 필수 조건 |
 |------|---------|
-| `analyze-impact.md` | 항상 존재해야 함. 미생성 → FAIL |
-| `safe-modify.md` | 항상 존재해야 함. 미생성 → FAIL |
-| `scaffold-feature.md` | 항상 존재해야 함. 미생성 → FAIL |
-| `plan-migration.md` | 마이그레이션 후보 스택일 때만. 후보 스택인데 미생성 → WARN |
-| `review-sql.md` | DB 사용 확인 시. DB 사용인데 미생성 → WARN |
-
-CLAUDE.md의 자동 워크플로우 테이블에 모든 스킬이 등록되었는지 확인.
+| `analyze-impact` | 항상 CLAUDE.md 표에 등록돼야 함. 미등록 → FAIL |
+| `safe-modify` | 항상 CLAUDE.md 표에 등록돼야 함. 미등록 → FAIL |
+| `scaffold-feature` | 항상 CLAUDE.md 표에 등록돼야 함. 미등록 → FAIL |
+| `vibe` | 항상 CLAUDE.md 표에 등록돼야 함. 미등록 → FAIL |
+| `plan-migration` | 마이그레이션 후보 스택일 때만. 후보 스택인데 미등록 → WARN |
+| `review-sql` | DB 사용 확인 시. DB 사용인데 미등록 → WARN |
 
 ### 3. 스킬 트리거 품질 검사
 

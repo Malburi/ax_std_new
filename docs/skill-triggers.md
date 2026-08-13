@@ -22,7 +22,7 @@ harness가 설치된 대상 프로젝트에서 개선/개발 요청은 배포된
 
 ### 2-1. 스킬 frontmatter description
 
-각 SKILL.md(플러그인 전역) / `.claude/skills/*.md`(대상 프로젝트 배포본)의 frontmatter `description`에 트리거 문구가 등록돼 있다. Claude가 사용자 요청을 읽고 description과 매칭되는 스킬을 선택한다.
+각 SKILL.md(플러그인 전역 — 정적 스킬 6종은 대상 프로젝트에 로컬 사본을 두지 않는다, 3절 참조)의 frontmatter `description`에 트리거 문구가 등록돼 있다. Claude가 사용자 요청을 읽고 description과 매칭되는 스킬을 선택한다.
 
 ### 2-2. 대상 프로젝트 CLAUDE.md "자동 워크플로우" 표
 
@@ -36,16 +36,22 @@ harness가 설치된 대상 프로젝트에서 개선/개발 요청은 배포된
 
 ---
 
-## 3. 두 층 구조 — 문구 수정 시 양쪽 동기화 필수
+## 3. 단일 소스 구조 (2026-08-13부터)
 
-| 층 | 위치 | 배포 방식 |
-|----|------|----------|
-| 플러그인 전역 | `skills/<name>/SKILL.md` | 플러그인 설치만 하면 어느 프로젝트에서든 활성 |
-| 대상 프로젝트 배포 | `agents/lib/skills/<name>.md.template` | harness-init 시 `skills_builder.py`가 `.claude/skills/<name>.md`로 무-LLM 복사 |
+위치는 플러그인 전역 `skills/<name>/SKILL.md` 하나뿐이다 — 플러그인 설치만 하면 어느 프로젝트에서든 활성.
 
-정적 스킬 6종(analyze-impact / safe-modify / scaffold-feature / vibe / plan-migration / review-sql)은 **두 층에 같은 내용이 존재**한다. 트리거 문구를 고칠 때 한쪽만 고치면 플러그인 전역과 배포본의 동작이 어긋나므로 반드시 양쪽을 함께 수정한다.
+정적 스킬 6종(analyze-impact / safe-modify / scaffold-feature / vibe / plan-migration / review-sql)은
+프로젝트별로 달라지는 내용이 전혀 없어서, 대상 프로젝트에 로컬 사본을 배포하지 않고 플러그인
+전역판 하나만 존재한다. harness-init이 하는 일은 CLAUDE.md 자동 워크플로우 표·`.claude/ito-guide.md`에
+이 스킬들의 *이름*을 등록하는 것뿐 — 실제 트리거·실행은 항상 플러그인 전역판을 통해 이뤄진다.
+`plan-migration`/`review-sql`은 writer가 프로젝트 적용 대상인지(마이그레이션 후보 스택/DB 사용 여부)만
+판단해 그 표·문서에 반영할지 결정한다("파일을 배포할지"가 아니라 "이 프로젝트에 권장할지"의 문제).
 
-전역 SKILL.md의 description이 템플릿보다 문구가 많은 경우가 있다(전역 쪽은 2026-06 이후 누적 확장). 축약·범용 문구는 2026-08-06에 양쪽 동일하게 추가했다.
+**이전(2026-08-06 ~ 2026-08-13)에는 두 번째 층**(`agents/lib/skills/<name>.md.template` → harness-init 시
+`skills_builder.py`가 `.claude/skills/<name>.md`로 복사)이 있었다. 실제로 비교해보니 이 배포본은
+전역판과 "같은 내용"이 아니라 훨씬 축약된 스텁이었고, "상세 로직은 `.claude/agents/<agent>.md` 참조"라는
+문구가 가리키는 파일도 프로젝트에 배포된 적이 없어(도메인 에이전트 `domain-expert.md`만 실제로 복사됨)
+죽은 참조였다 — 이 이중 구조와 그 결함을 함께 제거했다. 상세 이력은 문서 끝 "관련 이력" 참조.
 
 ---
 
@@ -108,7 +114,7 @@ writer가 프로젝트별로 직접 작성하는 스킬(trace / find-logic / sca
 
 ## 6. vibe 스킬 상세
 
-파일: `skills/vibe/SKILL.md` (전역) + `agents/lib/skills/vibe.md.template` (배포용, 내용 동일).
+파일: `skills/vibe/SKILL.md` (전역, 유일한 소스 — 대상 프로젝트에 로컬 배포 없음).
 
 ### 규칙 3개
 1. **외과적 변경 원칙 유지** — 요청된 부분만 수정. 인접 코드·주석·포맷 "개선" 금지. (게이트를 생략해도 CLAUDE.md 보편 원칙 Rule 3은 그대로 적용된다는 의미.)
@@ -130,23 +136,27 @@ writer가 프로젝트별로 직접 작성하는 스킬(trace / find-logic / sca
 
 ## 7. 파이프라인 연결 지점 — 새 정적 스킬 추가 체크리스트
 
-vibe 추가 시 실제로 수정한 지점 전체. **새 정적 스킬을 추가할 때 이 목록을 순서대로 따라가면 된다.**
+**새 정적 스킬을 추가할 때 이 목록을 순서대로 따라가면 된다.** (2026-08-13부터 로컬 배포 단계가
+없어져 예전보다 단계가 줄었다 — 상세는 3절 참조.)
 
 | # | 파일 | 수정 내용 |
 |---|------|----------|
-| 1 | `agents/lib/skills/<name>.md.template` | 신규 생성 — frontmatter(name + description에 트리거 문구) + 본문 |
-| 2 | `skills/<name>/SKILL.md` | 전역용 동일 내용 생성 |
-| 3 | `agents/lib/skills_builder.py` — `ALWAYS_DEPLOY` 또는 `CONDITIONAL_DEPLOY` | 배포 목록 등록. 조건부면 `decision_for()` 로직과 writer_decisions.json 계약도 확인 |
-| 4 | `agents/lib/skills_builder.py` — `02_writer_files.md` 생성 문자열 | "[skills_builder.py가 뒤이어 배포]" 목록에 행 추가 |
-| 5 | `agents/lib/skills_builder.py` — `ITO_SKILL_ORDER` | ito-guide.md 섹션 나열 순서에 추가 |
-| 6 | `agents/lib/ito_guide.md.template` | `<!-- SKILL:<name> -->` 블록 추가 (용도 + 트리거 예시 3개). **블록이 없으면 ITO_SKILL_ORDER에 있어도 조용히 스킵됨** (`_parse_ito_template()` → `if name not in blocks: continue`) |
-| 7 | `agents/lib/validator_checks.py` — `STATIC_OR_PREEXISTING_SKILLS` | check3(트리거 품질 채점) 제외 목록에 `<name>.md` 추가. 안 넣으면 정적 스킬이 매 프로젝트마다 트리거 부실 FAIL로 오탐됨 (2026-07-15 발견된 버그 패턴) |
-| 8 | `agents/lib/claude_md.md.template` | 자동 워크플로우 표에 행 추가 (대상 프로젝트 CLAUDE.md에 반영됨) |
-| 9 | 루트 `CLAUDE.md` | 파일 구조 표 + 자동 워크플로우 표 + 변경 이력 |
-| 10 | `.claude-plugin/plugin.json` | 버전 bump + description 스킬 수 갱신 |
+| 1 | `skills/<name>/SKILL.md` | 신규 생성 — frontmatter(name + description에 트리거 문구) + 본문 (플러그인 전역판, 유일한 소스) |
+| 2 | `agents/lib/skills_builder.py` — `ALWAYS_AVAILABLE_SKILLS` 또는 `CONDITIONAL_SKILLS` | 항상 사용 가능한 스킬인지, 프로젝트별 적용 판단이 필요한 조건부 스킬인지 등록. 조건부면 `decision_for()` 로직과 writer_decisions.json 계약도 확인 |
+| 3 | `agents/lib/skills_builder.py` — `render_writer_files_report()` | `02_writer_files.md`의 "[워크플로우 스킬]" 목록에 이름 추가 |
+| 4 | `agents/lib/skills_builder.py` — `ITO_SKILL_ORDER` | ito-guide.md 섹션 나열 순서에 추가 |
+| 5 | `agents/lib/ito_guide.md.template` | `<!-- SKILL:<name> -->` 블록 추가 (용도 + 트리거 예시 3개, 완전 정적 텍스트). **블록이 없으면 ITO_SKILL_ORDER에 있어도 조용히 스킵됨** (`_parse_ito_template()` → `if name not in blocks: continue`) |
+| 6 | `agents/lib/claude_md.md.template` | 자동 워크플로우 표에 행 추가 (대상 프로젝트 CLAUDE.md에 반영됨) |
+| 7 | `agents/validator.md` + `agents/lib/validator_checks.py`의 `check2_skill_registration()` | CLAUDE.md 표 등록 여부 검사 목록에 추가 |
+| 8 | 루트 `CLAUDE.md` | 파일 구조 표 + 자동 워크플로우 표 + 변경 이력 |
+| 9 | `.claude-plugin/plugin.json` | 버전 bump + description 스킬 수 갱신 |
+
+(`agents/lib/validator_checks.py`의 `STATIC_OR_PREEXISTING_SKILLS`는 더 이상 새 정적 스킬을 추가할 때
+건드릴 필요가 없다 — 로컬 배포가 없으니 check3의 `.claude/skills/*.md` 글롭 스캔에 애초에 걸리지 않는다.
+이 집합은 2026-08-13 이전에 이미 로컬 배포됐던 레거시 프로젝트의 잔존 사본을 위한 하위호환 용도로만 남아있다.)
 
 ### 트리거 문구만 추가/수정할 때 (스킬 신설 아님)
-- 3절의 두 층(`agents/lib/skills/*.md.template` + `skills/*/SKILL.md`) description을 **양쪽 동일하게** 수정.
+- `skills/<name>/SKILL.md`(유일한 소스) description만 수정.
 - 라우팅 표현이 바뀌면 `claude_md.md.template` 자동 워크플로우 표도 확인.
 - 버전 bump + push + `claude plugin update ax-std-harness@ax-std-harness`.
 
@@ -176,7 +186,7 @@ SQL리뷰 selectOrderList
 /ax-std-harness:vibe
 ```
 
-기존 harness가 설치된 프로젝트에 새 트리거를 반영하려면: 플러그인 업데이트 후 해당 프로젝트에서 `"스킬만 다시 생성"` 요청 (부분 증분 — skills_builder.py 재실행으로 배포본 갱신).
+정적 스킬 6종은 플러그인 전역판만 쓰므로 플러그인 업데이트 즉시 모든 프로젝트에 새 트리거가 반영된다(별도 프로젝트별 재생성 불필요). CLAUDE.md 표·ito-guide.md에 새 이름을 반영하려면: 해당 프로젝트에서 `"스킬만 다시 생성"` 요청 (부분 증분 — `skills_builder.py` 재실행으로 조립본 갱신).
 
 ---
 
@@ -184,23 +194,24 @@ SQL리뷰 selectOrderList
 
 새 스킬/트리거 반영 후 아래 두 가지를 실행한다 (vibe 추가 시 실제 수행한 검증).
 
-1. **더미 프로젝트 배포 확인**
+1. **더미 프로젝트 조립 확인**
    ```powershell
    # 더미 루트에 _workspace/writer_decisions.json (detected_stack 등 최소 필드) 준비 후
    python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/skills_builder.py" --root <더미루트>
    ```
-   확인: `.claude/skills/<name>.md` 배포됨, `_workspace/02_writer_files.md` 목록에 포함, `.claude/ito-guide.md`에 섹션 생성됨.
+   확인: CLAUDE.md 자동 워크플로우 표에 스킬명이 등록됨, `_workspace/02_writer_files.md`의 "워크플로우 스킬" 목록에 포함, `.claude/ito-guide.md`에 해당 섹션이 생성됨. **`.claude/skills/<name>.md` 파일 자체는 생성되지 않는 것이 정상이다**(정적 스킬 6종은 플러그인 전역판만 사용, 3절 참조).
 
 2. **validator 오탐 확인**
    ```powershell
    python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/validator_checks.py" --root <더미루트>
    ```
-   확인: `_workspace/validator_mechanical.json`에 새 스킬 관련 FAIL/WARN 없음 (check3 제외 목록 누락 시 여기서 트리거 부실 FAIL이 나타남).
+   확인: `_workspace/validator_mechanical.json`에 새 스킬 관련 FAIL/WARN 없음 (check2가 CLAUDE.md 표 미등록을 놓치지 않는지 확인).
 
 ---
 
 ## 관련 이력
 
+- 2026-08-13 — 정적 스킬 6종의 대상 프로젝트 로컬 배포(`agents/lib/skills/<name>.md.template` → `.claude/skills/<name>.md`) 완전 제거, 플러그인 전역판 단일 소스로 전환. 배포본이 전역판과 다른 축약 스텁이었고 참조하는 에이전트 파일도 배포되지 않는 죽은 참조를 갖고 있었던 것이 발견 계기. 상세는 루트 CLAUDE.md 변경 이력 참조.
 - 2026-08-06 — 본 문서가 다루는 트리거 확장 3종 구현 (커밋 bf82dfb vibe 신설, 43713c2 축약+범용 문구, 4a008a4 문서·버전 0.9.1). 상세는 루트 CLAUDE.md 변경 이력 참조.
 - 2026-07-23 — check3에 STATIC_OR_PREEXISTING_SKILLS 제외 도입 (정적 스킬 오탐 FAIL 해소).
 - 2026-07-14 — 정적 스킬 5종을 writer LLM 재작성에서 템플릿 무-LLM 복사(skills_builder.py)로 전환.
