@@ -22,7 +22,8 @@
           "retry_policy": { "type": "string" },
           "in_transaction": { "type": "boolean" },
           "operation": { "type": "string" },
-          "path_pattern": { "type": "string" }
+          "path_pattern": { "type": "string" },
+          "description": { "type": "string" }
         }
       }
     }

@@ -1668,37 +1668,131 @@ export function mergeAiPatchEdges(graph, patch) {
   return { applied, rejected, duplicates, rejected_reasons: Object.fromEntries(reasons), rejected_samples: samples };
 }
 
+/*
+ * api_contract.json(endpoints/consumers)·external_io.json(communications)에 analyzer가
+ * "이게 무엇을 하는지" 1줄 설명을 얹는 오퍼레이션. call_graph의 add_edge와 같은 이유로
+ * 원본 파일을 analyzer가 직접 재작성하지 않는다 — incremental 재인덱싱이 두 파일을 캐시에서
+ * 다시 만들기 때문에 직접 덧붙인 내용은 다음 갱신에서 조용히 사라진다.
+ */
+function mergeDescriptionPatch(items, ops) {
+  const byId = new Map((items || []).map((item) => [item.id, item]));
+  const reasons = new Map();
+  const samples = [];
+  let applied = 0;
+  let rejected = 0;
+  const reject = (reason, detail) => {
+    rejected += 1;
+    reasons.set(reason, (reasons.get(reason) || 0) + 1);
+    if (samples.length < 20) samples.push({ reason, ...detail });
+  };
+  for (const op of ops) {
+    const id = op && typeof op === "object" ? op.id : undefined;
+    const description = op && typeof op === "object" ? op.description : undefined;
+    if (!id) { reject("missing_id", { op: op?.op ?? null }); continue; }
+    if (typeof description !== "string" || !description.trim()) { reject("missing_description", { id }); continue; }
+    const item = byId.get(id);
+    if (!item) { reject("unknown_id", { id }); continue; }
+    item.description = description.trim();
+    applied += 1;
+  }
+  return { applied, rejected, rejected_reasons: Object.fromEntries(reasons), rejected_samples: samples };
+}
+
+function mergeCombinedResults(parts) {
+  const rejected_reasons = {};
+  const rejected_samples = [];
+  let applied = 0;
+  let rejected = 0;
+  let duplicates = 0;
+  for (const part of parts) {
+    applied += part.applied || 0;
+    rejected += part.rejected || 0;
+    duplicates += part.duplicates || 0;
+    for (const [reason, count] of Object.entries(part.rejected_reasons || {})) {
+      rejected_reasons[reason] = (rejected_reasons[reason] || 0) + count;
+    }
+    rejected_samples.push(...(part.rejected_samples || []));
+  }
+  return { applied, rejected, duplicates, rejected_reasons, rejected_samples: rejected_samples.slice(0, 20) };
+}
+
 export function applyAiPatch(rootArg, patchArg) {
   const root = resolve(rootArg);
   const patchPath = isAbsolute(patchArg) ? patchArg : join(root, patchArg);
   const patch = readJson(patchPath);
+  if (!patch || patch.version !== 1 || !Array.isArray(patch.operations)) throw new Error("AI patch는 version: 1과 operations[]가 필요합니다.");
   const indexDir = join(root, "_workspace", "index");
-  const graphPath = join(indexDir, "call_graph.json");
-  const graph = readJson(graphPath);
-  const result = mergeAiPatchEdges(graph, patch);
   const appliedAt = kstIso();
-  graph._meta.edge_count = graph.edges.length;
-  graph._meta.ai_enriched_at = appliedAt;
-  graph._meta.ai_patch_applied = result.applied;
-  atomicJson(graphPath, graph);
+
+  /* op 종류별로 먼저 나눠서 각 대상 파일 병합이 서로의 거부 사유를 오염시키지 않게 한다. */
+  const KNOWN_OPS = new Set(["add_edge", "set_endpoint_description", "set_communication_description"]);
+  const buckets = { add_edge: [], set_endpoint_description: [], set_communication_description: [] };
+  let unsupported = 0;
+  const unsupportedSamples = [];
+  for (const op of patch.operations) {
+    const kind = op && typeof op === "object" ? op.op : undefined;
+    if (kind && KNOWN_OPS.has(kind)) buckets[kind].push(op);
+    else { unsupported += 1; if (unsupportedSamples.length < 20) unsupportedSamples.push({ reason: "unsupported_op", op: kind ?? null }); }
+  }
+
+  let edgeResult = { applied: 0, rejected: 0, duplicates: 0, rejected_reasons: {}, rejected_samples: [] };
+  let edgeCount = null;
+  if (buckets.add_edge.length) {
+    const graphPath = join(indexDir, "call_graph.json");
+    const graph = readJson(graphPath);
+    edgeResult = mergeAiPatchEdges(graph, { version: 1, operations: buckets.add_edge });
+    graph._meta.edge_count = graph.edges.length;
+    graph._meta.ai_enriched_at = appliedAt;
+    graph._meta.ai_patch_applied = edgeResult.applied;
+    atomicJson(graphPath, graph);
+    edgeCount = graph.edges.length;
+
+    /*
+     * digest는 호출 그래프에서 파생되므로 보강된 엣지를 반영해야 한다.
+     * 그러지 않으면 writer와 위키가 AI 판정 이전의 허브·진입점을 계속 본다.
+     */
+    const analysisInputPath = join(indexDir, "_analysis_input.json");
+    const analysisInput = readJson(analysisInputPath);
+    if (analysisInput?.digest) {
+      Object.assign(analysisInput.digest, graphDigest(graph.nodes, graph.edges));
+      if (analysisInput.counts) analysisInput.counts.graph_edges = graph.edges.length;
+      atomicJson(analysisInputPath, analysisInput);
+    }
+  }
+
+  let endpointResult = { applied: 0, rejected: 0, rejected_reasons: {}, rejected_samples: [] };
+  if (buckets.set_endpoint_description.length) {
+    const contractPath = join(indexDir, "api_contract.json");
+    const contract = existsSync(contractPath) ? readJson(contractPath) : null;
+    if (!contract) {
+      endpointResult = { applied: 0, rejected: buckets.set_endpoint_description.length, rejected_reasons: { no_api_contract: buckets.set_endpoint_description.length }, rejected_samples: [{ reason: "no_api_contract" }] };
+    } else {
+      endpointResult = mergeDescriptionPatch([...(contract.endpoints || []), ...(contract.consumers || [])], buckets.set_endpoint_description);
+      if (endpointResult.applied) atomicJson(contractPath, contract);
+    }
+  }
+
+  let commResult = { applied: 0, rejected: 0, rejected_reasons: {}, rejected_samples: [] };
+  if (buckets.set_communication_description.length) {
+    const ioPath = join(indexDir, "external_io.json");
+    const io = existsSync(ioPath) ? readJson(ioPath) : null;
+    if (!io) {
+      commResult = { applied: 0, rejected: buckets.set_communication_description.length, rejected_reasons: { no_external_io: buckets.set_communication_description.length }, rejected_samples: [{ reason: "no_external_io" }] };
+    } else {
+      commResult = mergeDescriptionPatch(io.communications || [], buckets.set_communication_description);
+      if (commResult.applied) atomicJson(ioPath, io);
+    }
+  }
+
+  const unsupportedResult = { applied: 0, rejected: unsupported, rejected_reasons: unsupported ? { unsupported_op: unsupported } : {}, rejected_samples: unsupportedSamples };
+  const result = mergeCombinedResults([edgeResult, endpointResult, commResult, unsupportedResult]);
+
   const enrichment = { applied_at: appliedAt, ...result, patch: slash(relative(root, patchPath)) };
   const metaPath = join(indexDir, "_meta.json");
   const meta = readJson(metaPath, {});
   meta.ai_enrichment = enrichment;
   atomicJson(metaPath, meta);
-  /*
-   * digest는 호출 그래프에서 파생되므로 보강된 엣지를 반영해야 한다.
-   * 그러지 않으면 writer와 위키가 AI 판정 이전의 허브·진입점을 계속 본다.
-   */
-  const analysisInputPath = join(indexDir, "_analysis_input.json");
-  const analysisInput = readJson(analysisInputPath);
-  if (analysisInput?.digest) {
-    Object.assign(analysisInput.digest, graphDigest(graph.nodes, graph.edges));
-    if (analysisInput.counts) analysisInput.counts.graph_edges = graph.edges.length;
-    analysisInput.ai_enrichment = enrichment;
-    atomicJson(analysisInputPath, analysisInput);
-  }
-  return { ...result, edges: graph.edges.length };
+  return edgeCount === null ? { ...result } : { ...result, edges: edgeCount };
 }
 
 function printHelp() {

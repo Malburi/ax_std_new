@@ -196,13 +196,16 @@ pair_linked = true이면 분석 리포트 헤더에 기록: 1:1이면 "파트너
 ```json
 {"version": 1, "operations": [
   {"op": "add_edge", "from": "<기존 노드 id>", "to": "<기존 노드 id>", "type": "call|inject|inherit|reflect",
-   "file": "src/.../OrderService.java", "line": 42, "evidence": "리플렉션으로 빈 이름 조회"}
+   "file": "src/.../OrderService.java", "line": 42, "evidence": "리플렉션으로 빈 이름 조회"},
+  {"op": "set_endpoint_description", "id": "<api_contract.json endpoints[]/consumers[] id>", "description": "주문을 취소 처리한다"},
+  {"op": "set_communication_description", "id": "<external_io.json communications[] id>", "description": "결제 게이트웨이에 취소 요청을 전달한다"}
 ]}
 ```
 
 - `from`/`to`는 **반드시 `call_graph.json`의 `nodes`에 이미 있는 id**여야 한다. 노드는 새로 만들 수 없고, 없는 id는 `unknown_from_node`/`unknown_to_node`로 거부된다.
 - 미해결 목록에 없더라도 리플렉션·동적 프록시·문자열 기반 DI처럼 정규식이 잡을 수 없는 관계를 발견하면 같은 방식으로 operation을 추가한다.
 - `call_graph.json`을 직접 편집하지 않는 이유 — 재인덱싱(`--mode incremental`)이 그래프를 캐시에서 다시 만들기 때문에 직접 덧붙인 엣지는 다음 갱신에서 **에러 없이 사라진다**. patch는 쓰기 직전에 다시 병합된다.
+- `set_endpoint_description`/`set_communication_description`도 같은 이유로 `api_contract.json`/`external_io.json`을 직접 편집하지 않고 이 패치로만 보강한다 — 상세 지침은 Step 11·Step 15.5 참조. `id`가 대상 파일에 없으면 `unknown_id`로 거부된다.
 4. **확인만 하고 보고할 것** — 아래 "작성 후 자체 검증" 항목은 이때 읽기 전용 점검이다. dangling·`_meta`는 인덱서가 구조적으로 보장하므로, Spring인데 `inject`가 0개인 식의 **비개연성**만 리포트에 적는다(직접 고치지 않는다).
 
 **기계 인덱스가 없을 때(`_meta.json` 없음)** 아래 지침대로 처음부터 전부 작성한다(기존 동작 그대로).
@@ -287,6 +290,10 @@ pair_linked = true이면 분석 리포트 헤더에 기록: 1:1이면 "파트너
 | 캐시 외부화 | `RedisTemplate`/`@CacheEvict` |
 
 각 통신 지점에 대해 (1) 호출 위치 파일·라인 (2) 대상 시스템 식별자 (URL/큐 이름) (3) 에러 처리 방식 (재시도/타임아웃)을 수집.
+
+**설명 보강 (wiki의 "외부 시스템" 페이지가 표만 있고 역할 설명이 없다는 문제 해결용):**
+- **기계 인덱스가 있을 때**: `external_io.json`이 이미 인덱서 산출물이므로(Step 8 참조), 이 파일을 읽고 각 `communications[]` 항목에 대해 "이 통신이 비즈니스적으로 무엇을 하는지"(예: "결제 게이트웨이에 취소 요청을 전달한다")를 1줄로 판단해 `_ai_patch.json`에 `set_communication_description` 오퍼레이션으로 제출한다(Step 8 예시 참조). 파일을 직접 고치지 않는 이유는 Step 8과 동일 — 재인덱싱 시 사라진다.
+- **기계 인덱스가 없을 때(아래 폴백)**: 처음부터 작성하는 각 communication 객체에 `description` 필드를 바로 포함한다.
 
 산출물: 분석 리포트의 "외부 통신" 섹션 + `_workspace/index/external_io.json`
 
@@ -406,6 +413,10 @@ api-bridge 에이전트 없이 analyzer가 직접 추출한다 (harness-init 파
 - 인증 필요 여부 (SecurityConfig 또는 미들웨어에서 공개 경로 패턴 확인)
 - 총 엔드포인트 수, 공개/인증 구분
 
+**설명 보강 (wiki의 "API Endpoints" 페이지가 표만 있고 역할 설명이 없다는 문제 해결용):**
+- **기계 인덱스가 있을 때**: 이 Step의 추출 자체는 Phase C 규칙대로 스킵(재작성 안 함)하되, 그 대신 이미 만들어진 `api_contract.json`의 `endpoints[]`(+ `consumers[]`, 있으면)를 읽어 각 항목에 대해 "이 API가 무엇을 하는지"(예: "주문을 취소 처리한다")를 1줄로 판단해 `_ai_patch.json`에 `set_endpoint_description` 오퍼레이션으로 제출한다(Step 8 예시 참조).
+- **기계 인덱스가 없을 때(아래)**: 처음부터 작성하는 각 endpoint 객체에 `description` 필드를 바로 포함한다.
+
 **산출물:** `_workspace/index/api_contract.json`
 
 ```json
@@ -423,7 +434,8 @@ api-bridge 에이전트 없이 analyzer가 직접 추출한다 (harness-init 파
       "request_body_type": "CancelRequest",
       "response_type": "CancelResponse",
       "auth_required": true,
-      "roles": []
+      "roles": [],
+      "description": "주문을 취소 처리한다"
     }
   ],
   "models": {},
@@ -472,11 +484,11 @@ api-bridge 에이전트 없이 analyzer가 직접 추출한다 (harness-init 파
 | `_workspace/index/call_graph.json` | 호출 그래프 (Step 8) | 인덱서 (보강은 `_ai_patch.json`) | 10MB |
 | `_workspace/index/data_flow.json` | 데이터 흐름 (Step 9, 선택적) | **analyzer** | 5MB |
 | `_workspace/index/transactions.json` | 트랜잭션 경계 (Step 10) | 인덱서 | 1MB |
-| `_workspace/index/external_io.json` | 외부 통신 (Step 11) | 인덱서 | 1MB |
+| `_workspace/index/external_io.json` | 외부 통신 (Step 11) | 인덱서 (`description`은 `_ai_patch.json`으로 analyzer가 보강) | 1MB |
 | `_workspace/index/env_branches.json` | 환경 분기 (Step 13) | 인덱서 | 500KB |
 | `_workspace/index/dead_code.json` | 데드 코드 후보 (Step 15) | 인덱서 | 1MB |
 | `_workspace/index/owasp_top10.json` | OWASP Top 10 매핑 (Step 14.5) | **analyzer** | 500KB |
-| `_workspace/index/api_contract.json` | REST API 계약 (Step 15.5, 백엔드 탐지 시) | 인덱서 | 2MB |
+| `_workspace/index/api_contract.json` | REST API 계약 (Step 15.5, 백엔드 탐지 시) | 인덱서 (`description`은 `_ai_patch.json`으로 analyzer가 보강) | 2MB |
 | `_workspace/index/sql_usage.json` | SQL ID ↔ 호출 위치 (Java/Python 등) | 인덱서 | 5MB |
 | `_workspace/index/schema.json` | DB 스키마 스냅샷 (Step 16) | 인덱서 (DDL) / **analyzer** (라이브 DB 접속 시) | 5MB |
 | `_workspace/index/client_index.json` | 레거시 정적 JS 인덱스 | **analyzer** | 2MB |

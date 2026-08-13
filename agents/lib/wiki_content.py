@@ -196,13 +196,15 @@ def _api_endpoints_table(contract_json):
         return ""
     endpoints = contract_json.get("endpoints", [])
     if endpoints:
-        rows = ["| Method | Path | Handler | Auth |", "|--------|------|---------|------|"]
+        rows = ["| Method | Path | Handler | Auth | 설명 |", "|--------|------|---------|------|------|"]
         for ep in endpoints:
             # 키 자체가 없으면 "인증 불필요"가 아니라 "확인 안 됨"이다 (결정론적 인덱서는 이 값을 판정하지 않는다)
             auth = "✅" if ep.get("auth_required") else ("" if "auth_required" in ep else "-")
+            # description은 analyzer가 _ai_patch.json의 set_endpoint_description으로 보강하는 선택 필드 —
+            # 인덱서 단계에서는 없는 게 정상이라 빈 칸으로 둔다(강제 아님).
             rows.append(
                 f"| {ep.get('method', '')} | {ep.get('path', '')} | "
-                f"{ep.get('handler', '')} | {auth} |"
+                f"{ep.get('handler', '')} | {auth} | {ep.get('description', '')} |"
             )
         return "\n".join(rows)
     # consumer(frontend) 계약 — provider 라우트가 아니라 호출하는 namespace/sqlid·REST 목록
@@ -535,11 +537,13 @@ def _external_io_table(io_json):
     comms = io_json.get("communications", [])
     if comms:
         parts = []
-        rows = ["| Type | Target | File:Line |", "|------|--------|-----------|"]
+        # description은 analyzer가 _ai_patch.json의 set_communication_description으로 보강하는
+        # 선택 필드 — 인덱서 단계에서는 없는 게 정상이라 빈 칸으로 둔다(강제 아님).
+        rows = ["| Type | Target | File:Line | 설명 |", "|------|--------|-----------|------|"]
         for c in comms:
             target = c.get("target") or c.get("topic") or c.get("path_pattern") or c.get("system") or ""
             loc = f"{c.get('file', '')}:{c.get('line', '')}" if (c.get("file") or c.get("line")) else "-"
-            rows.append(f"| {c.get('type', '')} | {target} | {loc} |")
+            rows.append(f"| {c.get('type', '')} | {target} | {loc} | {c.get('description', '')} |")
         parts.append("\n".join(rows))
 
         # communications는 요약이고, external_io에 시스템별 세부 정보(URL/자격증명/호출 위치 등)가

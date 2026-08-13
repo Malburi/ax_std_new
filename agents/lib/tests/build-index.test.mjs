@@ -194,6 +194,97 @@ const mutation = 'UPDATE ORDERS SET STATUS = ? WHERE ID = ?';
     }
   });
 
+  register("AI 보강으로 API 엔드포인트·외부 통신에 설명을 추가할 수 있다", () => {
+    const root = mkdtempSync(join(tmpdir(), "ax-indexer-desc-"));
+    try {
+      write(root, "src/OrderController.java", `package com.acme;
+@RequestMapping("/orders")
+public class OrderController {
+  @PostMapping("/{id}/cancel")
+  public void cancel() { }
+}
+class PaymentGatewayClient {
+  RestTemplate restTemplate;
+}
+`);
+      buildIndex({ root, mode: "init", tier: "Standard", config: null });
+      const endpointId = json(root, "api_contract.json").endpoints[0].id;
+      const commId = json(root, "external_io.json").communications[0].id;
+      write(root, "_workspace/index/_ai_patch.json", JSON.stringify({
+        version: 1,
+        operations: [
+          { op: "set_endpoint_description", id: endpointId, description: "주문을 취소 처리한다" },
+          { op: "set_communication_description", id: commId, description: "결제 게이트웨이에 취소 요청을 전달한다" },
+        ],
+      }));
+      const result = applyAiPatch(root, "_workspace/index/_ai_patch.json");
+      assert.equal(result.applied, 2, JSON.stringify(result));
+      assert.equal(result.rejected, 0);
+      assert.equal(json(root, "api_contract.json").endpoints[0].description, "주문을 취소 처리한다");
+      assert.equal(json(root, "external_io.json").communications[0].description, "결제 게이트웨이에 취소 요청을 전달한다");
+      assert.equal(json(root, "_meta.json").ai_enrichment.applied, 2);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  register("설명 보강 오퍼레이션이 존재하지 않는 id를 가리키면 unknown_id로 거부된다", () => {
+    const root = mkdtempSync(join(tmpdir(), "ax-indexer-desc-reject-"));
+    try {
+      write(root, "src/OrderController.java", `package com.acme;
+@RequestMapping("/orders")
+public class OrderController {
+  @PostMapping("/{id}/cancel")
+  public void cancel() { }
+}
+`);
+      buildIndex({ root, mode: "init", tier: "Standard", config: null });
+      write(root, "_workspace/index/_ai_patch.json", JSON.stringify({
+        version: 1,
+        operations: [{ op: "set_endpoint_description", id: "does.not.exist", description: "존재하지 않는 엔드포인트" }],
+      }));
+      const result = applyAiPatch(root, "_workspace/index/_ai_patch.json");
+      assert.equal(result.applied, 0);
+      assert.equal(result.rejected, 1);
+      assert.equal(result.rejected_reasons.unknown_id, 1, JSON.stringify(result));
+      assert.equal(json(root, "api_contract.json").endpoints[0].description, undefined, "거부된 항목은 description이 안 생김");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  register("add_edge와 설명 보강이 섞인 패치도 서로 오염 없이 각자 적용된다", () => {
+    const root = mkdtempSync(join(tmpdir(), "ax-indexer-desc-mixed-"));
+    try {
+      write(root, "src/simple.ts", "export function first() { return 1; }\nexport function second() { return 2; }\n");
+      write(root, "src/OrderController.java", `package com.acme;
+@RequestMapping("/orders")
+public class OrderController {
+  @PostMapping("/{id}/cancel")
+  public void cancel() { }
+}
+`);
+      buildIndex({ root, mode: "init", tier: "Standard", config: null });
+      const endpointId = json(root, "api_contract.json").endpoints[0].id;
+      write(root, "_workspace/index/_ai_patch.json", JSON.stringify({
+        version: 1,
+        operations: [
+          { op: "add_edge", from: "src.simple.first", to: "src.simple.second", type: "call", confidence: "MEDIUM", evidence: "동적 디스패치" },
+          { op: "set_endpoint_description", id: endpointId, description: "주문을 취소 처리한다" },
+          { op: "add_node", id: "src.simple.invented" },
+        ],
+      }));
+      const result = applyAiPatch(root, "_workspace/index/_ai_patch.json");
+      assert.equal(result.applied, 2, JSON.stringify(result));
+      assert.equal(result.rejected, 1);
+      assert.equal(result.rejected_reasons.unsupported_op, 1, "add_node는 여전히 unsupported_op로 집계된다");
+      assert.ok(json(root, "call_graph.json").edges.some((item) => item.origin === "ai-enrichment"), "call_graph edge 보강은 그대로 동작");
+      assert.equal(json(root, "api_contract.json").endpoints[0].description, "주문을 취소 처리한다");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   register("분석 입력 팩이 허브·모듈·위험 digest를 상한과 함께 제공한다", () => {
     const root = mkdtempSync(join(tmpdir(), "ax-indexer-digest-"));
     try {

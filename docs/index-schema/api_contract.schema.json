@@ -29,6 +29,7 @@
           "auth_required": { "type": ["boolean", "null"] }
           ,"origin": { "type": "string", "enum": ["deterministic-indexer", "ai-enrichment", "api-bridge", "analyzer-fallback"] }
           ,"confidence": { "type": "string", "enum": ["HIGH", "MEDIUM", "LOW"] }
+          ,"description": { "type": "string" }
         }
       }
     },
@@ -51,6 +52,7 @@
           "function": { "type": "string" }
           ,"origin": { "type": "string", "enum": ["deterministic-indexer", "ai-enrichment", "api-bridge", "analyzer-fallback"] }
           ,"confidence": { "type": "string", "enum": ["HIGH", "MEDIUM", "LOW"] }
+          ,"description": { "type": "string" }
         }
       }
     },

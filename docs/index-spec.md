@@ -9,7 +9,9 @@
 | 파일 | 생성 주체 |
 |------|---------|
 | `symbols` · `call_graph` · `sql_usage` · `transactions` · `external_io` · `env_branches` · `schema` · `api_contract` · `dead_code` | `agents/lib/build-index.mjs` (결정론적 인덱서, LLM 미개입) |
-| `call_graph`의 모호 관계 보강 | analyzer가 `_ai_patch.json`으로 제출 → 인덱서가 검증 후 병합 |
+| `call_graph`의 모호 관계 보강 | analyzer가 `_ai_patch.json`의 `add_edge` 오퍼레이션으로 제출 → 인덱서가 검증 후 병합 |
+| `api_contract`의 `endpoints[]`/`consumers[]` 선택적 `description` | analyzer가 `_ai_patch.json`의 `set_endpoint_description`(`{id, description}`) 오퍼레이션으로 제출 |
+| `external_io`의 `communications[]` 선택적 `description` | analyzer가 `_ai_patch.json`의 `set_communication_description`(`{id, description}`) 오퍼레이션으로 제출 |
 | `data_flow` · `owasp_top10` · `client_index` | analyzer (판단이 필요해 기계화 대상 아님) |
 | `schema` (라이브 DB 접속으로 뜬 경우) | analyzer |
 | Vue 컴포넌트·Pinia 스토어 노드와 `import`·`inject` 엣지 | `agents/lib/index_extractor_vue.py` (인덱서 결과에 병합) |
@@ -288,7 +290,8 @@ DB 스키마 스냅샷.
       "target": "https://api.payment.example.com/charge",
       "timeout_ms": 30000,
       "retry_policy": "exponential_backoff(3)",
-      "in_transaction": false
+      "in_transaction": false,
+      "description": "결제 게이트웨이에 승인 요청을 전달한다"
     },
     {
       "id": "ext_002",
@@ -310,6 +313,8 @@ DB 스키마 스냅샷.
 ```
 
 `type` 값: `http`, `kafka_producer`, `kafka_consumer`, `rabbit_*`, `sqs_*`, `file_io`, `external_db`, `ldap`, `mail`, `redis`, `s3`, etc.
+
+`description`은 선택 필드다 — 인덱서는 채우지 않고, analyzer가 `_ai_patch.json`의 `set_communication_description`으로 보강한다(위 "생성 주체" 표 참조). 없어도 정상이다.
 
 ---
 
