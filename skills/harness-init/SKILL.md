@@ -1,6 +1,6 @@
 ---
 name: harness-init
-description: 프로젝트를 심층 분석해 맞춤형 하네스(CLAUDE.md, 5+ 워크플로우 스킬, 도메인 에이전트, 패턴, 인덱스)를 자동 생성하는 오케스트레이터. "하네스 초기화", "하네스 만들어줘", "하네스 다시 초기화", "harness 다시 만들어줘", "프로젝트 분석해서 설정해줘", "이 프로젝트 Claude 설정해줘", "create harness", "initialize harness", "re-initialize harness", "generate project harness", "하네스 업데이트", "하네스 보완", "스킬만 다시 생성", "에이전트만 다시 생성", "validator만 다시 실행", "패턴 추출해줘", "pattern extract" 요청 시 사용. `.claude/skills/trace.md` 또는 `.claude/skills/analyze-impact.md`가 없으면 자동 트리거.
+description: 프로젝트를 심층 분석해 맞춤형 하네스(CLAUDE.md, 5+ 워크플로우 스킬, 도메인 에이전트, 패턴, 인덱스)를 자동 생성하는 오케스트레이터. "하네스 초기화", "하네스 만들어줘", "하네스 다시 초기화", "harness 다시 만들어줘", "프로젝트 분석해서 설정해줘", "이 프로젝트 Claude 설정해줘", "create harness", "initialize harness", "re-initialize harness", "generate project harness", "하네스 업데이트", "하네스 보완", "스킬만 다시 생성", "에이전트만 다시 생성", "validator만 다시 실행", "패턴 추출해줘", "pattern extract" 요청 시 사용. `.claude/skills/trace.md`가 없으면 자동 트리거.
 ---
 
 # Harness Initializer (Enhanced) — 팀 모드 오케스트레이터
@@ -129,22 +129,29 @@ description: 프로젝트를 심층 분석해 맞춤형 하네스(CLAUDE.md, 5+ 
 
 `monorepo`/`selected-paths`의 포함 경로는 root 내부 실제 디렉터리만 허용한다 (`..`, root 밖 절대경로 거부).
 
-### 파트너 하네스 조기 발사 (`paired-roots`/`hub-roots`, 하네스 없는 파트너가 있을 때만)
+### 분리 저장소 레인 상태 초기화 (`paired-roots`/`hub-roots`)
 
-목적: 파트너 하네스 생성을 자기쪽 Phase 2(analyzer→writer→pattern→validator, 가장 비용이 큰 구간) **시작 전에** 백그라운드로 미리 띄워, upstream의 "두 레인 동시 진행"과 같은 효과(총 소요시간 ≈ `max(자기쪽, 파트너쪽)`)를 얻는다. 지금까지는 Phase 3.5에서야 발사해 자기쪽 Phase 2 전체가 끝난 뒤에야 파트너쪽이 시작됐다.
+목적: 분리 저장소는 이제 자기 쪽과 파트너 쪽을 **대칭 2-레인으로 동시에** 진행한다(아래 Phase 1 "분리 저장소 작업 그래프" 참조) — 예전의 "조기 발사 후 늦게 join" 방식은 파트너 쪽 진행 상황이 보이지 않고 하드 배리어도 없었는데, 이번부터는 각 레인(I/A/W/V)을 이 orchestrator가 직접 지휘하므로 두 방식 모두 필요 없어졌다. 이 절은 그 레인들이 참조할 **상태 파일만** 준비한다 — 실제 레인 실행은 Phase 1/2에서 한다.
 
-`init_layout`이 `paired-roots`/`hub-roots`면, 위에서 수집한 `partner_info`/`partner_list`의 각 경로에 `Test-Path <파트너 절대경로>/CLAUDE.md`로 하네스 존재만 확인한다(AI 호출 없음 — pair-init Phase 1의 동일 확인을 조기에 한 번 더 하는 것뿐이라 비용이 거의 없다).
+`init_layout`이 `paired-roots`/`hub-roots`가 아니면 이 절 전체를 스킵. 이 절은 **Phase -1의 "스킵 조건"(23줄 위 참조)과 무관하게 항상 실행한다** — `00_init_scope.md`가 이미 있어 사용자에게 구성을 다시 묻지 않는 경우(재시도 포함)에도 `init_layout` 값은 그 파일에서 읽을 수 있으므로, 레인 재개 판단(아래)이 항상 이뤄져야 한다.
 
-하네스 없는 파트너가 하나라도 있고 **호스트가 background Agent 실행을 지원하면**, `skills/pair-init/SKILL.md`의 "파트너 하네스 자동 생성 (선택 1)" 절에 있는 `Agent()` 템플릿을 그대로 사용해(역할·경로만 이 파트너 값으로 치환, `hub-roots`는 파트너마다 반복) **`run_in_background: true`로 지금 바로 발사**하고 응답을 기다리지 않는다 — 이어서 아래 Phase 0으로 곧장 진행한다.
+`_workspace/pair_lane_state.md` 존재 확인:
 
-발사한 각 파트너의 상태를 `00_init_scope.md`의 "기계 실행 값"에 기록한다:
-```
-- partner_generation: [{role_label, path, status: "running"}, ...]
-```
+- **없으면 새로 생성**(`_workspace/` 없으면 먼저 생성):
+  ```markdown
+  pair_state: pending
+  self_role: [backend|frontend|hub]
+  self_last_stage: none
+  self_status: pending
+  partner: [role_label] | path: [파트너 절대경로] | last_stage: none | status: pending
+  (hub-roots는 partner_list 개수만큼 partner 줄 반복)
+  ```
+  `self_role`은 `hub-roots`면 항상 `hub`(=backend 취급), `paired-roots`면 `partner_info.role`의 반대.
+- **이미 있으면 그대로 재사용** — `self_status`/각 `partner`의 `status`가 `done`인 레인은 Phase 1의 작업 그래프에서 완전히 제외하고(재분석 안 함), `failed`인 레인만 `last_stage` 다음 단계부터 포함한다. 전부 `done`이고 `pair_state: complete`면 Phase 1의 분리 저장소 그래프 자체를 스킵하고 곧장 Phase 3.6으로(파트너 연동은 이미 끝난 상태).
 
-**호스트가 background 실행을 지원하지 않으면 이 단계 전체를 스킵한다** — `partner_generation`을 기록하지 않고 그대로 Phase 0으로 진행한다. 이 경우 Phase 3.5가 기존 방식(지금 시점에 발사)으로 자동 폴백하므로 회귀가 아니라 이 최적화가 적용되지 않을 뿐이다.
+이 파일은 `_workspace/pair_config.md`(pair-init이 만드는 연동 설정)와 다른 파일이다 — `pair_config.md`를 읽는 기존 스크립트(`wiki_generator.py`/`skills_builder.py`)는 이 파일을 몰라도 되고, 건드리지 않는다.
 
-**자기쪽 Phase 0~2~4는 이 단계와 완전히 무관하게 오늘과 동일하게 진행한다** — 아래 어떤 Phase도 이 조기 발사 때문에 변경되지 않는다. `skills/pair-init/SKILL.md` 자체도 변경하지 않는다(발사 시점만 앞당길 뿐 절차는 그대로 재사용).
+**자기쪽 Phase 0~2~4 실행 방식 자체는 바뀌지 않는다** — 단일/모노레포와 동일한 2-0.5/2-1/2-2/2-3/2-4/2-5 절차를 그대로 쓴다. 달라지는 것은 "그 절차를 자기 자신뿐 아니라 파트너 경로에도 병렬로 적용하고, 끝나면 barrier로 합류한다"는 오케스트레이션 층위뿐이다.
 
 ---
 
@@ -159,7 +166,7 @@ description: 프로젝트를 심층 분석해 맞춤형 하네스(CLAUDE.md, 5+ 
 |----------|------|
 | `CLAUDE.md` 존재 + "## 변경 이력" 섹션 | 기존 하네스 있음 |
 | `.claude/skills/trace.md` 존재 | 기존 스킬 있음 |
-| `.claude/skills/analyze-impact.md` 존재 | harness-fin v1 이상 |
+| `.claude/ito-guide.md` 존재 | harness-fin (Enhanced) 버전 |
 | `.claude/agents/domain-expert.md` | 도메인 에이전트 있음 |
 | `_workspace/` 존재 | 이전 산출물 있음 |
 | `_workspace/index/*.json` 존재 | 인덱스 있음 (incremental 가능) |
@@ -241,15 +248,18 @@ _workspace/validator_schema.json      ← validate-harness.mjs (2-4)
 
 `TaskCreate`로 팀원별 작업 + 의존성 설정 (Tier에 따라 생성 작업 다름):
 
-**Standard/Full 공통:**
+**단일/모노레포 (Standard/Full 공통):**
 ```
-T-A (analyzer):          → _workspace/01_analyzer_report.md + _workspace/index/*.json
+T-I (인덱싱):             → _workspace/index/*.json (결정론적, LLM 미사용 — 2-0.5)
+T-A (analyzer):          → _workspace/01_analyzer_report.md       (blockedBy: T-I)
 T-W (writer):            → _workspace/02_writer_files.md           (blockedBy: T-A)
-T-V (validator):         → _workspace/03_validator_report.md       (blockedBy: T-W)
+T-V (MJS validator):     → _workspace/03_validator_report.md       (blockedBy: T-W)
 T-P (pattern-extractor): → _workspace/05_patterns_extracted.md     (blockedBy: T-W)
 T-E (harness-eval):      → _workspace/06_eval_report.md            (blockedBy: T-V)
 ```
-T-P는 T-W 완료 후 T-V/T-E와 병렬 실행 가능.
+T-I는 LLM을 쓰지 않는 스크립트 단계지만(2-0.5), 레거시 대형 저장소는 실행 시간이 체감될 수 있어 별도 작업으로 눈에 보이게 둔다(예: `T-I · MJS · 소스 구조와 호출 관계 인덱싱`). T-V의 표시 이름을 "MJS validator"로 쓰는 이유도 같다 — 체크 대부분(1,2,3,4,6,7,8,9,11)이 `validator_checks.py`/`validate-harness.mjs`의 기계 결과를 그대로 옮겨 적는 것이고, LLM은 체크 5·일부 10만 판단한다(agents/validator.md 참조). T-P는 T-W 완료 후 T-V/T-E와 병렬 실행 가능.
+
+**분리 저장소 (paired-roots/hub-roots):** 아래 "분리 저장소 작업 그래프" 절 참조 — 단일/모노레포 그래프 대신 이 그래프를 쓴다.
 
 QA(`T-Q`)는 Tier와 무관하게 이 초기 작업 그래프에 포함하지 않는다 — Phase 3.7의 선택 작업 메뉴에서 사용자가 고를 때만 온디맨드로 실행한다(토큰 절감).
 
@@ -259,15 +269,45 @@ QA(`T-Q`)는 Tier와 무관하게 이 초기 작업 그래프에 포함하지 �
 
 - `T-A-RETRY · analyzer · 누락된 분석 근거 보완`
 - `T-W-RETRY · writer · 누락된 하네스 파일·패턴 보완`
-- `T-V-RECHECK · validator · 보완된 초기화 결과 재검증`
+- `T-V-RECHECK · MJS validator · 보완된 초기화 결과 재검증`
+
+### 분리 저장소 작업 그래프 (paired-roots/hub-roots)
+
+단일/모노레포의 `T-*` 그래프 대신 **대칭 2-레인**을 쓴다 — `B` 레인은 backend, `C` 레인은 consumer(hub-roots는 클라이언트 수만큼 `C1`, `C2`, ... 반복). `self`가 backend면 B 레인이 현재 프로젝트이고 C 레인(들)이 파트너, `self`가 frontend면 반대다(hub-roots는 항상 `self=backend`이므로 B=자기 자신, C1..CM=클라이언트 전부).
+
+```
+B-I → B-A → B-W → B-V
+C-I → C-A → C-W → C-V      (hub-roots는 C1-I→C1-A→...부터 CM까지 각자 독립된 체인)
+
+같은 단계(I/A/W/V)의 서로 다른 레인은 같은 메시지에서 병렬로 실행한다 (blockedBy는 자기 레인 안에서만).
+B-V + 모든 C*-V 완료 → P-BARRIER (blockedBy: B-V, C1-V, ..., CM-V)
+                       → P-PAIR    (blockedBy: P-BARRIER)
+                       → P-REFRESH (blockedBy: P-PAIR)
+```
+
+표시 제목 예: `B-A · analyzer · [백엔드] 서비스·DB 업무 흐름 분석`, `C-A · analyzer · [프론트엔드] 화면에서 API까지 호출 흐름 분석`(hub-roots는 `C1-A · analyzer · [web-frontend] ...`처럼 role_label을 그대로 씀). `P-BARRIER · 양쪽 저장소 검증 결과 확인`, `P-PAIR · 프론트엔드와 백엔드 양방향 연결`, `P-REFRESH · API 계약과 미매칭 호출 갱신`.
+
+각 레인의 I/A/W/V는 단일/모노레포의 T-I/T-A/T-W/T-V와 **완전히 같은 절차·프롬프트**를 쓴다(2-0.5/2-1/2-2/2-4) — 대상 프로젝트 루트만 그 레인의 경로(자기 자신 또는 파트너 절대경로)로 바꾼다. T-P(pattern-extractor)·T-E(harness-eval)도 레인마다 독립적으로 실행하되(각 프로젝트가 자기 패턴·자기 품질 점수를 가짐), barrier 대상에는 포함하지 않는다 — barrier는 오직 "양쪽 다 하네스가 정상 생성됐는가"(validator 결과)만 확인한다. 실행 방식 상세는 Phase 2 "분리 저장소 레인 실행" 절 참조.
+
+**실패 처리 — 실패한 Lane만 재개, 성공 Lane은 보존:** 레인 상태는 `_workspace/pair_lane_state.md`에 기록한다(Phase -1에서 생성, 아래 참조). 어느 레인이든 I/A/W/V 중 하나가 실패하면 그 레인만 `status: failed`로 표시하고 P-BARRIER/P-PAIR/P-REFRESH로 진행하지 않는다 — 성공한 레인은 그대로 두고(`status: done`) 사용자에게 "[레인] 실패 — 재시도하려면 harness-init을 다시 요청하세요"만 안내한다. 다음 실행에서 Phase -1이 이 파일을 읽어 `status: done`인 레인은 완전히 건너뛰고 실패했던 레인의 실패 지점부터만 이 작업 그래프에 포함한다.
 
 ---
 
 ## Phase 2: 팀원 실행
 
-### 2-0.5. 결정론적 전수 인덱싱 (LLM 미사용)
+### 분리 저장소 레인 실행 (paired-roots/hub-roots만 해당 — 단일/모노레포는 아래 2-0.5부터 그대로)
 
-analyzer 호출 전에 실행. `_workspace/01_analyzer_report.md`가 이미 있어 2-1을 스킵하는 경우 이 단계도 함께 스킵.
+이하 2-0.5~2-5는 **레인 한 개(자기 자신)를 대상으로 한 절차**로 서술돼 있다. 분리 저장소는 이 절차 자체를 바꾸지 않고, 레인 수만큼(B 1개 + C 1~M개) **같은 단계를 같은 메시지에서 병렬 실행**한다:
+
+- **I 단계**: 2-0.5의 Step A~F를 자기 루트로 1회, 그리고 아직 `status: done`이 아닌 각 파트너 루트로 1회씩 — Bash/PowerShell 호출들을 한 메시지에 모아 실행(스크립트 호출이라 Agent 병렬이 아니라 다중 도구 호출로 병렬화). 완료마다 `pair_lane_state.md`의 해당 레인 `last_stage: I`로 갱신.
+- **A/W/V 단계**: 2-1/2-2/2-4의 `Agent()` 템플릿을 그대로 쓰되, "프로젝트 루트: [절대경로]"만 그 레인의 대상(자기 자신 또는 해당 파트너 절대경로)으로 바꾼다. `description`도 레인 ID로 바꾼다(`T-A`→`B-A`/`C1-A` 등, 표시 이름 규칙은 Phase 1 참조). 같은 단계에 해당하는 레인들의 `Agent()` 호출을 **전부 같은 메시지에서** 발행하고, 전부 반환된 뒤 다음 단계로 넘어간다(자연스러운 barrier — 별도 폴링 불필요).
+- **2-2.3(skills_builder)/2-3(pattern-extractor)/2-5(harness-eval)**: 레인마다 독립 실행(각자 자기 CLAUDE.md·패턴·품질 점수를 가짐). 이 결과는 barrier 판정에 쓰이지 않는다.
+- 어느 레인이든 I/A/W/V 중 하나가 실패하면 그 레인의 `pair_lane_state.md` 항목을 `status: failed, last_stage: [실패 직전 완료 단계]`로 남기고, 나머지 레인은 계속 진행하되 **전부 끝나도 P-BARRIER로 넘어가지 않는다** — Phase 1 "분리 저장소 작업 그래프"의 실패 처리 절 참조.
+- B-V + 모든 C*-V가 `status: done`이면 `pair_lane_state.md`에 `pair_state: barrier_done`으로 갱신하고 Phase 3.5(P-BARRIER/P-PAIR/P-REFRESH)로 진행.
+
+### 2-0.5. 결정론적 전수 인덱싱 (LLM 미사용) — `T-I`(또는 분리 저장소의 `B-I`/`C-I`)
+
+analyzer 호출 전에 실행. `_workspace/01_analyzer_report.md`가 이미 있어 2-1을 스킵하는 경우 이 단계도 함께 스킵. `TaskCreate`가 있으면 이 절 시작 시 해당 작업(`T-I` 등)을 in_progress로, Step C(인덱싱) 완료 시 completed로 갱신한다.
 
 **Step A — 실행 환경 확인**
 
@@ -396,13 +436,13 @@ Agent(
 )
 ```
 
-> writer는 trace.md·scaffolder.md·find-logic.md만 markdown으로 직접 작성한다 (pair_config.md 있으면 cross-repo-scaffold.md·cross-repo-modify.md도). CLAUDE.md는 `_workspace/claude_md_fields.json`에 필드(프로젝트명·한줄설명·스택요약·요청흐름·파일위치표 행·빌드명령·주의사항)만, patterns 스켈레톤·02_writer_files.md는 `_workspace/writer_decisions.json`에 결정 값(조건부 스킬 생성 여부+사유, 패턴 파일명 목록, 탐지 스택, 적용 결정 사유)만 채워서 낸다. domain-expert.md(analyzer_report 그대로 주입)와 analyze-impact.md·safe-modify.md·scaffold-feature.md·plan-migration.md·review-sql.md(정적 텍스트)·patterns 스켈레톤·02_writer_files.md는 writer가 쓰지 않고 다음 단계(2-2.3)에서 배포한다.
+> writer는 trace.md·scaffolder.md·find-logic.md만 markdown으로 직접 작성한다 (pair_config.md 있으면 cross-repo-scaffold.md·cross-repo-modify.md도). CLAUDE.md는 `_workspace/claude_md_fields.json`에 필드(프로젝트명·한줄설명·스택요약·요청흐름·파일위치표 행·빌드명령·주의사항)만, patterns 스켈레톤·02_writer_files.md는 `_workspace/writer_decisions.json`에 결정 값(조건부 스킬 적용 여부+사유, 패턴 파일명 목록, 탐지 스택, 적용 결정 사유)만 채워서 낸다. domain-expert.md(analyzer_report 그대로 주입)·patterns 스켈레톤·02_writer_files.md는 writer가 쓰지 않고 다음 단계(2-2.3)에서 조립한다. analyze-impact/safe-modify/scaffold-feature/vibe/plan-migration/review-sql은 플러그인 전역판을 그대로 쓰므로 writer도 skills_builder.py도 로컬 파일을 만들지 않는다 — writer는 plan-migration/review-sql의 *적용 여부*만 판단해 writer_decisions.json에 남긴다.
 
-### 2-2.3. skills_builder.py 실행 (CLAUDE.md + 정적 워크플로우 스킬 + domain-expert.md + 패턴 스켈레톤 + 02_writer_files.md 배포)
+### 2-2.3. skills_builder.py 실행 (CLAUDE.md + domain-expert.md + 패턴 스켈레톤 + ito-guide.md + 02_writer_files.md 조립)
 
 writer 완료 후 다음을 전부 처리한다 (LLM 호출 없음, 전부 결정론적 파일 조립/복사):
 - `_workspace/claude_md_fields.json` + `agents/lib/claude_md.md.template`(고정 골격) → `CLAUDE.md` 조립. `pair_config.md` 있으면 "파트너 프로젝트" 섹션도 그 필드값으로 자동 채움
-- `_workspace/writer_decisions.json`의 생성 여부 판단을 읽어 정적 스킬 템플릿(`agents/lib/skills/*.md.template`)을 대상 프로젝트 `.claude/skills/`에 복사 (analyze-impact/safe-modify/scaffold-feature는 항상, plan-migration/review-sql은 조건 충족 시만)
+- analyze-impact/safe-modify/scaffold-feature/vibe/plan-migration/review-sql은 로컬 배포 없이 플러그인 전역판(`skills/<name>/SKILL.md`)만 사용 — `_workspace/writer_decisions.json`의 적용 판단을 읽어 CLAUDE.md 자동 워크플로우 표·ito-guide.md에 이름만 반영(analyze-impact/safe-modify/scaffold-feature/vibe는 항상, plan-migration/review-sql은 조건 충족 시만)
 - `_workspace/01_analyzer_report.md`를 그대로 복사해 `.claude/agents/domain-expert.md` 생성
 - `writer_decisions.json`의 `pattern_files` 목록(+ "LegacyStaticJS" 탐지 시 client_pattern.md 자동 추가)으로 `.claude/patterns/*.md` 스켈레톤 생성 (이미 pattern-extractor가 채운 파일은 덮어쓰지 않음)
 - `agents/lib/ito_guide.md.template` + 배포된 스킬들의 frontmatter + `claude_md_fields.json`/`writer_decisions.json` 값으로 `.claude/ito-guide.md` 사용 설명서 조립 (시나리오는 배포 스킬 조합 규칙 기반)
@@ -414,7 +454,7 @@ writer 완료 후 다음을 전부 처리한다 (LLM 호출 없음, 전부 결�
 python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/skills_builder.py" --root "[절대경로]"
 ```
 
-실패 시(python 미설치, claude_md_fields.json/writer_decisions.json 누락 등) 1회만 재시도하고, 그래도 실패하면 "CLAUDE.md/정적 스킬/domain-expert.md/패턴 스켈레톤/02_writer_files.md 배포 실패 — writer 재실행 또는 수동 작성 필요" WARN 후 계속 진행 (개별 항목은 부분적으로 성공할 수 있음 — 스크립트가 항목별로 독립 처리).
+실패 시(python 미설치, claude_md_fields.json/writer_decisions.json 누락 등) 1회만 재시도하고, 그래도 실패하면 "CLAUDE.md/domain-expert.md/패턴 스켈레톤/ito-guide.md/02_writer_files.md 조립 실패 — writer 재실행 또는 수동 작성 필요" WARN 후 계속 진행 (개별 항목은 부분적으로 성공할 수 있음 — 스크립트가 항목별로 독립 처리).
 
 ### 2-2.5. ito-guide.md (2-2.3에 통합 — 별도 Agent 호출 없음)
 
@@ -459,7 +499,7 @@ node "$env:CLAUDE_PLUGIN_ROOT/agents/lib/validate-harness.mjs" --root "[절대�
 ```
 Agent(
   subagent_type="general-purpose",
-  description="T-V · validator · 하네스 구조와 근거 검증",
+  description="T-V · MJS validator · 하네스 구조와 근거 검증",
   prompt="<validator 에이전트 지침. 프로젝트 루트: [절대경로]. tier: [Standard/Full]. 입력: _workspace/01_analyzer_report.md, _workspace/02_writer_files.md, _workspace/validator_mechanical.json(있으면), _workspace/validator_schema.json(있으면), (있으면) _workspace/index/. 출력: _workspace/03_validator_report.md>",
   model="sonnet"
 )
@@ -502,12 +542,10 @@ Agent(
 - .claude/agents/domain-expert.md
 - .claude/patterns/[목록]
 
-[Workflow Skills (NEW)]
-- .claude/skills/analyze-impact.md
-- .claude/skills/safe-modify.md
-- .claude/skills/scaffold-feature.md
-- .claude/skills/plan-migration.md          (생성 조건 충족 시)
-- .claude/skills/review-sql.md              (DB 사용 시)
+[사용 가능한 워크플로우 스킬 — 플러그인 전역, 로컬 파일 없음]
+- analyze-impact / safe-modify / scaffold-feature / vibe (항상)
+- plan-migration                            (적용 조건 충족 시)
+- review-sql                                (DB 사용 시)
 
 [Indexes (NEW)]
 - _workspace/index/call_graph.json (노드: N, 엣지: M)
@@ -557,64 +595,50 @@ HIGH 우선순위 항목이 있으면 사용자에게 명시적 안내. 자동 �
 
 ---
 
-## Phase 3.5: 파트너 연동 (pair-init)
+## Phase 3.5: 파트너 연동 (P-BARRIER → P-PAIR → P-REFRESH)
 
 **Phase -1 결과 및 기존 설정 기반 분기:**
 
 | 조건 | 동작 |
 |------|------|
 | `init_layout = "single-root"`, `"monorepo"`, `"selected-paths"` | 이 Phase 전체 스킵 → Phase 3.6으로 |
-| `_workspace/pair_config.md` 이미 있음 | 이 Phase 전체 스킵 → Phase 3.6으로 |
-| `init_layout = "paired-roots"` + `partner_info` 수집됨 | pair-init 자동 실행 (사용자 확인 생략) → Phase 3.6으로 |
-| `init_layout = "hub-roots"` + `partner_list`(N개) 수집됨 | pair-init 자동 실행, `partner_list` 전체를 한 번에 전달 (사용자 확인 생략) → Phase 3.6으로 |
-| Phase -1 스킵 + `pair_config.md` 없음 | 연동 여부 질문 후 진행 |
+| `_workspace/pair_config.md` 이미 있고 `pair_lane_state.md`도 `pair_state: complete` | 이 Phase 전체 스킵 → Phase 3.6으로 |
+| `init_layout = "paired-roots"`/`"hub-roots"` + Phase 2의 분리 저장소 레인이 방금 `pair_state: barrier_done`으로 끝남 | 아래 P-BARRIER부터 진행 |
+| Phase -1 스킵 + `pair_config.md` 없음 (레인 그래프 자체를 안 거친 경우) | 연동 여부 질문 후 진행(기존 방식 — pair-init 단독 실행) |
 
-### pair-init 자동 실행 — 1:1 (`paired-roots` + 파트너 정보 있는 경우)
+### P-BARRIER: 양쪽 저장소 검증 결과 확인
 
-사용자에게 다음을 안내한 후 pair-init 스킬을 실행한다:
-
-```
-[Phase 3.5] pair-init 시작 — 파트너 프로젝트 연동 중
-파트너 경로: [partner_info.path]
-```
-
-pair-init 스킬을 다음 컨텍스트로 실행:
-- 현재 프로젝트 역할: `partner_info.role`
-- 파트너 절대 경로: `partner_info.path`
-- API base URL: `partner_info.api_url` (미입력 시 pair-init Phase 1에서 재확인)
-- pair-init Phase 1의 사용자 질문 중 이미 수집된 항목은 생략하고 Phase 2부터 실행
-
-### pair-init 자동 실행 — 1:N (`hub-roots` + 파트너 목록 있는 경우)
+Phase 2에서 B-V(및 hub-roots면 전체 C*-V)가 모두 `status: done`으로 끝난 경우에만 여기 도달한다(실패 시 Phase 2에서 이미 중단·안내 완료 — 이 절 자체가 실행되지 않는다). 각 레인의 `_workspace/03_validator_report.md`(자기 쪽) 및 파트너 경로의 동일 파일을 읽어 신뢰도 점수를 확인하고, 사용자에게 한 줄로 보고한다:
 
 ```
-[Phase 3.5] pair-init 시작 — 클라이언트 N개 연동 중
-클라이언트: [role_label 목록]
+[P-BARRIER] 검증 완료 — 백엔드: [점수]/100, [role_label]: [점수]/100 (...)
 ```
 
-pair-init 스킬을 다음 컨텍스트로 실행:
-- 현재 프로젝트 역할: `backend` (hub-roots는 항상 현재 프로젝트=hub 전제, Phase -1 참조)
-- 파트너 목록: `partner_list`(N개, 각 `{ role_label, path, api_url, stack }`) 전체를 한 번에 전달
-- pair-init이 파트너별로 순회하며 경로 확인·하네스 존재 확인·`pair_config.md` 생성(hub 쪽은 다중 블록, 각 클라이언트 쪽은 기존 1:1 형식 그대로)을 수행
+### P-PAIR: 프론트엔드와 백엔드 양방향 연결
 
-### 파트너 하네스 없는 경우 — 자동 생성 또는 join
-
-`00_init_scope.md`에 `partner_generation` 기록이 있으면(Phase -1 직후 이미 백그라운드로 발사됨 — 위 "파트너 하네스 조기 발사" 참조): 여기서는 **새로 발사하지 않고 join만 한다.** 아직 완료 안 됐으면 "파트너 하네스 생성 중... (M개 중 완료: k)" 안내 후 전체 완료까지 대기, 이미 완료돼 있으면(자기쪽 Phase 2가 파트너쪽보다 오래 걸린 흔한 경우) 대기 없이 즉시 다음(pair-init 실행)으로 진행한다.
-
-`partner_generation` 기록이 없으면(호스트가 background 실행을 지원하지 않아 조기 발사를 스킵했거나, Phase -1 스킵 등으로 이 경로를 안 거친 경우) **오늘과 같은 방식으로 지금 발사한다**(폴백, 회귀 없음) — 이하 기존 절차:
-
-pair-init Phase 1에서 파트너 `CLAUDE.md`가 없어 3지선다가 뜨는 경우, **harness-init이 이미 멀티레포 의도를 확인한 상태**이므로 사용자에게 다시 묻지 않고 선택지 1(자동 생성)을 기본 적용한다. `hub-roots`는 하네스 없는 클라이언트마다 각각 적용한다(클라이언트별로 독립 판단 — 일부는 이미 하네스가 있고 일부는 없을 수 있음).
-
-pair-init이 실행하는 "파트너 하네스 자동 생성" Agent 호출(파트너 루트에서 harness-init 재실행)은 아래처럼 **이번 턴의 Phase 4(harness-evaluator) 호출과 같은 메시지에서 병렬로 발행**한다 — 모든 작업이 서로 독립적인 대상(각 파트너 프로젝트 / 현재 프로젝트)이므로 동시 실행 가능. `hub-roots`에서 하네스 없는 클라이언트가 M개면 M개의 파트너 초기화 subagent를 전부 이 병렬 묶음에 포함한다(순차 실행 금지 — N이 늘어나도 총 대기 시간은 가장 느린 1개 기준):
+`pair-init` 스킬을 `entry_point: "P-PAIR"`와 함께 실행한다 — 이미 양쪽 하네스가 방금 레인으로 생성·검증됐으므로 pair-init의 Phase 0/1(정보 수집·하네스 확인·자동 생성 3지선다)을 전부 건너뛰고 **Phase 2(pair_config.md 생성)로 직행**한다(pair-init.md Phase 0 "모드 판단" 표의 `entry_point: "P-PAIR"` 행 참조). 1:1은 `partner_info`, 1:N은 `partner_list`(N개)를 그대로 전달.
 
 ```
-[같은 메시지 — 병렬 Agent 호출 (1 + M)건]
-1) harness-evaluator (Phase 4, 대상: 현재 프로젝트 _workspace/)
-2..1+M) 파트너 하네스 자동 생성 subagent × M (pair-init 내부 호출, 대상: 하네스 없는 각 클라이언트 루트)
+[P-PAIR] 프론트엔드-백엔드 연결 중
+[1:1] 파트너 경로: [partner_info.path]
+[1:N] 클라이언트: [role_label 목록]
 ```
 
-모든 호출이 반환되면 다음으로 진행. 파트너 초기화가 evaluator보다 오래 걸리면, 현재 프로젝트의 Phase 4 결과 보고를 먼저 사용자에게 보여주고 "파트너 하네스 생성 중... (M개 중 완료: k)" 안내 후 전체 완료를 기다린다 (join).
+이 단계에서 pair-init Phase 2(pair_config.md 생성) → 3(API 계약 추출) → 4(드리프트 검증, 1차) → 5(CLAUDE.md 파트너 섹션)를 순서대로 실행한다.
 
-> 파트너 초기화 subagent가 실패해도 현재 프로젝트 파이프라인은 막지 않는다 — WARN 기록 후 Phase 3.6에서 통합 wiki 대신 단독 wiki 제안으로 폴백. 조기 발사한 경우도 동일한 실패 처리를 적용한다.
+### P-REFRESH: API 계약과 미매칭 호출 갱신
+
+P-PAIR의 1차 드리프트 검증 결과(`_workspace/api_drift_report.md`, 1:N은 클라이언트별)에서 UNUSED/MISMATCH로 잡힌 "미매칭 호출"이 있으면, pair-init Phase 4(API 드리프트 검증)를 **1회 더** 실행해 최신 산출물 기준으로 재확인한다(레인 실행 중 파트너 쪽 writer가 막 생성한 서비스 스텁·엔드포인트가 1차 검증 시점엔 반영 안 됐을 수 있음). 미매칭 건수가 줄지 않아도 추가 재시도는 하지 않고 그대로 다음으로 진행 — 최종 드리프트 요약을 Phase 3 보고에 포함한다.
+
+```
+[P-REFRESH] API 계약·미매칭 호출 재확인
+🔴 MISSING: N건 → M건
+🟡 MISMATCH: N건 → M건
+```
+
+완료 후 `pair_lane_state.md`를 `pair_state: complete`로 갱신 → Phase 3.6으로.
+
+> 레인 실패로 P-BARRIER에 도달하지 못했거나 P-PAIR/P-REFRESH 도중 실패해도 현재 프로젝트 파이프라인 자체는 막지 않는다 — WARN 기록 후 Phase 3.6에서 통합 wiki 대신 단독 wiki 제안으로 폴백.
 
 ### 연동 여부 질문 방식 (Phase -1 스킵 + pair_config.md 없는 경우)
 
@@ -659,7 +683,7 @@ wiki 생성이 실패해도(예: `_workspace/01_analyzer_report.md` 없음 등 �
 
 Phase 3.6(wiki) 직후, 기본 파이프라인에 포함되지 않는 QA(경계면 교차 비교)를 놓치지 않도록 제시하고 선택받는다. 온디맨드이며 선택하지 않으면 실행하지 않는다(토큰 절감).
 
-> Phase 3.5(파트너 연동 질문)·Phase 3.6(wiki, 질문 없음)·Phase 3.7(이 QA 메뉴)은 **순서대로** 제시한다.
+> Phase 3.5(파트너 연동 — P-BARRIER/P-PAIR/P-REFRESH, 대부분 질문 없이 자동 진행)·Phase 3.6(wiki, 질문 없음)·Phase 3.7(이 QA 메뉴)은 **순서대로** 제시한다.
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -703,7 +727,7 @@ Agent(
 
 ## Phase 4: Eval Loop — Karpathy AutoResearch 영감
 
-1차 평가(harness-evaluator)는 Phase 2-5에서 모든 Tier가 항상 실행한다 — 이 Phase는 그 결과(`_workspace/06_eval_report.md`)의 총점을 읽어 **점수 기반 재생성 루프만** 담당한다(evaluator 실패로 파일이 없으면 에러 핸들링 표에 따라 eval 없이 Phase 3 보고로 종료). Phase 3.5에서 파트너 하네스 자동 생성 subagent와 evaluator를 병렬 발행한 경우, 이 Phase의 재생성·재평가는 두 호출이 모두 join된 뒤 시작한다.
+1차 평가(harness-evaluator)는 Phase 2-5에서 모든 Tier가 항상 실행한다(분리 저장소는 레인마다 독립 실행) — 이 Phase는 그 결과(`_workspace/06_eval_report.md`)의 총점을 읽어 **점수 기반 재생성 루프만** 담당한다(evaluator 실패로 파일이 없으면 에러 핸들링 표에 따라 eval 없이 Phase 3 보고로 종료). 분리 저장소는 자기 레인의 eval 결과만 이 Phase의 대상이다 — 파트너 레인의 재생성은 그쪽 레인 실행(Phase 2) 안에서 이미 자체적으로 처리된다.
 
 ### 인덱스 무결성 기계 게이트 (점수와 무관하게 우선 적용)
 

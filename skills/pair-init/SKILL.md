@@ -28,11 +28,14 @@ description: 별도 저장소로 분리된 백엔드·프론트엔드(1:1) 또�
 
 | 상황 | 판단 |
 |------|------|
-| harness-init에서 `partner_info`(단일 dict)와 함께 호출됨 | 1:1 모드, Phase 1(1:1)로 — 질문 생략 |
-| harness-init에서 `partner_list`(N개 리스트)와 함께 호출됨 | 1:N 모드, Phase 1(1:N)로 — 질문 생략 |
+| harness-init의 `P-PAIR`에서 `partner_info`/`partner_list` + `entry_point: "P-PAIR"`와 함께 호출됨 | 양쪽 하네스가 이미 대칭 2-레인으로 생성·검증된 상태(barrier 통과) — Phase 0/1(정보 수집·하네스 확인·자동 생성 3지선다) 전부 건너뛰고 **Phase 2로 직행** |
+| harness-init에서 `partner_info`(단일 dict)와 함께, `entry_point` 없이 호출됨(구버전 호환) | 1:1 모드, Phase 1(1:1)로 — 질문 생략 |
+| harness-init에서 `partner_list`(N개 리스트)와 함께, `entry_point` 없이 호출됨(구버전 호환) | 1:N 모드, Phase 1(1:N)로 — 질문 생략 |
 | `pair_config.md` 없음, 위 컨텍스트도 없음 (사용자가 직접 호출) | "몇 개 프로젝트를 연동하나요? (1 = 1:1, 2개 이상 = 1:N)" 질문 후 해당 Phase 1로 |
 | `pair_config.md`가 기존 1:1(flat) 형식 | 현재 설정(파트너 1개) 보여주고 "재설정 / 새 클라이언트 추가해서 1:N으로 전환" 확인 |
 | `pair_config.md`가 기존 hub-roots(1:N, `## Partner:` 블록) 형식 | 현재 설정(클라이언트 목록) 보여주고 "새 클라이언트 추가 / 특정 클라이언트 재설정 / 전체 재설정" 3지선다 |
+
+> `entry_point: "P-PAIR"`는 harness-init/SKILL.md Phase 3.5의 P-PAIR 호출에서만 쓰는 값이다 — Phase 1-A/1-B(정보 수집·하네스 존재 확인·3지선다)를 통째로 건너뛰는 유일한 경로이므로, standalone 호출이나 이전 버전 호환 경로와 혼동하지 않도록 이 값이 있을 때만 적용한다.
 
 ### 기존 hub-roots 설정 발견 시 3지선다
 
@@ -94,11 +97,13 @@ PowerShell: `Test-Path "[파트너 경로]"` 또는 bash: `[ -d "[파트너 경�
 | 2 | API 계약 추출만 하고 validate 스킵 (기존 동작) |
 | 3 | 중단 |
 
-harness-init이 이미 멀티레포 의도를 확인한 상태(Phase -1)라면 이 3지선다를 다시 묻지 않고 선택지 1을 기본 적용 (harness-init SKILL.md Phase 3.5 참조).
+이 3지선다는 **pair-init을 standalone으로 호출한 경우에만** 나온다 — harness-init이 주도하는 흐름에서는 Phase 1-A 자체를 건너뛰므로(아래 "파트너 하네스 자동 생성" 절 상단 안내 참조) 이 질문에 도달하지 않는다.
 
 ### 파트너 하네스 자동 생성 (선택 1)
 
-파트너 루트에서 harness-init을 subagent로 대신 실행한다:
+> 이 서브스텝은 **pair-init을 사용자가 직접(standalone) 호출한 경우에만** 쓰인다. harness-init이 주도하는 흐름(Phase -1에서 멀티레포로 확인된 경우)에서는 harness-init 자체의 Phase 1/2가 자기 쪽과 파트너 쪽을 대칭 2-레인(`B-I→B-A→B-W→B-V` / `C-I→C-A→C-W→C-V`)으로 직접 지휘해 양쪽 하네스를 함께 만들고, `P-BARRIER`를 거친 뒤에야 이 pair-init(Phase 2부터)을 호출한다 — 그 흐름에서는 이 서브스텝을 호출하지 않는다(harness-init/SKILL.md Phase 1 "분리 저장소 작업 그래프", Phase 3.5 "P-PAIR" 참조).
+
+파트너 루트에서 harness-init을 subagent로 대신 실행한다(standalone 호출 시):
 
 ```
 Agent(
@@ -116,8 +121,7 @@ Agent(
 )
 ```
 
-- 현재 진행 중인 harness-init(현재 프로젝트 쪽)이 있다면, 이 Agent 호출을 **같은 메시지에서 현재 프로젝트의 남은 Phase 호출과 병렬로** 실행해 두 하네스 초기화가 동시에 진행되게 한다 (harness-init Phase 3.5 참조).
-- harness-init이 이 절차를 호출하는 시점은 두 가지다 — Phase -1 직후(host가 background Agent를 지원하면, 자기쪽 Phase 2 시작 전에 조기 발사) 또는 Phase 3.5(기존, background 미지원 시 폴백). 어느 쪽에서 오든 이 템플릿 자체는 동일하다 — pair-init은 호출 시점을 신경 쓰지 않는다.
+- standalone 호출 시, 현재 진행 중인 다른 작업이 있다면 이 Agent 호출을 그와 병렬로 실행해도 된다.
 - 완료 후 파트너 `CLAUDE.md` 존재 확인. 실패 시 → WARN 후 선택지 2(하네스 없이 진행)로 폴백.
 
 ---
@@ -153,11 +157,11 @@ Phase 0에서 "새 클라이언트 추가"를 선택한 경우 위 질문을 **1
 
 `client_list`의 각 항목에 대해 Phase 1-A와 동일한 확인을 반복한다:
 - 경로 없음 → 그 클라이언트만 재입력 요청 (다른 클라이언트는 그대로 진행).
-- `CLAUDE.md` 없음 → Phase 1-A와 동일한 3지선다. harness-init 주도 흐름이면 선택지 1(자동 생성) 기본 적용.
+- `CLAUDE.md` 없음 → Phase 1-A와 동일한 3지선다(단, harness-init 주도 흐름이면 이 3지선다 자체를 pair-init이 묻지 않는다 — harness-init이 이미 대칭 2-레인으로 클라이언트별 하네스를 만들고 P-BARRIER를 거친 뒤 이 스킬은 Phase 2부터 호출되므로, 이 시점엔 모든 클라이언트가 이미 하네스를 갖고 있다).
 
-### 하네스 없는 클라이언트 자동 생성 (선택 1, 순회) — 병렬 실행
+### 하네스 없는 클라이언트 자동 생성 (선택 1, 순회) — 병렬 실행 (standalone 호출 시)
 
-하네스가 없어 자동 생성이 필요한 클라이언트가 M개면, Phase 1-A의 "파트너 하네스 자동 생성" Agent 호출을 **클라이언트 M개 각각에 대해 같은 메시지에서 병렬로** 발행한다 (`role: '[역할 라벨]'`로 대체, `init_layout: 'paired-roots'`는 각 클라이언트 입장에서는 자신+hub 단둘의 1:1 관계이므로 그대로 사용 — 클라이언트 쪽 harness는 hub-roots를 모른다).
+pair-init을 사용자가 직접 호출한 경우에만 해당(Phase 1-A 상단 안내 참조). 하네스가 없어 자동 생성이 필요한 클라이언트가 M개면, Phase 1-A의 "파트너 하네스 자동 생성" Agent 호출을 **클라이언트 M개 각각에 대해 같은 메시지에서 병렬로** 발행한다 (`role: '[역할 라벨]'`로 대체, `init_layout: 'paired-roots'`는 각 클라이언트 입장에서는 자신+hub 단둘의 1:1 관계이므로 그대로 사용 — 클라이언트 쪽 harness는 hub-roots를 모른다).
 
 M개 전부 반환된 후 다음으로 진행. 일부 실패해도 나머지는 계속 — 실패한 클라이언트만 선택지 2(하네스 없이 진행)로 폴백.
 
