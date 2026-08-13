@@ -20,7 +20,6 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
@@ -139,10 +138,6 @@ function calculateComplexity(facts, config, sourceFileCount) {
 
 function slash(path) {
   return path.split(sep).join("/");
-}
-
-function sha256(value) {
-  return createHash("sha256").update(value).digest("hex");
 }
 
 function readJson(path, fallback = null) {
@@ -1519,28 +1514,12 @@ export function buildIndex(options) {
   const config = loadConfig(root, options.config);
   const files = listFiles(root, config.include_paths);
   const unsupportedFiles = discoverUnsupportedFiles(root, config.include_paths);
-  const cacheDir = join(root, "_workspace", ".index-cache");
-  const cacheFiles = join(cacheDir, "files");
-  mkdirSync(cacheFiles, { recursive: true });
-  let analyzed = 0;
-  let reused = 0;
-  const facts = [];
-  const activeCache = new Set();
-  for (const file of files) {
-    const content = readFileSync(file.full);
-    const hash = sha256(content);
-    const cacheName = `${sha256(file.rel).slice(0, 24)}.json`;
-    const cachePath = join(cacheFiles, cacheName);
-    activeCache.add(cacheName);
-    const cached = options.mode !== "init" ? readJson(cachePath) : null;
-    if (cached?.version === INDEXER_VERSION && cached?.hash === hash && cached?.workspace_config_hash === sha256(JSON.stringify(config))) {
-      facts.push(cached.facts); reused += 1; continue;
-    }
-    const result = analyzeFile(file, root, config);
-    atomicJson(cachePath, { version: INDEXER_VERSION, hash, workspace_config_hash: sha256(JSON.stringify(config)), facts: result });
-    facts.push(result); analyzed += 1;
-  }
-  for (const entry of readdirSync(cacheFiles)) if (entry.endsWith(".json") && !activeCache.has(entry)) rmSync(join(cacheFiles, entry));
+  /* 파일별 해시 캐시(_workspace/.index-cache/)는 폐지했다(2026-08-14) — "인덱스만 갱신해줘"도
+   * 매번 전체 재분석한다. 레거시 대형 프로젝트 기준 실측 37초 정도라 캐시 없이도 감수 가능하다는
+   * 판단(사용자 확인) — mode(init/incremental)는 여전히 preservePatch(위) 판단에만 쓰인다. */
+  const facts = files.map((file) => analyzeFile(file, root, config));
+  const analyzed = files.length;
+  const reused = 0;
   const generatedAt = kstIso();
   const latestMtime = files.length ? kstIso(new Date(Math.max(...files.map((item) => item.stats.mtimeMs)))) : generatedAt;
   const complexity = calculateComplexity(facts, config, files.length);
@@ -1606,7 +1585,6 @@ export function buildIndex(options) {
   });
   writeFileSync(join(indexDir, "_unresolved.jsonl"), cappedUnresolved.map((item) => JSON.stringify(item)).join("\n") + (unresolved.length ? "\n" : ""), "utf8");
   if (!preservePatch && existsSync(stalePatch)) rmSync(stalePatch);
-  atomicJson(join(cacheDir, "manifest.json"), { version: INDEXER_VERSION, generated_at: generatedAt, mode: options.mode, files: files.length, analyzed, reused });
   return { root, files: files.length, analyzed, reused, tier: normalized.tier, complexity, adapter_coverage: coverage, indexes: Object.keys(output), unresolved: unresolved.length };
 }
 

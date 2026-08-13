@@ -56,9 +56,10 @@ class Repository { public void remove() {} }
       assert.equal(json(root, "sql_usage.json").sqls[0].id, "OrderMapper.cancel");
       assert.equal(json(root, "_meta.json").init_layout, "monorepo");
 
+      // 2026-08-14부터 파일별 해시 캐시(.index-cache/)를 폐지 — incremental도 매번 전체 재분석한다.
       const second = buildIndex({ root, mode: "incremental", tier: "Standard", config: null });
-      assert.equal(second.analyzed, 0);
-      assert.equal(second.reused, second.files);
+      assert.equal(second.analyzed, second.files);
+      assert.equal(second.reused, 0);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

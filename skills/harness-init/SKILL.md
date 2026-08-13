@@ -336,7 +336,7 @@ python "$env:CLAUDE_PLUGIN_ROOT/agents/lib/stack_precheck.py" --root "[절대경
 node "$env:CLAUDE_PLUGIN_ROOT/agents/lib/build-index.mjs" --root "[절대경로]" --mode init --tier "[Standard|Full]" --config "_workspace/indexer-config.json"
 ```
 
-`_workspace/index/`에 `symbols`·`call_graph`·`sql_usage`·`transactions`·`external_io`·`env_branches`·`schema`·`api_contract`·`dead_code`(해당 사실이 있는 것만) + `_meta.json`·`_analysis_input.json`·`_unresolved.jsonl`을 생성한다. `_workspace/.index-cache/`에 파일 해시 기반 캐시가 남아 이후 `--mode incremental`이 변경분만 다시 읽는다.
+`_workspace/index/`에 `symbols`·`call_graph`·`sql_usage`·`transactions`·`external_io`·`env_branches`·`schema`·`api_contract`·`dead_code`(해당 사실이 있는 것만) + `_meta.json`·`_analysis_input.json`·`_unresolved.jsonl`을 생성한다. 파일별 해시 캐시(`_workspace/.index-cache/`)는 2026-08-14 폐지됐다 — `--mode incremental`도 매번 전체 파일을 다시 분석한다(레거시 대형 프로젝트 기준 실측 37초 정도로, 캐시 없이도 감수 가능하다는 판단).
 
 기존 인덱스의 `_meta.generator`가 `deterministic-indexer`가 아니면 `--mode incremental` 대신 **`--mode init`을 강제**한다. 생성기마다 노드 id 체계가 달라 섞이면 한 파일에 두 개의 id 네임스페이스가 생긴다.
 

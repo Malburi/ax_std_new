@@ -20,8 +20,6 @@ import store as store_mod
 import index_extract
 
 EXCLUDED_DIRS = {"lib", "_html", "__pycache__"}
-# 재생성 가능한 분석 캐시 — 해시 파일명이라 버전 이력만 오염시키므로 발행 대상에서 뺀다.
-EXCLUDED_WORKSPACE_DIRS = EXCLUDED_DIRS | {".index-cache"}
 EXCLUDED_ROOT_FILES = {"index.html", "serve.bat", "_sidebar.md", "_navbar.md"}
 CONTENT_TYPE_BY_EXT = {".md": "text/markdown", ".html": "text/html"}
 WORKSPACE_JSON_CONTENT_TYPE = "application/json"
@@ -78,7 +76,7 @@ def iter_workspace_json_files(project_root):
     if not os.path.isdir(ws_dir):
         return
     for dirpath, dirnames, filenames in os.walk(ws_dir):
-        dirnames[:] = sorted(d for d in dirnames if d not in EXCLUDED_WORKSPACE_DIRS)
+        dirnames[:] = sorted(d for d in dirnames if d not in EXCLUDED_DIRS)
         for filename in sorted(filenames):
             if not filename.lower().endswith(".json"):
                 continue
