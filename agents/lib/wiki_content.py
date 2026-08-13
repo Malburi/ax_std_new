@@ -3,7 +3,7 @@
 전부 LLM 미개입, 결정론적 Python. wiki_generator.py가 파일을 읽어(read_file/load_json)
 이 모듈의 build_*() 함수에 텍스트/딕셔너리를 넘기면, 각 함수는 markdown 문자열을 반환한다.
 
-크로스 리포(pair-init) 병합이 의미 있는 4개 함수(architecture/api-endpoints/database/
+크로스 리포(pair-init) 병합이 의미 있는 5개 함수(domain/architecture/api-endpoints/database/
 external-systems)는 own_* 인자 옆에 partner_* 인자(1:1, paired-roots)를 받아, 있으면
 "## 파트너 (label)" 섹션으로 이어붙인다. 파트너가 여러 개인 1:N(hub-roots, 예: 백엔드+웹+
 모바일+관리자)은 partner_*와 별개로 `partners`(리스트) 인자를 추가로 받아 항목마다 "## 파트너
@@ -38,6 +38,35 @@ def build_architecture(own_report_text, partner_report_text=None,
     for p in (partners or []):
         if p.get("text"):
             parts.append(_section(f"파트너 ({p.get('label') or '연동 저장소'})", p["text"]))
+    return "\n".join(p for p in parts if p)
+
+
+def _extract_domain_sections(report_text):
+    """01_analyzer_report.md에서 "## A. ..." 섹션(프로젝트 기본 정보·아키텍처 레이어·요청 흐름·
+    코드 컨벤션·데이터 접근 패턴·클라이언트 자원·빌드/실행 명령)만 순서대로 뽑는다.
+    이 헤딩 집합은 agents/analyzer.md '출력: 분석 리포트' 템플릿에 고정돼 있어 정규식으로
+    안전하게 분리할 수 있다 — "## B."·"탐지 신뢰도" 등 더 기술적인 나머지는 architecture.md에만
+    남기고, 도메인/업무 흐름 이해에 필요한 부분만 빠르게 찾을 수 있는 별도 페이지로 분리한다."""
+    if not report_text:
+        return ""
+    blocks = [p.strip() for p in re.split(r"\n(?=## )", report_text) if p.strip().startswith("## A.")]
+    return "\n\n".join(blocks)
+
+
+def build_domain_overview(own_report_text, partner_report_text=None,
+                           own_label="이 저장소", partner_label=None, partners=None):
+    own = _extract_domain_sections(own_report_text)
+    if not own:
+        own = ("도메인 개요 섹션(`## A.`)을 찾지 못했습니다 — `_workspace/01_analyzer_report.md`가 "
+               "없거나 예상 형식이 아닙니다. 전체 분석 리포트는 architecture.md를 참고하세요.\n")
+    parts = ["# 도메인 개요\n", _section(own_label, own)]
+    partner_domain = _extract_domain_sections(partner_report_text)
+    if partner_domain:
+        parts.append(_section(f"파트너 ({partner_label or '연동 저장소'})", partner_domain))
+    for p in (partners or []):
+        block = _extract_domain_sections(p.get("text"))
+        if block:
+            parts.append(_section(f"파트너 ({p.get('label') or '연동 저장소'})", block))
     return "\n".join(p for p in parts if p)
 
 

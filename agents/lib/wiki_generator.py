@@ -542,7 +542,17 @@ def main():
     render_and_track(wiki_dir, page_entries, project_name, "Home.md", home_content, "Home (프로젝트 개요)")
     print("Generated Home.md")
 
-    # 2. architecture.md ← 01_analyzer_report.md (+ 파트너 병합)
+    # 2. domain.md ← 01_analyzer_report.md의 "## A." 섹션만 (+ 파트너 병합)
+    # architecture.md(전체 리포트)에 도메인/업무 흐름이 묻혀서 wiki로는 찾을 방법이 없다는
+    # 지적으로 추가 — 같은 원본에서 도메인 개요만 뽑아 먼저 보이는 별도 페이지로 분리한다.
+    domain_content = wiki_content.build_domain_overview(
+        analyzer_report_text, partner_report_text, own_label=own_label, partner_label=partner_label,
+        partners=partners_data)
+    write_file(os.path.join(wiki_dir, "domain.md"), domain_content)
+    render_and_track(wiki_dir, page_entries, project_name, "domain.md", domain_content, "Domain (도메인 개요)")
+    print("Generated domain.md")
+
+    # 3. architecture.md ← 01_analyzer_report.md (+ 파트너 병합)
     arch_content = wiki_content.build_architecture(
         analyzer_report_text, partner_report_text, own_label=own_label, partner_label=partner_label,
         partners=partners_data)
@@ -550,20 +560,20 @@ def main():
     render_and_track(wiki_dir, page_entries, project_name, "architecture.md", arch_content, "Architecture (아키텍처)")
     print("Generated architecture.md")
 
-    # 3. workflows.md ← .claude/skills/*.md 그대로 연결 (병합 대상 아님)
+    # 4. workflows.md ← .claude/skills/*.md 그대로 연결 (병합 대상 아님)
     workflows_content = wiki_content.build_workflows(skills_dir)
     write_file(os.path.join(wiki_dir, "workflows.md"), workflows_content)
     render_and_track(wiki_dir, page_entries, project_name, "workflows.md", workflows_content, "Workflows (AI 워크플로우 스킬)")
     print("Generated workflows.md")
 
-    # 4. patterns.md ← .claude/patterns/*.md 그대로 연결 (병합 대상 아님)
+    # 5. patterns.md ← .claude/patterns/*.md 그대로 연결 (병합 대상 아님)
     if patterns_exists:
         patterns_content = wiki_content.build_patterns(patterns_dir)
         write_file(os.path.join(wiki_dir, "patterns.md"), patterns_content)
         render_and_track(wiki_dir, page_entries, project_name, "patterns.md", patterns_content, "Patterns")
         print("Generated patterns.md")
 
-    # 5. api-endpoints.md ← api_contract.json (+ 파트너 병합)
+    # 6. api-endpoints.md ← api_contract.json (+ 파트너 병합)
     if api_exists:
         api_content = wiki_content.build_api_endpoints(
             own_api_contract_json, partner_api_contract_json, own_label=own_label, partner_label=partner_label,
@@ -572,7 +582,7 @@ def main():
         render_and_track(wiki_dir, page_entries, project_name, "api-endpoints.md", api_content, "API Endpoints")
         print("Generated api-endpoints.md")
 
-    # 6. database.md ← schema.json + sql_usage.json (+ 파트너 병합)
+    # 7. database.md ← schema.json + sql_usage.json (+ 파트너 병합)
     if db_exists:
         db_content = wiki_content.build_database(
             own_schema_json, own_sql_usage_json, partner_schema_json, partner_sql_usage_json,
@@ -581,7 +591,7 @@ def main():
         render_and_track(wiki_dir, page_entries, project_name, "database.md", db_content, "Database")
         print("Generated database.md")
 
-    # 7. external-systems.md ← external_io.json (+ 파트너 병합)
+    # 8. external-systems.md ← external_io.json (+ 파트너 병합)
     if external_exists:
         ext_content = wiki_content.build_external_systems(
             own_external_io_json, partner_external_io_json, own_label=own_label, partner_label=partner_label,
@@ -590,21 +600,21 @@ def main():
         render_and_track(wiki_dir, page_entries, project_name, "external-systems.md", ext_content, "External Systems")
         print("Generated external-systems.md")
 
-    # 8. issues.md ← 03_validator_report.md + 04_qa_report.md + dead_code.json + owasp_top10.json (병합 대상 아님)
+    # 9. issues.md ← 03_validator_report.md + 04_qa_report.md + dead_code.json + owasp_top10.json (병합 대상 아님)
     if issues_exists:
         issues_content = wiki_content.build_issues(validator_report_text, qa_report_text, dead_code_json, owasp_json)
         write_file(os.path.join(wiki_dir, "issues.md"), issues_content)
         render_and_track(wiki_dir, page_entries, project_name, "issues.md", issues_content, "Issues (이슈 & 보안)")
         print("Generated issues.md")
 
-    # 9. vis-network 라이브러리는 call-graph.html에 직접 인라인한다(아래 10번) — 파일로
+    # 10. vis-network 라이브러리는 call-graph.html에 직접 인라인한다(아래 11번) — 파일로
     # 복사해 상대경로(lib/...)로 참조하면 DB 발행 시(wikihub_db) 이 페이지만 올라가고
     # lib/ 폴더는 안 올라가서 그래프가 빈 화면으로 뜨는 문제가 있었다(2026-08-05 확인).
     # 완전 독립 페이지(file://·DB 열람 모두 동작)로 만들려면 인라인이 유일한 방법이다.
     vis_network_js = read_file(os.path.join(LIB_DIR, "vis-network.min.js")) or ""
     vis_network_css = read_file(os.path.join(LIB_DIR, "vis-network.min.css")) or ""
 
-    # 10. Generate call-graph.html (100% Python program-side binding, 파트너 그래프 병합 포함)
+    # 11. Generate call-graph.html (100% Python program-side binding, 파트너 그래프 병합 포함)
     merge_info = {"merged": False}
     db_merge_info = {"table_nodes": 0, "query_edges": 0}
     call_graph_path = os.path.join(project_root, "_workspace", "index", "call_graph.json")
@@ -813,7 +823,7 @@ def main():
         print("Generated call-graph.html successfully.")
         page_entries.append(("call-graph.html", "Call Graph (호출 그래프)", "call-graph.html"))
 
-    # 11. index.html (Docsify) + _sidebar.md + _navbar.md + serve.bat
+    # 12. index.html (Docsify) + _sidebar.md + _navbar.md + serve.bat
     # Docsify는 file:// 미지원 — serve.bat으로 로컬 서버 실행 필요.
     has_call_graph_file = os.path.exists(os.path.join(wiki_dir, "call-graph.html"))
     present_slugs = {
@@ -833,12 +843,14 @@ def main():
     if partner:
         if partner_report_text:
             frontend_merged_slugs.append("architecture")
+            frontend_merged_slugs.append("domain")
         if wiki_content.has_api_data(partner_api_contract_json):
             frontend_merged_slugs.append("api-endpoints")
         if wiki_content.has_external_data(partner_external_io_json):
             frontend_merged_slugs.append("external-systems")
     if any(p.get("text") for p in partners_data):
         frontend_merged_slugs.append("architecture")
+        frontend_merged_slugs.append("domain")
     if any(wiki_content.has_api_data(p.get("contract_json")) for p in partners_data):
         frontend_merged_slugs.append("api-endpoints")
     if any(wiki_content.has_external_data(p.get("io_json")) for p in partners_data):
@@ -860,7 +872,7 @@ def main():
     write_file(os.path.join(wiki_dir, "serve.bat"), docsify_convert.serve_bat_content())
     print("Generated serve.bat")
 
-    # 12. Write WIKI BUILD REPORT
+    # 13. Write WIKI BUILD REPORT
     build_report_path = os.path.join(project_root, "_workspace", "07_wiki_build.md")
     report_content = f"""=== WIKI BUILD REPORT (zero-LLM) ===
 
@@ -869,7 +881,8 @@ def main():
 
 생성된 파일:
 - wiki/Home.md              ✅ (원본: CLAUDE.md)
-- wiki/architecture.md      ✅ (원본: _workspace/01_analyzer_report.md)
+- wiki/domain.md             ✅ (원본: _workspace/01_analyzer_report.md의 "## A." 섹션만)
+- wiki/architecture.md      ✅ (원본: _workspace/01_analyzer_report.md 전체)
 - wiki/workflows.md         ✅ (원본: .claude/skills/*.md)
 - wiki/call-graph.html      {"✅" if nodes_data else "⏭"} (노드: {len(nodes_data)}, 엣지: {len(edges_data)})
 - wiki/index.html           ✅ (Docsify 4 — serve.bat 실행 후 http://localhost:3501)

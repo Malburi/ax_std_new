@@ -25,6 +25,7 @@ import sys
 # 개요"에 묶으면 실제 아키텍처와 혼동되므로 별도 "AI 도구" 섹션으로 분리한다.
 PAGE_META = {
     "Home":             ("홈", None),
+    "domain":           ("도메인 개요", "시스템 개요"),
     "architecture":     ("아키텍처", "시스템 개요"),
     "workflows":        ("AI 워크플로우 스킬", "AI 도구"),
     "database":         ("데이터베이스", "데이터"),
