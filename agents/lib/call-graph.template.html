@@ -48,6 +48,7 @@
     .conn-list li { font-size: 12px; color: #ccc; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
     .conn-list li:last-child { border-bottom: none; }
     .conn-arrow { color: #4A90D9; margin-right: 4px; }
+    .conn-note { font-size: 11px; color: #888; font-style: italic; margin: 2px 0 0 0; }
     .stat-hero { background: rgba(255,255,255,0.05); border-radius: 8px; padding: 14px; text-align: center; margin-bottom: 16px; }
     .stat-num { font-size: 32px; font-weight: 800; color: #4A90D9; line-height: 1.2; }
     .stat-caption { font-size: 12px; color: #ccc; margin-top: 4px; }
@@ -134,9 +135,9 @@
     const baseOpacity = {};
     nodesData.forEach(n => { baseOpacity[n.id] = n.opacity ?? 1; });
 
-    function edge(from, to, label = '', dashed = false, edgeType = 'call') {
+    function edge(from, to, label = '', dashed = false, edgeType = 'call', note = '') {
       return {
-        from, to, label, edgeType, arrows: 'to', dashes: dashed,
+        from, to, label, edgeType, note, arrows: 'to', dashes: dashed,
         color: { color: 'rgba(150,150,200,0.4)', highlight: '#4A90D9' },
         font: { size: 9, color: '#999', align: 'middle' },
         smooth: { type: 'curvedCW', roundness: 0.1 }
@@ -204,8 +205,9 @@
       const c = COLORS[type];
       const typeColor = c ? c.border : '#aaa';
       const connEdges = edgesData.filter(e => e.from === id || e.to === id);
-      const outgoing = connEdges.filter(e => e.from === id).map(e => `<li>${edgeTag(e)}<span class="conn-arrow">→</span>${getLabel(e.to)}</li>`).join('');
-      const incoming = connEdges.filter(e => e.to === id).map(e => `<li>${edgeTag(e)}<span class="conn-arrow">←</span>${getLabel(e.from)}</li>`).join('');
+      const edgeNote = e => e.note ? `<div class="conn-note">${e.note}</div>` : '';
+      const outgoing = connEdges.filter(e => e.from === id).map(e => `<li>${edgeTag(e)}<span class="conn-arrow">→</span>${getLabel(e.to)}${edgeNote(e)}</li>`).join('');
+      const incoming = connEdges.filter(e => e.to === id).map(e => `<li>${edgeTag(e)}<span class="conn-arrow">←</span>${getLabel(e.from)}${edgeNote(e)}</li>`).join('');
 
       const badges = [];
       if (m.type) badges.push(`<span class="badge" style="background:${typeColor}22;color:${typeColor};border:1px solid ${typeColor}">${m.type}</span>`);

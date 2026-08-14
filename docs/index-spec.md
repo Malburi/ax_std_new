@@ -10,6 +10,7 @@
 |------|---------|
 | `symbols` · `call_graph` · `sql_usage` · `transactions` · `external_io` · `env_branches` · `schema` · `api_contract` · `dead_code` | `agents/lib/build-index.mjs` (결정론적 인덱서, LLM 미개입) |
 | `call_graph`의 모호 관계 보강 | analyzer가 `_ai_patch.json`의 `add_edge` 오퍼레이션으로 제출 → 인덱서가 검증 후 병합 |
+| `call_graph`의 `nodes[]`/`edges[]` 선택적 `note` | analyzer가 `_ai_patch.json`의 `set_node_note`(`{id, note}`)/`set_edge_note`(`{from, to, type, note}`) 오퍼레이션으로 제출 |
 | `api_contract`의 `endpoints[]`/`consumers[]` 선택적 `description` | analyzer가 `_ai_patch.json`의 `set_endpoint_description`(`{id, description}`) 오퍼레이션으로 제출 |
 | `external_io`의 `communications[]` 선택적 `description` | analyzer가 `_ai_patch.json`의 `set_communication_description`(`{id, description}`) 오퍼레이션으로 제출 |
 | `data_flow` · `owasp_top10` · `client_index` | analyzer (판단이 필요해 기계화 대상 아님) |
@@ -74,7 +75,8 @@
       "visibility": "public",
       "static": false,
       "annotations": ["@Transactional"],
-      "signature": "void cancel(Long orderId)"
+      "signature": "void cancel(Long orderId)",
+      "note": "주문 취소 업무 로직을 처리하는 서비스 메서드"
     }
   ],
   "edges": [
@@ -83,7 +85,8 @@
       "to": "com.example.OrderService.cancel",
       "type": "call",
       "file": "src/main/java/com/example/OrderController.java",
-      "line": 56
+      "line": 56,
+      "note": "취소 요청을 서비스 계층으로 위임한다"
     }
   ]
 }
@@ -98,6 +101,8 @@
 - `ui_event` · `markup_event` · `scheduler` · `process_entry` — 진입점에서 핸들러로 가는 관계. 출발점은 `trigger:<파일>#<트리거>` 형태의 합성 노드다
 
 모든 레코드에는 `origin`(`deterministic-indexer` | `ai-enrichment` | `analyzer`)과 `confidence`(`HIGH`/`MEDIUM`/`LOW`)가 붙는다 — 어디서 온 사실인지 구분하기 위한 것이다.
+
+`note`는 노드·엣지 모두 선택 필드다 — 인덱서는 채우지 않고, analyzer가 `_ai_patch.json`의 `set_node_note`/`set_edge_note`로 "이게 무엇을 하는지·왜 호출하는지"를 보강한다(위 "생성 주체" 표 참조). Controller·Service·DAO 같은 의미 있는 노드와, 이름만으로 목적이 분명하지 않은 엣지에만 선택적으로 붙는다 — 모든 노드/엣지에 다 있어야 하는 필드가 아니다. call-graph.html은 이 값을 노드 상세 패널과 연결 목록에 그대로 표시한다.
 
 **후보가 둘 이상이면 엣지를 만들지 않는다.** 인덱서는 이름 해석 결과가 정확히 하나일 때만 엣지를 쓰고, 둘 이상이면 `_unresolved.jsonl`에 후보 목록과 함께 넘기며, 하나도 없으면(외부 라이브러리 호출 등) 버린다. 그래서 dangling 엣지가 구조적으로 생기지 않는다. analyzer는 이 목록을 판정해 `_ai_patch.json`으로만 보강하며, 이때도 **기존 노드 사이의 엣지만** 추가할 수 있다.
 

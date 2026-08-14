@@ -755,7 +755,8 @@ def main():
                 "to": edge_item.get("to"),
                 "label": edge_item.get("label", ""),
                 "type": edge_item.get("type", "call"),
-                "dashed": edge_item.get("type") == "depends"
+                "dashed": edge_item.get("type") == "depends",
+                "note": edge_item.get("note", "")
             })
 
         btn_labels = {
@@ -787,13 +788,20 @@ def main():
             f'<div class="stat-sub">허브 {hub_count} · 데드코드 후보 {dead_count}</div></div>'
         )
 
+        # id/label/note는 analyzer가 자유 서술한 텍스트라 따옴표를 포함할 수 있다 —
+        # json.dumps로 이스케이핑해야 생성된 JS가 깨지지 않는다.
         js_nodes = []
         for n in nodes_data:
-            js_nodes.append(f"mkNode('{n['id']}', '{n['label']}', '{n['type']}', {json.dumps(n['extra'])})")
+            js_nodes.append(
+                f"mkNode({json.dumps(n['id'])}, {json.dumps(n['label'])}, {json.dumps(n['type'])}, {json.dumps(n['extra'])})"
+            )
 
         js_edges = []
         for e in edges_data:
-            js_edges.append(f"edge('{e['from']}', '{e['to']}', '{e['label']}', {str(e['dashed']).lower()}, '{e['type']}')")
+            js_edges.append(
+                f"edge({json.dumps(e['from'])}, {json.dumps(e['to'])}, {json.dumps(e['label'])}, "
+                f"{str(e['dashed']).lower()}, {json.dumps(e['type'])}, {json.dumps(e.get('note', ''))})"
+            )
 
         js_nodes_array_str = "[\n      " + ",\n      ".join(js_nodes) + "\n    ]"
         js_edges_array_str = "[\n      " + ",\n      ".join(js_edges) + "\n    ]"

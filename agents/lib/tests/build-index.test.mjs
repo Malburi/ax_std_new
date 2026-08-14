@@ -286,6 +286,94 @@ public class OrderController {
     }
   });
 
+  register("set_node_note/set_edge_note로 콜 그래프 노드·엣지에 설명을 추가할 수 있다", () => {
+    const root = mkdtempSync(join(tmpdir(), "ax-indexer-note-"));
+    try {
+      write(root, "src/simple.ts", "export function first() { return 1; }\nexport function second() { return 2; }\n");
+      write(root, "src/OrderController.java", `package com.acme;
+@RequestMapping("/orders")
+public class OrderController {
+  @Autowired private OrderService service;
+  @PostMapping("/{id}/cancel")
+  public void cancel() { service.cancel(); }
+}
+class OrderService {
+  public void cancel() { }
+}
+`);
+      buildIndex({ root, mode: "init", tier: "Standard", config: null });
+      const graph = json(root, "call_graph.json");
+      const serviceNode = graph.nodes.find((n) => n.id.endsWith("OrderService.cancel"));
+      const callEdge = graph.edges.find((e) => e.type === "call" && e.to.endsWith("OrderService.cancel"));
+      assert.ok(serviceNode, `OrderService.cancel 노드: ${JSON.stringify(graph.nodes)}`);
+      assert.ok(callEdge, `호출 엣지: ${JSON.stringify(graph.edges)}`);
+      write(root, "_workspace/index/_ai_patch.json", JSON.stringify({
+        version: 1,
+        operations: [
+          { op: "set_node_note", id: serviceNode.id, note: "주문 취소 업무 로직을 처리한다" },
+          { op: "set_edge_note", from: callEdge.from, to: callEdge.to, type: callEdge.type, note: "취소 요청을 서비스 계층으로 위임한다" },
+        ],
+      }));
+      const result = applyAiPatch(root, "_workspace/index/_ai_patch.json");
+      assert.equal(result.applied, 2, JSON.stringify(result));
+      assert.equal(result.rejected, 0);
+      const updated = json(root, "call_graph.json");
+      assert.equal(updated.nodes.find((n) => n.id === serviceNode.id).note, "주문 취소 업무 로직을 처리한다");
+      const updatedEdge = updated.edges.find((e) => e.from === callEdge.from && e.to === callEdge.to && e.type === callEdge.type);
+      assert.equal(updatedEdge.note, "취소 요청을 서비스 계층으로 위임한다");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  register("set_node_note/set_edge_note가 존재하지 않는 대상을 가리키면 거부된다", () => {
+    const root = mkdtempSync(join(tmpdir(), "ax-indexer-note-reject-"));
+    try {
+      write(root, "src/simple.ts", "export function first() { return 1; }\n");
+      buildIndex({ root, mode: "init", tier: "Standard", config: null });
+      write(root, "_workspace/index/_ai_patch.json", JSON.stringify({
+        version: 1,
+        operations: [
+          { op: "set_node_note", id: "does.not.exist", note: "존재하지 않음" },
+          { op: "set_edge_note", from: "does.not.exist", to: "src.simple.first", type: "call", note: "존재하지 않는 엣지" },
+        ],
+      }));
+      const result = applyAiPatch(root, "_workspace/index/_ai_patch.json");
+      assert.equal(result.applied, 0);
+      assert.equal(result.rejected, 2, JSON.stringify(result));
+      assert.equal(result.rejected_reasons.unknown_id, 1);
+      assert.equal(result.rejected_reasons.unknown_edge, 1);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  register("add_edge로 새로 추가한 엣지에 같은 패치의 set_edge_note로 바로 설명을 붙일 수 있다", () => {
+    const root = mkdtempSync(join(tmpdir(), "ax-indexer-note-combo-"));
+    try {
+      write(root, "src/simple.ts", "export function first() { return 1; }\nexport function second() { return 2; }\n");
+      buildIndex({ root, mode: "init", tier: "Standard", config: null });
+      write(root, "_workspace/index/_ai_patch.json", JSON.stringify({
+        version: 1,
+        operations: [
+          { op: "add_edge", from: "src.simple.first", to: "src.simple.second", type: "call", confidence: "MEDIUM", evidence: "동적 디스패치" },
+          { op: "set_edge_note", from: "src.simple.first", to: "src.simple.second", type: "call", note: "두 번째 값 계산을 위임한다" },
+          { op: "set_node_note", id: "src.simple.first", note: "첫 번째 값을 계산한다" },
+        ],
+      }));
+      const result = applyAiPatch(root, "_workspace/index/_ai_patch.json");
+      assert.equal(result.applied, 3, JSON.stringify(result));
+      assert.equal(result.rejected, 0);
+      const graph = json(root, "call_graph.json");
+      const edge = graph.edges.find((e) => e.from === "src.simple.first" && e.to === "src.simple.second" && e.type === "call");
+      assert.ok(edge, "add_edge로 추가된 엣지");
+      assert.equal(edge.note, "두 번째 값 계산을 위임한다", "같은 패치 내에서 방금 추가한 엣지에도 note 적용됨");
+      assert.equal(graph.nodes.find((n) => n.id === "src.simple.first").note, "첫 번째 값을 계산한다");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   register("분석 입력 팩이 허브·모듈·위험 digest를 상한과 함께 제공한다", () => {
     const root = mkdtempSync(join(tmpdir(), "ax-indexer-digest-"));
     try {

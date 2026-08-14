@@ -1653,7 +1653,7 @@ export function mergeAiPatchEdges(graph, patch) {
  * 원본 파일을 analyzer가 직접 재작성하지 않는다 — incremental 재인덱싱이 두 파일을 캐시에서
  * 다시 만들기 때문에 직접 덧붙인 내용은 다음 갱신에서 조용히 사라진다.
  */
-function mergeDescriptionPatch(items, ops) {
+function mergeDescriptionPatch(items, ops, field = "description") {
   const byId = new Map((items || []).map((item) => [item.id, item]));
   const reasons = new Map();
   const samples = [];
@@ -1666,12 +1666,44 @@ function mergeDescriptionPatch(items, ops) {
   };
   for (const op of ops) {
     const id = op && typeof op === "object" ? op.id : undefined;
-    const description = op && typeof op === "object" ? op.description : undefined;
+    const text = op && typeof op === "object" ? op[field] : undefined;
     if (!id) { reject("missing_id", { op: op?.op ?? null }); continue; }
-    if (typeof description !== "string" || !description.trim()) { reject("missing_description", { id }); continue; }
+    if (typeof text !== "string" || !text.trim()) { reject(`missing_${field}`, { id }); continue; }
     const item = byId.get(id);
     if (!item) { reject("unknown_id", { id }); continue; }
-    item.description = description.trim();
+    item[field] = text.trim();
+    applied += 1;
+  }
+  return { applied, rejected, rejected_reasons: Object.fromEntries(reasons), rejected_samples: samples };
+}
+
+/*
+ * call_graph.json 엣지는 (from, to, type) 조합이 자연 키다(mergeAiPatchEdges의 edgeKeys와 동일
+ * 구성) — 노드처럼 단일 id가 없어 별도 매칭 함수가 필요하다. "이 호출이 왜 존재하는지"를
+ * analyzer가 이 오퍼레이션으로만 얹는다(엣지 자체는 add_edge로만 새로 만들 수 있음, 여기선
+ * 이미 있는 엣지에 note만 붙인다).
+ */
+function mergeEdgeNotes(edges, ops) {
+  const byKey = new Map((edges || []).map((item) => [`${item.from}:${item.to}:${item.type}`, item]));
+  const reasons = new Map();
+  const samples = [];
+  let applied = 0;
+  let rejected = 0;
+  const reject = (reason, detail) => {
+    rejected += 1;
+    reasons.set(reason, (reasons.get(reason) || 0) + 1);
+    if (samples.length < 20) samples.push({ reason, ...detail });
+  };
+  for (const op of ops) {
+    const from = op && typeof op === "object" ? op.from : undefined;
+    const to = op && typeof op === "object" ? op.to : undefined;
+    const type = op && typeof op === "object" ? op.type : undefined;
+    const note = op && typeof op === "object" ? op.note : undefined;
+    if (!from || !to || !type) { reject("missing_edge_fields", { from, to, type }); continue; }
+    if (typeof note !== "string" || !note.trim()) { reject("missing_note", { from, to, type }); continue; }
+    const item = byKey.get(`${from}:${to}:${type}`);
+    if (!item) { reject("unknown_edge", { from, to, type }); continue; }
+    item.note = note.trim();
     applied += 1;
   }
   return { applied, rejected, rejected_reasons: Object.fromEntries(reasons), rejected_samples: samples };
@@ -1703,9 +1735,12 @@ export function applyAiPatch(rootArg, patchArg) {
   const indexDir = join(root, "_workspace", "index");
   const appliedAt = kstIso();
 
-  /* op 종류별로 먼저 나눠서 각 대상 파일 병합이 서로의 거부 사유를 오염시키지 않게 한다. */
-  const KNOWN_OPS = new Set(["add_edge", "set_endpoint_description", "set_communication_description"]);
-  const buckets = { add_edge: [], set_endpoint_description: [], set_communication_description: [] };
+  /* op 종류별로 먼저 나눠서 각 대상 파일 병합이 서로의 거부 사유를 오염시키지 않게 한다.
+   * add_edge/set_node_note/set_edge_note는 셋 다 call_graph.json이 대상이라 파일을 한 번만
+   * 읽고 순서대로(엣지 추가 → 노드 설명 → 엣지 설명) 적용한 뒤 한 번만 쓴다. */
+  const CALL_GRAPH_OPS = ["add_edge", "set_node_note", "set_edge_note"];
+  const KNOWN_OPS = new Set([...CALL_GRAPH_OPS, "set_endpoint_description", "set_communication_description"]);
+  const buckets = { add_edge: [], set_node_note: [], set_edge_note: [], set_endpoint_description: [], set_communication_description: [] };
   let unsupported = 0;
   const unsupportedSamples = [];
   for (const op of patch.operations) {
@@ -1715,27 +1750,41 @@ export function applyAiPatch(rootArg, patchArg) {
   }
 
   let edgeResult = { applied: 0, rejected: 0, duplicates: 0, rejected_reasons: {}, rejected_samples: [] };
+  let nodeNoteResult = { applied: 0, rejected: 0, rejected_reasons: {}, rejected_samples: [] };
+  let edgeNoteResult = { applied: 0, rejected: 0, rejected_reasons: {}, rejected_samples: [] };
   let edgeCount = null;
-  if (buckets.add_edge.length) {
+  const hasCallGraphOps = CALL_GRAPH_OPS.some((kind) => buckets[kind].length);
+  if (hasCallGraphOps) {
     const graphPath = join(indexDir, "call_graph.json");
     const graph = readJson(graphPath);
-    edgeResult = mergeAiPatchEdges(graph, { version: 1, operations: buckets.add_edge });
+    if (buckets.add_edge.length) {
+      edgeResult = mergeAiPatchEdges(graph, { version: 1, operations: buckets.add_edge });
+    }
+    if (buckets.set_node_note.length) {
+      nodeNoteResult = mergeDescriptionPatch(graph.nodes, buckets.set_node_note, "note");
+    }
+    if (buckets.set_edge_note.length) {
+      edgeNoteResult = mergeEdgeNotes(graph.edges, buckets.set_edge_note);
+    }
     graph._meta.edge_count = graph.edges.length;
     graph._meta.ai_enriched_at = appliedAt;
-    graph._meta.ai_patch_applied = edgeResult.applied;
+    graph._meta.ai_patch_applied = edgeResult.applied + nodeNoteResult.applied + edgeNoteResult.applied;
     atomicJson(graphPath, graph);
     edgeCount = graph.edges.length;
 
     /*
-     * digest는 호출 그래프에서 파생되므로 보강된 엣지를 반영해야 한다.
+     * digest는 호출 그래프에서 파생되므로 보강된 엣지를 반영해야 한다(add_edge가 있었을 때만
+     * 의미 있음 — note류는 그래프 구조에 영향 없으므로 digest 재계산 대상 아님).
      * 그러지 않으면 writer와 위키가 AI 판정 이전의 허브·진입점을 계속 본다.
      */
-    const analysisInputPath = join(indexDir, "_analysis_input.json");
-    const analysisInput = readJson(analysisInputPath);
-    if (analysisInput?.digest) {
-      Object.assign(analysisInput.digest, graphDigest(graph.nodes, graph.edges));
-      if (analysisInput.counts) analysisInput.counts.graph_edges = graph.edges.length;
-      atomicJson(analysisInputPath, analysisInput);
+    if (edgeResult.applied) {
+      const analysisInputPath = join(indexDir, "_analysis_input.json");
+      const analysisInput = readJson(analysisInputPath);
+      if (analysisInput?.digest) {
+        Object.assign(analysisInput.digest, graphDigest(graph.nodes, graph.edges));
+        if (analysisInput.counts) analysisInput.counts.graph_edges = graph.edges.length;
+        atomicJson(analysisInputPath, analysisInput);
+      }
     }
   }
 
@@ -1764,7 +1813,7 @@ export function applyAiPatch(rootArg, patchArg) {
   }
 
   const unsupportedResult = { applied: 0, rejected: unsupported, rejected_reasons: unsupported ? { unsupported_op: unsupported } : {}, rejected_samples: unsupportedSamples };
-  const result = mergeCombinedResults([edgeResult, endpointResult, commResult, unsupportedResult]);
+  const result = mergeCombinedResults([edgeResult, nodeNoteResult, edgeNoteResult, endpointResult, commResult, unsupportedResult]);
 
   const enrichment = { applied_at: appliedAt, ...result, patch: slash(relative(root, patchPath)) };
   const metaPath = join(indexDir, "_meta.json");

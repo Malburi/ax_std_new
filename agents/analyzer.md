@@ -198,7 +198,9 @@ pair_linked = true이면 분석 리포트 헤더에 기록: 1:1이면 "파트너
   {"op": "add_edge", "from": "<기존 노드 id>", "to": "<기존 노드 id>", "type": "call|inject|inherit|reflect",
    "file": "src/.../OrderService.java", "line": 42, "evidence": "리플렉션으로 빈 이름 조회"},
   {"op": "set_endpoint_description", "id": "<api_contract.json endpoints[]/consumers[] id>", "description": "주문을 취소 처리한다"},
-  {"op": "set_communication_description", "id": "<external_io.json communications[] id>", "description": "결제 게이트웨이에 취소 요청을 전달한다"}
+  {"op": "set_communication_description", "id": "<external_io.json communications[] id>", "description": "결제 게이트웨이에 취소 요청을 전달한다"},
+  {"op": "set_node_note", "id": "com.example.OrderService.cancel", "note": "주문 취소 업무 로직을 처리하는 서비스 메서드"},
+  {"op": "set_edge_note", "from": "com.example.OrderController.cancel", "to": "com.example.OrderService.cancel", "type": "call", "note": "취소 요청을 서비스 계층으로 위임한다"}
 ]}
 ```
 
@@ -206,6 +208,7 @@ pair_linked = true이면 분석 리포트 헤더에 기록: 1:1이면 "파트너
 - 미해결 목록에 없더라도 리플렉션·동적 프록시·문자열 기반 DI처럼 정규식이 잡을 수 없는 관계를 발견하면 같은 방식으로 operation을 추가한다.
 - `call_graph.json`을 직접 편집하지 않는 이유 — 재인덱싱(`--mode incremental`)이 그래프를 캐시에서 다시 만들기 때문에 직접 덧붙인 엣지는 다음 갱신에서 **에러 없이 사라진다**. patch는 쓰기 직전에 다시 병합된다.
 - `set_endpoint_description`/`set_communication_description`도 같은 이유로 `api_contract.json`/`external_io.json`을 직접 편집하지 않고 이 패치로만 보강한다 — 상세 지침은 Step 11·Step 15.5 참조. `id`가 대상 파일에 없으면 `unknown_id`로 거부된다.
+- `set_node_note`/`set_edge_note` — call_graph의 노드·엣지에 "이게 왜 존재하는지·무엇을 하는지"를 1줄로 보강한다. **범위를 제한할 것**: 노드는 Controller·Service·DAO/Repository·허브 노드(`_analysis_input.json`의 `hubs`)처럼 의미 있는 단위만 대상으로 하고, 단순 getter/setter·유틸리티 함수처럼 이름만으로 역할이 자명한 노드는 건너뛴다(전수 주석 작업이 아니다 — 토큰 비용 상한을 위한 제약). 엣지도 이름만으로 호출 목적이 분명하지 않은 관계(예: 여러 단계를 건너뛰는 호출, 조건부 위임, 리플렉션/동적 디스패치로 추가한 엣지)에만 `note`를 붙이고, `orderService.cancel()`처럼 이름이 곧 설명인 평범한 호출에는 붙이지 않는다. `set_edge_note`의 `from`/`to`/`type`은 대상 엣지를 정확히 식별해야 하며(존재하지 않으면 `unknown_edge`로 거부), 같은 패치의 `add_edge`로 방금 추가한 엣지에도 붙일 수 있다.
 4. **확인만 하고 보고할 것** — 아래 "작성 후 자체 검증" 항목은 이때 읽기 전용 점검이다. dangling·`_meta`는 인덱서가 구조적으로 보장하므로, Spring인데 `inject`가 0개인 식의 **비개연성**만 리포트에 적는다(직접 고치지 않는다).
 
 **기계 인덱스가 없을 때(`_meta.json` 없음)** 아래 지침대로 처음부터 전부 작성한다(기존 동작 그대로).

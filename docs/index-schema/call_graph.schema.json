@@ -22,6 +22,7 @@
           ,"workspace": { "type": "string" }
           ,"origin": { "type": "string", "enum": ["deterministic-indexer", "ai-enrichment", "analyzer-fallback"] }
           ,"confidence": { "type": "string", "enum": ["HIGH", "MEDIUM", "LOW"] }
+          ,"note": { "type": "string" }
         }
       }
     },
@@ -40,6 +41,7 @@
           ,"origin": { "type": "string", "enum": ["deterministic-indexer", "ai-enrichment", "analyzer-fallback"] }
           ,"confidence": { "type": "string", "enum": ["HIGH", "MEDIUM", "LOW"] }
           ,"evidence": { "type": "string" }
+          ,"note": { "type": "string" }
         }
       }
     }
