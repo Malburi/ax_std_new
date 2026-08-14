@@ -148,7 +148,7 @@ writer가 프로젝트별로 직접 작성하는 스킬(trace / find-logic / sca
 | 5 | `agents/lib/ito_guide.md.template` | `<!-- SKILL:<name> -->` 블록 추가 (용도 + 트리거 예시 3개, 완전 정적 텍스트). **블록이 없으면 ITO_SKILL_ORDER에 있어도 조용히 스킵됨** (`_parse_ito_template()` → `if name not in blocks: continue`) |
 | 6 | `agents/lib/claude_md.md.template` | 자동 워크플로우 표에 행 추가 (대상 프로젝트 CLAUDE.md에 반영됨) |
 | 7 | `agents/validator.md` + `agents/lib/validator_checks.py`의 `check2_skill_registration()` | CLAUDE.md 표 등록 여부 검사 목록에 추가 |
-| 8 | 루트 `CLAUDE.md` | 파일 구조 표 + 자동 워크플로우 표 + 변경 이력 |
+| 8 | 루트 `CLAUDE.md` + `docs/changelog.md` | CLAUDE.md의 파일 구조 표 + 자동 워크플로우 표, `docs/changelog.md`의 변경 이력 |
 | 9 | `.claude-plugin/plugin.json` | 버전 bump + description 스킬 수 갱신 |
 
 (`agents/lib/validator_checks.py`의 `STATIC_OR_PREEXISTING_SKILLS`는 더 이상 새 정적 스킬을 추가할 때
@@ -211,7 +211,7 @@ SQL리뷰 selectOrderList
 
 ## 관련 이력
 
-- 2026-08-13 — 정적 스킬 6종의 대상 프로젝트 로컬 배포(`agents/lib/skills/<name>.md.template` → `.claude/skills/<name>.md`) 완전 제거, 플러그인 전역판 단일 소스로 전환. 배포본이 전역판과 다른 축약 스텁이었고 참조하는 에이전트 파일도 배포되지 않는 죽은 참조를 갖고 있었던 것이 발견 계기. 상세는 루트 CLAUDE.md 변경 이력 참조.
-- 2026-08-06 — 본 문서가 다루는 트리거 확장 3종 구현 (커밋 bf82dfb vibe 신설, 43713c2 축약+범용 문구, 4a008a4 문서·버전 0.9.1). 상세는 루트 CLAUDE.md 변경 이력 참조.
+- 2026-08-13 — 정적 스킬 6종의 대상 프로젝트 로컬 배포(`agents/lib/skills/<name>.md.template` → `.claude/skills/<name>.md`) 완전 제거, 플러그인 전역판 단일 소스로 전환. 배포본이 전역판과 다른 축약 스텁이었고 참조하는 에이전트 파일도 배포되지 않는 죽은 참조를 갖고 있었던 것이 발견 계기. 상세는 `docs/changelog.md` 참조.
+- 2026-08-06 — 본 문서가 다루는 트리거 확장 3종 구현 (커밋 bf82dfb vibe 신설, 43713c2 축약+범용 문구, 4a008a4 문서·버전 0.9.1). 상세는 `docs/changelog.md` 참조.
 - 2026-07-23 — check3에 STATIC_OR_PREEXISTING_SKILLS 제외 도입 (정적 스킬 오탐 FAIL 해소).
 - 2026-07-14 — 정적 스킬 5종을 writer LLM 재작성에서 템플릿 무-LLM 복사(skills_builder.py)로 전환.
