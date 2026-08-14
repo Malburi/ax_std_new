@@ -4,6 +4,7 @@ _workspace/
 .DS_Store
 Thumbs.db
 .env
+.wiki_db.key
 __pycache__/
 presentation-ai-journey.html
 presentation.html

@@ -11,10 +11,16 @@
     sqlite      (표준 라이브러리)                         sqlite:///경로
 
 `WIKI_DB_URL`을 직접 주면 위 조립을 건너뛰고 그 값을 그대로 쓴다 (고급 사용자용 탈출구).
+
+비밀번호는 평문(`*_PASSWORD`) 또는 암호화(`*_PASSWORD_ENC`, 권장 — `encrypt_password.py`로 생성,
+`.wiki_db.key` 키 파일 필요) 중 하나만 있으면 된다. 둘 다 있으면 `_ENC`를 우선한다.
 """
 
 import os
+import sys
 from urllib.parse import quote_plus
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
 class ConfigError(Exception):
@@ -23,10 +29,16 @@ class ConfigError(Exception):
 
 SUPPORTED_ENGINES = ["mssql", "postgresql", "oracle", "sqlite"]
 
+PASSWORD_FIELD = {
+    "mssql": "MSSQL_PASSWORD",
+    "postgresql": "PG_PASSWORD",
+    "oracle": "ORACLE_PASSWORD",
+}
+
 REQUIRED_FIELDS = {
-    "mssql": ["MSSQL_HOST", "MSSQL_PORT", "MSSQL_USER", "MSSQL_PASSWORD", "MSSQL_DATABASE"],
-    "postgresql": ["PG_HOST", "PG_PORT", "PG_USER", "PG_PASSWORD", "PG_DATABASE"],
-    "oracle": ["ORACLE_HOST", "ORACLE_PORT", "ORACLE_SERVICE", "ORACLE_USER", "ORACLE_PASSWORD"],
+    "mssql": ["MSSQL_HOST", "MSSQL_PORT", "MSSQL_USER", "MSSQL_DATABASE"],
+    "postgresql": ["PG_HOST", "PG_PORT", "PG_USER", "PG_DATABASE"],
+    "oracle": ["ORACLE_HOST", "ORACLE_PORT", "ORACLE_SERVICE", "ORACLE_USER"],
     "sqlite": ["WIKI_SQLITE_PATH"],
 }
 
@@ -73,6 +85,45 @@ def upsert_env_value(root, key, value):
             f.write("\n")
         f.write(f"{key}={value}\n")
     return value
+
+
+def set_env_value(root, key, value):
+    """.env 의 key 값을 무조건 덮어쓴다(없으면 추가). 암호화 워크플로우 전용 —
+    재암호화 시 이전 토큰을 갱신해야 하므로 upsert_env_value(보존 우선)와 분리한다."""
+    path = os.path.join(root, ".env")
+    lines = []
+    if os.path.isfile(path):
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    replaced = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith(f"{key}=") or stripped.startswith(f"{key} ="):
+            lines[i] = f"{key}={value}\n"
+            replaced = True
+            break
+    if not replaced:
+        if lines and not lines[-1].endswith("\n"):
+            lines[-1] += "\n"
+        lines.append(f"{key}={value}\n")
+    with open(path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+    return value
+
+
+def remove_env_value(root, key):
+    """.env 에서 key 줄을 제거한다. 없으면 아무것도 하지 않는다."""
+    path = os.path.join(root, ".env")
+    if not os.path.isfile(path):
+        return False
+    with open(path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    kept = [line for line in lines if not (line.strip().startswith(f"{key}=") or line.strip().startswith(f"{key} ="))]
+    if len(kept) == len(lines):
+        return False
+    with open(path, "w", encoding="utf-8") as f:
+        f.writelines(kept)
+    return True
 
 
 def resolve_engine(env, override=None):
@@ -136,7 +187,20 @@ def detect_component(root, env, key_override=None, type_override=None):
     return (ckey or ctype), ctype
 
 
-def build_url(engine, env):
+def resolve_password(engine, env, root):
+    """비밀번호를 얻는다. `*_PASSWORD_ENC`가 있으면 복호화해서, 없으면 평문 `*_PASSWORD`를 그대로 쓴다."""
+    prefix_field = PASSWORD_FIELD[engine]
+    enc = env.get(f"{prefix_field}_ENC")
+    if enc:
+        import crypto_util
+        try:
+            return crypto_util.decrypt_password(root, enc)
+        except crypto_util.CryptoError as e:
+            raise ConfigError(str(e))
+    return env.get(prefix_field, "")
+
+
+def build_url(engine, env, root):
     """엔진별 필수 항목을 검사하고 SQLAlchemy 접속 URL을 만든다."""
     if env.get("WIKI_DB_URL"):
         return env["WIKI_DB_URL"]
@@ -147,6 +211,10 @@ def build_url(engine, env):
         )
 
     missing = [k for k in REQUIRED_FIELDS[engine] if not env.get(k)]
+    if engine in PASSWORD_FIELD:
+        pw_field = PASSWORD_FIELD[engine]
+        if not (env.get(f"{pw_field}_ENC") or env.get(pw_field)):
+            missing.append(f"{pw_field} (또는 {pw_field}_ENC)")
     if missing:
         raise ConfigError(
             f".env 에 다음 항목이 없습니다 ({engine}): {', '.join(missing)}\n"
@@ -160,19 +228,19 @@ def build_url(engine, env):
 
     if engine == "mssql":
         return (
-            f"mssql+pymssql://{quote_plus(env['MSSQL_USER'])}:{quote_plus(env['MSSQL_PASSWORD'])}"
+            f"mssql+pymssql://{quote_plus(env['MSSQL_USER'])}:{quote_plus(resolve_password(engine, env, root))}"
             f"@{env['MSSQL_HOST']}:{env['MSSQL_PORT']}/{env['MSSQL_DATABASE']}"
         )
 
     if engine == "postgresql":
         return (
-            f"postgresql+psycopg2://{quote_plus(env['PG_USER'])}:{quote_plus(env['PG_PASSWORD'])}"
+            f"postgresql+psycopg2://{quote_plus(env['PG_USER'])}:{quote_plus(resolve_password(engine, env, root))}"
             f"@{env['PG_HOST']}:{env['PG_PORT']}/{env['PG_DATABASE']}"
         )
 
     if engine == "oracle":
         return (
-            f"oracle+oracledb://{quote_plus(env['ORACLE_USER'])}:{quote_plus(env['ORACLE_PASSWORD'])}"
+            f"oracle+oracledb://{quote_plus(env['ORACLE_USER'])}:{quote_plus(resolve_password(engine, env, root))}"
             f"@{env['ORACLE_HOST']}:{env['ORACLE_PORT']}/?service_name={env['ORACLE_SERVICE']}"
         )
 
@@ -194,5 +262,5 @@ def resolve_all(root, engine_override=None):
     """<root>/.env 를 읽어 (engine, url, env) 를 한 번에 돌려준다."""
     env = load_env_file(root)
     engine = resolve_engine(env, engine_override)
-    url = build_url(engine, env)
+    url = build_url(engine, env, root)
     return engine, url, env
